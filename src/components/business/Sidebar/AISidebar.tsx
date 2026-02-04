@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Send, Sparkles, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
-import { Textarea } from "@/app/components/ui/textarea";
-import { ScrollArea } from "@/app/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { api } from "@/services/api";
 
 interface Message {
   id: string;

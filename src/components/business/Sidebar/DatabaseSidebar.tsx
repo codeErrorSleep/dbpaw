@@ -10,27 +10,28 @@ import {
   Settings,
   Trash2,
   Play,
+  Loader2,
 } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/app/components/ui/dialog";
-import { Input } from "@/app/components/ui/input";
-import { Label } from "@/app/components/ui/label";
-import { Alert, AlertTitle, AlertDescription } from "@/app/components/ui/alert";
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/app/components/ui/select";
-import { api } from "@/lib/api";
-import type { ConnectionForm, Driver } from "@/lib/api";
+} from "@/components/ui/select";
+import { api } from "@/services/api";
+import type { ConnectionForm, Driver } from "@/services/api";
 
 interface Column {
   name: string;
@@ -553,7 +554,14 @@ export function DatabaseSidebar({
                   }}
                   disabled={isTesting}
                 >
-                  {isTesting ? "Testing…" : "Test"}
+                  {isTesting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Testing…
+                    </>
+                  ) : (
+                    "Test"
+                  )}
                 </Button>
                 <Button
                   onClick={async () => {
@@ -566,49 +574,38 @@ export function DatabaseSidebar({
                     setValidationMsg(null);
                     setIsConnecting(true);
                     try {
-                      const test = await api.connections.testEphemeral(form);
-                      if (!test.success) {
-                        setTestMsg({
-                          ok: false,
-                          text: test.message,
-                          latency: test.latencyMs,
-                        });
-                        setIsConnecting(false);
-                        return;
-                      }
-                      const tables = await api.metadata.listTablesByConn(form);
-                      const dbName =
-                        form.driver === "mysql"
-                          ? form.database || ""
-                          : form.schema || "public";
-                      setConnections((prev) =>
-                        prev.map((conn) => ({
-                          ...conn,
-                          isConnected: true,
-                          databases: [
-                            {
-                              name: dbName,
-                              tables: tables.map((t) => ({
-                                name: t.name,
-                                columns: [],
-                              })),
-                            },
-                          ],
-                        })),
-                      );
-                      setExpandedConnections(new Set(["1"]));
-                      setExpandedDatabases(new Set(["1-" + dbName]));
+                      const res = await api.connections.create(form);
+                      setConnections((prev) => [
+                        {
+                          id: String(res.id),
+                          name: res.name || "Unknown",
+                          type: res.dbType as any,
+                          host: res.host,
+                          port: String(res.port),
+                          username: res.username,
+                          isConnected: false,
+                          databases: [],
+                        },
+                        ...prev,
+                      ]);
                       setIsDialogOpen(false);
                       if (onConnect) onConnect(form);
                     } catch (e: any) {
-                      setTestMsg({ ok: false, text: String(e?.message || e) });
+                      setValidationMsg(String(e?.message || e));
                     } finally {
                       setIsConnecting(false);
                     }
                   }}
                   disabled={isConnecting || !requiredOk}
                 >
-                  {isConnecting ? "Connecting…" : "Connect"}
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Connecting…
+                    </>
+                  ) : (
+                    "Connect"
+                  )}
                 </Button>
               </div>
               {validationMsg && (

@@ -1,4 +1,18 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+// Helper to check if running in Tauri
+export const isTauri = () => {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+};
+
+// Safe invoke wrapper
+const invoke = async <T>(cmd: string, args?: any): Promise<T> => {
+  if (!isTauri()) {
+    console.warn(`[Mock] invoke ${cmd}`, args);
+    throw new Error("Tauri API not available. Please run in Tauri window.");
+  }
+  return tauriInvoke(cmd, args);
+};
 
 export interface QueryColumn {
   name: string;
@@ -89,6 +103,7 @@ export const api = {
   },
   connections: {
     list: () => invoke<any[]>("get_connections"),
+    create: (form: ConnectionForm) => invoke<any>("create_connection", { form }),
     testEphemeral: (form: ConnectionForm) =>
       invoke<TestConnectionResult>("test_connection_ephemeral", { form }),
   },

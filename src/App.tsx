@@ -3,17 +3,17 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@/app/components/ui/resizable";
+} from "@/components/ui/resizable";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@/app/components/ui/tabs";
-import { DatabaseSidebar } from "@/app/components/database-sidebar";
-import { SqlEditor } from "@/app/components/sql-editor";
-import { TableView } from "@/app/components/table-view";
-import { AISidebar } from "@/app/components/ai-sidebar";
+} from "@/components/ui/tabs";
+import { DatabaseSidebar } from "@/components/business/Sidebar/DatabaseSidebar";
+import { SqlEditor } from "@/components/business/Editor/SqlEditor";
+import { TableView } from "@/components/business/DataGrid/TableView";
+import { AISidebar } from "@/components/business/Sidebar/AISidebar";
 import {
   FileCode,
   Table,
@@ -24,7 +24,7 @@ import {
   LogOut,
   Sparkles,
 } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,14 +32,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/app/components/ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
-} from "@/app/components/ui/avatar";
-import { api } from "@/lib/api";
-import type { ConnectionForm } from "@/lib/api";
+} from "@/components/ui/avatar";
+import { api, isTauri } from "@/services/api";
+import type { ConnectionForm } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
 
 interface TabItem {
@@ -66,7 +66,9 @@ export default function App() {
   } | null>(null);
   const [activeConn, setActiveConn] = useState<ConnectionForm | null>(null);
   useEffect(() => {
-    listen("query.chunk", (evt: any) => {
+    if (!isTauri()) return;
+
+    const unlistenChunk = listen("query.chunk", (evt: any) => {
       const rows = (evt?.payload?.rows ?? []) as any[];
       setQueryResults((prev) => {
         if (!prev) {
@@ -80,8 +82,16 @@ export default function App() {
         return { ...prev, data: merged };
       });
     });
-    listen("query.progress", () => {});
-    listen("query.done", () => {});
+
+    const unlistenProgress = listen("query.progress", () => {});
+    const unlistenDone = listen("query.done", () => {});
+
+    // Cleanup function
+    return () => {
+      unlistenChunk.then((f) => f());
+      unlistenProgress.then((f) => f());
+      unlistenDone.then((f) => f());
+    };
   }, []);
 
   const handleExecuteQuery = async (sql: string) => {
@@ -136,6 +146,7 @@ export default function App() {
         database,
         tableName: table,
         data: resp.data,
+        columns,
         columns,
       };
       setTabs([...tabs, newTab]);

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Play, Save, Trash2, Clock } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@/app/components/ui/resizable";
-import { TableView } from "@/app/components/table-view";
+} from "@/components/ui/resizable";
+import { Play, Square, Save, Download, Eraser, Trash2, Clock } from "lucide-react";
+import { TableView } from "@/components/business/DataGrid/TableView";
 
 interface SqlEditorProps {
   queryResults?: {
