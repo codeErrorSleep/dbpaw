@@ -47,6 +47,7 @@ pub fn run() {
             commands::query::get_table_data_by_conn,
             commands::query::execute_by_conn,
             commands::connection::list_databases,
+            commands::connection::list_databases_by_id,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

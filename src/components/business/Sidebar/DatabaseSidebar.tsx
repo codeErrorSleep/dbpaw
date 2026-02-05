@@ -192,8 +192,35 @@ export function DatabaseSidebar({
       newExpanded.delete(id);
     } else {
       newExpanded.add(id);
+      const conn = connections.find((c) => c.id === id);
+      if (conn && !conn.isConnected) {
+        fetchAndSetDatabases(id);
+      }
     }
     setExpandedConnections(newExpanded);
+  };
+
+  const fetchAndSetDatabases = async (connectionId: string) => {
+    try {
+      const dbNames = await api.metadata.listDatabasesById(
+        Number(connectionId),
+      );
+      setConnections((prev) =>
+        prev.map((conn) => {
+          if (conn.id !== connectionId) return conn;
+          return {
+            ...conn,
+            isConnected: true,
+            databases: dbNames.map((name) => ({
+              name,
+              tables: [],
+            })),
+          };
+        }),
+      );
+    } catch (e) {
+      console.error("listDatabasesById failed", e);
+    }
   };
 
   const fetchAndSetTables = async (
@@ -201,9 +228,13 @@ export function DatabaseSidebar({
     databaseName: string,
   ) => {
     try {
-      // 构造临时的 form，指定当前 database
-      const tempForm = { ...form, database: databaseName };
-      const tables = await api.metadata.listTablesByConn(tempForm);
+      // 使用 listTables 通过 ID 获取表列表，传入当前选中的 database
+      // 对于 Postgres，databaseName 通常对应 database 字段，schema 可能是 public 或其他
+      // 这里简化处理：将 databaseName 传给 database 参数
+      const tables = await api.metadata.listTables(
+        Number(connectionId),
+        databaseName,
+      );
       setConnections((prev) =>
         prev.map((conn) => {
           if (conn.id !== connectionId) return conn;
@@ -211,7 +242,6 @@ export function DatabaseSidebar({
             ...conn,
             databases: conn.databases.map((db) => {
               if (db.name !== databaseName) return db;
-              // 仅当表列表为空时更新（避免覆盖已有状态，或者可以策略性强制刷新）
               if (db.tables.length > 0) return db;
               return {
                 ...db,
@@ -222,7 +252,7 @@ export function DatabaseSidebar({
         }),
       );
     } catch (e) {
-      console.error("listTablesByConn failed", e);
+      console.error("listTables failed", e);
     }
   };
 
@@ -265,8 +295,8 @@ export function DatabaseSidebar({
   ) => {
     try {
       const structure = await api.metadata.getTableStructure(
-        form.driver === "postgres" ? "unused" : "unused",
-        databaseName,
+        Number(connectionId),
+        databaseName, // Use databaseName as schema for now (or whatever logic was intended)
         tableName,
       );
       setConnections((prev) =>
@@ -677,13 +707,14 @@ export function DatabaseSidebar({
                             label={table.name}
                             isExpanded={expandedTables.has(tableKey)}
                             onToggle={() => {
-                              toggleTable(tableKey);
+                              // toggleTable(tableKey); // 禁用表展开/折叠
                               handleTableClick(connection, database, table);
-                              fetchAndSetTableColumns(
+                              // 不再加载列信息
+                              /* fetchAndSetTableColumns(
                                 connection.id,
                                 database.name,
                                 table.name,
-                              );
+                              ); */
                             }}
                             actions={
                               <div onClick={(e) => e.stopPropagation()}>
@@ -704,7 +735,7 @@ export function DatabaseSidebar({
                               </div>
                             }
                           >
-                            {table.columns.map((column) => (
+                            /* {table.columns.map((column) => (
                               <div
                                 key={column.name}
                                 className="flex items-center gap-1 px-2 py-1 hover:bg-gray-50 text-xs"
@@ -724,7 +755,7 @@ export function DatabaseSidebar({
                                   {column.type}
                                 </span>
                               </div>
-                            ))}
+                            ))} */
                           </TreeNode>
                         );
                       })}

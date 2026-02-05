@@ -57,14 +57,16 @@ export const api = {
       invoke<QueryResult>("execute_by_conn", { form, sql }),
   },
   metadata: {
-    listTables: (uuid: string) =>
+    listTables: (id: number, database?: string, schema?: string) =>
       invoke<{ schema: string; name: string; type: string }[]>("list_tables", {
-        uuid,
+        id,
+        database,
+        schema,
       }),
-    getTableStructure: (uuid: string, schema: string, table: string) =>
+    getTableStructure: (id: number, schema: string, table: string) =>
       invoke<{ columns: { name: string; type: string; nullable: boolean }[] }>(
         "get_table_structure",
-        { uuid, schema, table },
+        { id, schema, table },
       ),
     listTablesByConn: (form: ConnectionForm) =>
       invoke<{ schema: string; name: string; type: string }[]>(
@@ -73,6 +75,8 @@ export const api = {
       ),
     listDatabases: (form: ConnectionForm) =>
       invoke<string[]>("list_databases", { form }),
+    listDatabasesById: (id: number) =>
+      invoke<string[]>("list_databases_by_id", { id }),
   },
   tableData: {
     get: (params: {

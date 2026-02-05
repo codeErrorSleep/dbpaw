@@ -11,6 +11,19 @@ pub async fn list_databases(form: ConnectionForm) -> Result<Vec<String>, String>
 }
 
 #[tauri::command]
+pub async fn list_databases_by_id(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<String>, String> {
+    let local_db = state.local_db.lock().await;
+    let db = local_db.as_ref().ok_or("Local DB not initialized")?;
+
+    let form = db.get_connection_form_by_id(id).await?;
+    let driver: Box<dyn DatabaseDriver> = get_driver(&form)?;
+    driver.list_databases().await
+}
+
+#[tauri::command]
 pub async fn test_connection_ephemeral(
     form: ConnectionForm,
 ) -> Result<TestConnectionResult, String> {

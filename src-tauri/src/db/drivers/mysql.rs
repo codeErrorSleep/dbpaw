@@ -81,7 +81,7 @@ impl DatabaseDriver for MysqlDriver {
             .clone()
             .ok_or("[VALIDATION_ERROR] database 不能为空")?;
         let schema = schema.unwrap_or(db.clone());
-        let rows = sqlx::query(
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT table_schema, table_name, table_type \
              FROM information_schema.tables \
              WHERE table_schema = ? AND table_type IN ('BASE TABLE','VIEW') \
@@ -93,15 +93,15 @@ impl DatabaseDriver for MysqlDriver {
         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
         let mut res = Vec::new();
-        for row in rows {
+        for (table_schema, table_name, table_type) in rows {
             res.push(TableInfo {
-                schema: row
-                    .try_get::<String, _>("table_schema")
-                    .unwrap_or(schema.clone()),
-                name: row.try_get::<String, _>("table_name").unwrap_or_default(),
-                r#type: row
-                    .try_get::<String, _>("table_type")
-                    .unwrap_or_else(|_| "table".to_string()),
+                schema: table_schema,
+                name: table_name,
+                r#type: if table_type == "VIEW" {
+                    "view".to_string()
+                } else {
+                    "table".to_string()
+                },
             });
         }
         Ok(res)
