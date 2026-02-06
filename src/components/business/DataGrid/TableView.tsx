@@ -155,7 +155,7 @@ export function TableView({
       )}
 
       <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse table-fixed">
+        <table className="w-max min-w-full border-collapse table-fixed">
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 border-b border-r border-gray-200 w-12">

@@ -13,6 +13,7 @@ import {
   Edit3,
   Plug,
   Trash2,
+  FileCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -147,7 +148,9 @@ export function DatabaseSidebar({
     x: number;
     y: number;
     connectionId: string | null;
-  }>({ visible: false, x: 0, y: 0, connectionId: null });
+    databaseName?: string | null;
+    type: "connection" | "database";
+  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -703,6 +706,7 @@ export function DatabaseSidebar({
                 x: e.clientX,
                 y: e.clientY,
                 connectionId: connection.id,
+                type: "connection",
               });
             }}
           >
@@ -718,6 +722,18 @@ export function DatabaseSidebar({
                       label={database.name}
                       isExpanded={expandedDatabases.has(dbKey)}
                       onToggle={() => toggleDatabase(dbKey)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({
+                          visible: true,
+                          x: e.clientX,
+                          y: e.clientY,
+                          connectionId: connection.id,
+                          databaseName: database.name,
+                          type: "database",
+                        });
+                      }}
                     >
                       {database.tables.map((table) => {
                         const tableKey = `${dbKey}-${table.name}`;
@@ -807,37 +823,56 @@ export function DatabaseSidebar({
           className="fixed z-50 min-w-[140px] bg-white border border-gray-200 rounded-md shadow-lg py-1"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            onClick={() => {
-              console.log("编辑连接", contextMenu.connectionId);
-              setContextMenu((prev) => ({ ...prev, visible: false }));
-            }}
-          >
-            <Edit3 className="w-4 h-4" />
-            编辑
-          </button>
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            onClick={() => {
-              console.log("重新连接", contextMenu.connectionId);
-              setContextMenu((prev) => ({ ...prev, visible: false }));
-            }}
-          >
-            <Plug className="w-4 h-4" />
-            重新连接
-          </button>
-          <div className="h-px bg-gray-200 my-1" />
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 text-red-600 flex items-center gap-2"
-            onClick={() => {
-              console.log("删除连接", contextMenu.connectionId);
-              setContextMenu((prev) => ({ ...prev, visible: false }));
-            }}
-          >
-            <Trash2 className="w-4 h-4" />
-            删除
-          </button>
+          {contextMenu.type === "connection" ? (
+            <>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                onClick={() => {
+                  console.log("编辑连接", contextMenu.connectionId);
+                  setContextMenu((prev) => ({ ...prev, visible: false }));
+                }}
+              >
+                <Edit3 className="w-4 h-4" />
+                编辑
+              </button>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                onClick={() => {
+                  console.log("重新连接", contextMenu.connectionId);
+                  setContextMenu((prev) => ({ ...prev, visible: false }));
+                }}
+              >
+                <Plug className="w-4 h-4" />
+                重新连接
+              </button>
+              <div className="h-px bg-gray-200 my-1" />
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 text-red-600 flex items-center gap-2"
+                onClick={() => {
+                  console.log("删除连接", contextMenu.connectionId);
+                  setContextMenu((prev) => ({ ...prev, visible: false }));
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                删除
+              </button>
+            </>
+          ) : (
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              onClick={() => {
+                console.log(
+                  "新建查询",
+                  contextMenu.connectionId,
+                  contextMenu.databaseName,
+                );
+                setContextMenu((prev) => ({ ...prev, visible: false }));
+              }}
+            >
+              <FileCode className="w-4 h-4" />
+              新建查询
+            </button>
+          )}
         </div>
       )}
     </div>
