@@ -165,12 +165,12 @@ export function TableView({
   }, [handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-background">
       {!hideHeader && (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 type="text"
                 placeholder="Search..."
@@ -195,7 +195,7 @@ export function TableView({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-{startIndex + currentData.length} of{" "}
               {total || filteredData.length} rows
             </span>
@@ -208,15 +208,15 @@ export function TableView({
 
       <div className="flex-1 overflow-auto">
         <table className="w-max min-w-full border-collapse table-fixed">
-          <thead className="bg-gray-50 sticky top-0 z-10">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 border-b border-r border-gray-200 w-12">
+              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
                 #
               </th>
               {columns.map((column) => (
                 <th
                   key={column}
-                  className="px-4 py-2 text-left text-xs font-semibold text-gray-600 border-b border-r border-gray-200 relative group select-none"
+                  className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
                   style={{
                     width: columnWidths[column],
                     minWidth: columnWidths[column] || 150,
@@ -225,7 +225,7 @@ export function TableView({
                   <div className="flex items-center justify-between">
                     <span className="truncate">{column}</span>
                     <div
-                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 group-hover:bg-gray-300"
+                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20"
                       onMouseDown={(e) => handleMouseDown(e, column)}
                     />
                   </div>
@@ -237,19 +237,19 @@ export function TableView({
             {currentData.map((row, rowIndex) => (
               <ContextMenu key={rowIndex}>
                 <ContextMenuTrigger asChild>
-                  <tr className="hover:bg-gray-50 border-b border-gray-100 group">
-                    <td className="px-4 py-2 text-xs text-gray-500 border-r border-gray-100">
+                  <tr className="hover:bg-muted/50 border-b border-border group">
+                    <td className="px-4 py-2 text-xs text-muted-foreground border-r border-border">
                       {startIndex + rowIndex + 1}
                     </td>
                     {columns.map((column) => (
                       <td
                         key={column}
-                        className="px-4 py-2 text-sm text-gray-700 font-mono truncate border-r border-gray-100"
+                        className="px-4 py-2 text-sm text-foreground font-mono truncate border-r border-border"
                       >
                         {row[column] !== null && row[column] !== undefined ? (
                           String(row[column])
                         ) : (
-                          <span className="text-gray-400 italic">NULL</span>
+                          <span className="text-muted-foreground italic">NULL</span>
                         )}
                       </td>
                     ))}
@@ -283,8 +283,8 @@ export function TableView({
         </table>
       </div>
 
-      <div className="flex items-center justify-between px-4 py-1 border-t border-gray-200 bg-gray-50">
-        <div className="text-sm text-gray-600">
+      <div className="flex items-center justify-between px-4 py-1 border-t border-border bg-muted/40">
+        <div className="text-sm text-muted-foreground">
           Query executed in{" "}
           {executionTimeMs ? (executionTimeMs / 1000).toFixed(3) : "0.000"}s •{" "}
           {filteredData.length} rows returned
@@ -299,7 +299,7 @@ export function TableView({
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-muted-foreground">
             Page {page} of {totalPages || 1}
           </span>
           <Button
@@ -315,7 +315,7 @@ export function TableView({
       </div>
       <Dialog open={isDDLModalOpen} onOpenChange={setIsDDLModalOpen}>
         <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-4 py-3 border-b border-gray-200">
+          <DialogHeader className="px-4 py-3 border-b border-border">
             <DialogTitle>Table Structure: {tableContext?.table}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 relative">

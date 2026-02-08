@@ -93,14 +93,14 @@ const TreeNode = ({
   return (
     <div>
       <div
-        className="flex items-center gap-1 px-2 py-1 hover:bg-gray-100 cursor-pointer group select-none"
+        className="flex items-center gap-1 px-2 py-1 hover:bg-accent cursor-pointer group select-none"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={onToggle}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
       >
         {hasChildren && (
-          <span className="text-gray-500">
+          <span className="text-muted-foreground">
             {isExpanded ? (
               <ChevronDown className="w-4 h-4" />
             ) : (
@@ -109,7 +109,7 @@ const TreeNode = ({
           </span>
         )}
         {!hasChildren && <span className="w-4" />}
-        <span className="text-gray-600">{icon}</span>
+        <span className="text-muted-foreground">{icon}</span>
         <span className="flex-1 text-sm truncate">{label}</span>
         {actions && (
           <span className="opacity-0 group-hover:opacity-100">{actions}</span>
@@ -414,8 +414,8 @@ export function DatabaseSidebar({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white border-r border-gray-200">
-      <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+    <div className="h-full flex flex-col bg-background border-r border-border">
+      <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="font-semibold text-sm">Connections</h2>
         <div className="flex gap-1">
           <Button
@@ -822,13 +822,13 @@ export function DatabaseSidebar({
 
       {contextMenu.visible && (
         <div
-          className="fixed z-50 min-w-[140px] bg-white border border-gray-200 rounded-md shadow-lg py-1"
+          className="fixed z-50 min-w-[140px] bg-popover border border-border rounded-md shadow-lg py-1"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {contextMenu.type === "connection" ? (
             <>
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                 onClick={() => {
                   console.log("编辑连接", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -838,7 +838,7 @@ export function DatabaseSidebar({
                 编辑
               </button>
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                 onClick={() => {
                   console.log("重新连接", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -847,9 +847,9 @@ export function DatabaseSidebar({
                 <Plug className="w-4 h-4" />
                 重新连接
               </button>
-              <div className="h-px bg-gray-200 my-1" />
+              <div className="h-px bg-border my-1" />
               <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 text-red-600 flex items-center gap-2"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-accent text-destructive flex items-center gap-2"
                 onClick={() => {
                   console.log("删除连接", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -861,7 +861,7 @@ export function DatabaseSidebar({
             </>
           ) : (
             <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
               onClick={() => {
                 if (
                   onCreateQuery &&

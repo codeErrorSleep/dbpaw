@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api, isTauri } from "@/services/api";
 import type { ConnectionForm } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 
 interface TabItem {
   id: string;
@@ -60,6 +61,7 @@ export default function App() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
   const [aiVisible, setAiVisible] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -238,9 +240,9 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-100">
+    <div className="h-screen w-screen flex flex-col bg-muted/30">
       {/* Header */}
-      <header className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-2 shadow-sm">
+      <header className="h-12 bg-background border-b border-border flex items-center justify-between px-2 shadow-sm">
         <div className="flex items-center gap-2">
           <img
             src="/product-icon.png"
@@ -255,7 +257,7 @@ export default function App() {
             <Bell className="w-4 h-4" />
           </Button>
 
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setOpenSettings(true)}>
             <Settings className="w-4 h-4" />
           </Button>
           <Button
@@ -285,7 +287,7 @@ export default function App() {
                 <User className="w-4 h-4 mr-2" />
                 个人资料
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setOpenSettings(true)}>
                 <Settings className="w-4 h-4 mr-2" />
                 设置
               </DropdownMenuItem>
@@ -306,7 +308,7 @@ export default function App() {
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <DatabaseSidebar
               onTableSelect={handleTableSelect}
-              onConnect={() => {}}
+              onConnect={() => { }}
               onCreateQuery={handleCreateQuery}
             />
           </ResizablePanel>
@@ -316,7 +318,7 @@ export default function App() {
           {/* Main Panel - SQL Editor & Results */}
           <ResizablePanel defaultSize={60} minSize={40}>
             {tabs.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
                   <FileCode className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>Select a table or create a new query from the sidebar</p>
@@ -328,13 +330,13 @@ export default function App() {
                 onValueChange={setActiveTab}
                 className="h-full flex flex-col"
               >
-                <div className="bg-white border-b border-gray-200">
+                <div className="bg-muted/30 border-b border-border">
                   <TabsList className="h-10 w-full justify-start gap-0 bg-transparent border-none p-0 overflow-x-auto">
                     {tabs.map((tab) => (
                       <TabsTrigger
                         key={tab.id}
                         value={tab.id}
-                        className="gap-2 group relative pr-8 data-[state=active]:border-t-0 data-[state=active]:border-b-2 border-transparent"
+                        className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50"
                         onMouseDown={(e) => {
                           if (e.button === 1) {
                             e.preventDefault();
@@ -343,21 +345,21 @@ export default function App() {
                         }}
                       >
                         {tab.type === "editor" ? (
-                          <FileCode className="w-4 h-4 text-purple-500" />
+                          <FileCode className="w-4 h-4 text-primary" />
                         ) : (
-                          <Table className="w-4 h-4 text-blue-500" />
+                          <Table className="w-4 h-4 text-primary" />
                         )}
                         <span className="truncate max-w-[120px]">
                           {tab.title}
                         </span>
                         <div
-                          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded-sm cursor-pointer transition-opacity"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleCloseTab(tab.id);
                           }}
                         >
-                          <X className="w-3 h-3 text-gray-500" />
+                          <X className="w-3 h-3 text-muted-foreground" />
                         </div>
                       </TabsTrigger>
                     ))}
@@ -392,14 +394,14 @@ export default function App() {
                           tableContext={
                             tab.connectionId && tab.database && tab.tableName
                               ? {
-                                  connectionId: tab.connectionId,
-                                  database: tab.database,
-                                  schema:
-                                    tab.driver === "mysql"
-                                      ? tab.database
-                                      : "public",
-                                  table: tab.tableName,
-                                }
+                                connectionId: tab.connectionId,
+                                database: tab.database,
+                                schema:
+                                  tab.driver === "mysql"
+                                    ? tab.database
+                                    : "public",
+                                table: tab.tableName,
+                              }
                               : undefined
                           }
                         />
@@ -421,6 +423,7 @@ export default function App() {
           )}
         </ResizablePanelGroup>
       </div>
+      <SettingsDialog open={openSettings} onOpenChange={setOpenSettings} />
     </div>
   );
 }
