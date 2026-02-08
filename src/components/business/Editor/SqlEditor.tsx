@@ -18,6 +18,8 @@ interface SqlEditorProps {
   onExecute?: (sql: string) => void;
   onCancel?: () => void;
   databaseName?: string;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
 export function SqlEditor({
@@ -25,13 +27,31 @@ export function SqlEditor({
   onExecute,
   onCancel,
   databaseName,
+  value,
+  onChange,
 }: SqlEditorProps) {
-  const [sql, setSql] = useState("-- Enter your SQL query here\n");
+  const [internalSql, setInternalSql] = useState("-- Enter your SQL query here\n");
+
+  // Use controlled value if provided, otherwise internal state
+  const sql = value !== undefined ? value : internalSql;
+
+  const handleSqlChange = (val: string | undefined) => {
+    const newValue = val || "";
+    if (onChange) {
+      onChange(newValue);
+    } else {
+      setInternalSql(newValue);
+    }
+  };
 
   const handleExecute = () => {
     if (onExecute) {
       onExecute(sql);
     }
+  };
+
+  const handleClear = () => {
+    handleSqlChange("");
   };
 
   return (
@@ -71,7 +91,7 @@ export function SqlEditor({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => setSql("")}
+            onClick={handleClear}
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -96,7 +116,7 @@ export function SqlEditor({
                   height="100%"
                   defaultLanguage="sql"
                   value={sql}
-                  onChange={(value) => setSql(value || "")}
+                  onChange={handleSqlChange}
                   theme="vs-light"
                   options={{
                     minimap: { enabled: false },

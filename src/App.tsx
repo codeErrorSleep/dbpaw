@@ -48,6 +48,7 @@ interface TabItem {
   executionTimeMs?: number;
   connectionId?: number;
   driver?: string;
+  sqlContent?: string;
   queryResults?: {
     data: any[];
     columns: string[];
@@ -59,8 +60,6 @@ export default function App() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
   const [aiVisible, setAiVisible] = useState(false);
-  // Remove global queryResults and activeConn/connections state
-  const [activeConn, setActiveConn] = useState<ConnectionForm | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -92,17 +91,25 @@ export default function App() {
       title: `Query (${databaseName})`,
       connectionId,
       database: databaseName,
+      sqlContent: "-- Enter your SQL query here\n",
       queryResults: null,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTab(newTabId);
   };
 
+  const handleSqlChange = (tabId: string, sql: string) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId) return t;
+        return { ...t, sqlContent: sql };
+      }),
+    );
+  };
+
   const handleExecuteQuery = async (tabId: string, sql: string) => {
-    const tabIndex = tabs.findIndex((t) => t.id === tabId);
-    if (tabIndex === -1) return;
-    const tab = tabs[tabIndex];
-    if (!tab.connectionId) return;
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab || !tab.connectionId) return;
 
     const start = performance.now();
     try {
@@ -112,32 +119,34 @@ export default function App() {
         result.timeTakenMs ?? performance.now() - start,
       );
 
-      setTabs((prev) => {
-        const newTabs = [...prev];
-        newTabs[tabIndex] = {
-          ...newTabs[tabIndex],
-          queryResults: {
-            data: result.data || [],
-            columns,
-            executionTime: `${execMs}ms`,
-          },
-        };
-        return newTabs;
-      });
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== tabId) return t;
+          return {
+            ...t,
+            queryResults: {
+              data: result.data || [],
+              columns,
+              executionTime: `${execMs}ms`,
+            },
+          };
+        }),
+      );
     } catch (e) {
       console.error("execute_query failed", e);
-      setTabs((prev) => {
-        const newTabs = [...prev];
-        newTabs[tabIndex] = {
-          ...newTabs[tabIndex],
-          queryResults: {
-            data: [],
-            columns: [],
-            executionTime: "0ms",
-          },
-        };
-        return newTabs;
-      });
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== tabId) return t;
+          return {
+            ...t,
+            queryResults: {
+              data: [],
+              columns: [],
+              executionTime: "0ms",
+            },
+          };
+        }),
+      );
     }
   };
 
@@ -297,7 +306,7 @@ export default function App() {
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <DatabaseSidebar
               onTableSelect={handleTableSelect}
-              onConnect={setActiveConn}
+              onConnect={() => {}}
               onCreateQuery={handleCreateQuery}
             />
           </ResizablePanel>
@@ -368,6 +377,8 @@ export default function App() {
                           onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
                           onCancel={() => api.query.cancel("unused", "q-1")}
                           queryResults={tab.queryResults}
+                          value={tab.sqlContent}
+                          onChange={(sql) => handleSqlChange(tab.id, sql)}
                         />
                       ) : (
                         <TableView

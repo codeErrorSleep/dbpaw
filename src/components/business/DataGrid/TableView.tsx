@@ -77,7 +77,7 @@ export function TableView({
   const handleShowDDL = async () => {
     if (!tableContext) return;
     setIsDDLModalOpen(true);
-    if (!ddlContent) {
+    if (!ddlContent || ddlContent.startsWith("-- Error")) {
       setIsLoadingDDL(true);
       try {
         const ddl = await api.metadata.getTableDDL(

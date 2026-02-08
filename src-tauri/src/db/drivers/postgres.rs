@@ -135,11 +135,7 @@ impl DatabaseDriver for PostgresDriver {
         Ok(TableStructure { columns })
     }
 
-    async fn get_table_ddl(
-        &self,
-        schema: String,
-        table: String,
-    ) -> Result<String, String> {
+    async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String> {
         let pool = self.get_pool().await?;
         let query = r#"
             SELECT
@@ -149,6 +145,7 @@ impl DatabaseDriver for PostgresDriver {
                     format_type(a.atttypid, a.atttypmod) ||
                     CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
                     CASE WHEN a.atthasdef THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid) ELSE '' END
+                    ORDER BY a.attnum
                 ), E',\n') || E'\n' ||
                 ');'
             FROM pg_class c
