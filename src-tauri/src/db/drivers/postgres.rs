@@ -124,10 +124,10 @@ impl DatabaseDriver for PostgresDriver {
         let mut columns = Vec::new();
         for row in rows {
             columns.push(ColumnInfo {
-                name: row.try_get("column_name").unwrap_or_default(),
-                r#type: row.try_get("data_type").unwrap_or_default(),
-                nullable: row.try_get::<String, _>("is_nullable").unwrap_or_default() == "YES",
-                default_value: row.try_get("column_default").ok(),
+                name: row.try_get(0).unwrap_or_default(),
+                r#type: row.try_get(1).unwrap_or_default(),
+                nullable: row.try_get::<String, _>(2).unwrap_or_default() == "YES",
+                default_value: row.try_get(3).ok(),
                 primary_key: false, // TODO: 需要查询 constraint
                 comment: None,
             });
@@ -403,10 +403,22 @@ impl DatabaseDriver for PostgresDriver {
             std::collections::HashMap::new();
 
         for row in rows {
-            let schema_name: String = row.try_get("table_schema").unwrap_or_default();
-            let table_name: String = row.try_get("table_name").unwrap_or_default();
-            let col_name: String = row.try_get("column_name").unwrap_or_default();
-            let data_type: String = row.try_get("data_type").unwrap_or_default();
+            let schema_name: String = row.try_get(0).unwrap_or_else(|e| {
+                eprintln!("[ERROR] Postgres table_schema: {}", e);
+                String::default()
+            });
+            let table_name: String = row.try_get(1).unwrap_or_else(|e| {
+                eprintln!("[ERROR] Postgres table_name: {}", e);
+                String::default()
+            });
+            let col_name: String = row.try_get(2).unwrap_or_else(|e| {
+                eprintln!("[ERROR] Postgres column_name: {}", e);
+                String::default()
+            });
+            let data_type: String = row.try_get(3).unwrap_or_else(|e| {
+                eprintln!("[ERROR] Postgres data_type: {}", e);
+                String::default()
+            });
 
             let key = (schema_name, table_name);
             tables_map.entry(key).or_default().push(ColumnSchema {

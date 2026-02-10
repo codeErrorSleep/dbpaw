@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import CodeMirror, { Extension } from "@uiw/react-codemirror";
 import { sql, PostgreSQL, MySQL, SQLite, StandardSQL, SQLNamespace } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -44,9 +44,19 @@ export function SqlEditor({
 }: SqlEditorProps) {
   const [internalSql, setInternalSql] = useState("-- Enter your SQL query here\n");
   const { theme } = useTheme();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Use controlled value if provided, otherwise internal state
   const code = value !== undefined ? value : internalSql;
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   // Debounce onChange to prevent excessive parent re-renders
   const handleSqlChange = useCallback((val: string) => {
@@ -55,14 +65,17 @@ export function SqlEditor({
        setInternalSql(val);
     }
     
+    // Clear previous timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
     // Debounce the callback to parent
-    const timeoutId = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       if (onChange) {
         onChange(val);
       }
     }, 300);
-    
-    return () => clearTimeout(timeoutId);
   }, [onChange, value]);
 
   const handleExecute = useCallback(() => {
@@ -107,8 +120,12 @@ export function SqlEditor({
 
   // Build Schema for CodeMirror
   const sqlSchema = useMemo(() => {
-    if (!schemaOverview) return {};
+    if (!schemaOverview) {
+      console.log("SqlEditor: schemaOverview is missing or empty");
+      return {};
+    }
     
+    console.log("SqlEditor: building schema map from", schemaOverview);
     const schemaMap: SQLNamespace = {};
     
     schemaOverview.tables.forEach(t => {
@@ -121,6 +138,7 @@ export function SqlEditor({
        }
     });
     
+    console.log("SqlEditor: built schemaMap", schemaMap);
     return schemaMap;
   }, [schemaOverview]);
 
@@ -241,6 +259,7 @@ export function SqlEditor({
                         dropCursor: true,
                         allowMultipleSelections: true,
                         indentOnInput: true,
+                        autocompletion: true,
                     }}
                 />
             </div>
