@@ -99,3 +99,24 @@ pub struct ExecuteByConnRequest {
     pub form: ConnectionForm,
     pub sql: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnSchema {
+    pub name: String,
+    pub r#type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableSchema {
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<ColumnSchema>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaOverview {
+    pub tables: Vec<TableSchema>,
+}

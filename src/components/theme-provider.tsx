@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { getSetting, saveSetting } from "@/services/store";
 
-type Theme = "dark" | "light" | "system";
+export type Theme = "dark" | "light" | "system";
 
 interface ThemeProviderState {
   theme: Theme;
@@ -119,8 +119,12 @@ export function ThemeProvider({
   };
 
   if (!isLoaded) {
-    // Return null or a loader to prevent flash of wrong theme
-    return null; 
+    // Show a minimal loader instead of a blank screen
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
   }
 
   const value = {

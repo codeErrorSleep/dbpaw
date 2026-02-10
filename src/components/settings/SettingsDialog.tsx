@@ -1,5 +1,5 @@
 import { Palette, Info } from "lucide-react";
-import { useTheme } from "@/components/theme-provider";
+import { useTheme, Theme } from "@/components/theme-provider";
 
 import {
   Dialog,
@@ -58,7 +58,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   选择界面风格
                 </p>
               </div>
-              <Select value={theme} onValueChange={(v: any) => setTheme(v)}>
+              <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
                 <SelectTrigger>
                   <SelectValue placeholder="选择主题" />
                 </SelectTrigger>
@@ -79,8 +79,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <button
                     key={color.name}
                     className={`h-8 w-8 rounded-full border-2 flex items-center justify-center transition-all ${accentColor === color.name
-                        ? "border-primary ring-2 ring-ring ring-offset-2 scale-110"
-                        : "border-transparent hover:scale-105"
+                      ? "border-primary ring-2 ring-ring ring-offset-2 scale-110"
+                      : "border-transparent hover:scale-105"
                       }`}
                     style={{ backgroundColor: color.value }}
                     onClick={() => setAccentColor(color.name)}

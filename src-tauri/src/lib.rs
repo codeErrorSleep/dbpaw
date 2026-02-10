@@ -42,6 +42,7 @@ pub fn run() {
             commands::metadata::list_tables,
             commands::metadata::get_table_structure,
             commands::metadata::get_table_ddl,
+            commands::metadata::get_schema_overview,
             commands::query::execute_query,
             commands::query::get_table_data,
             commands::query::cancel_query,

@@ -1,7 +1,7 @@
 use super::DatabaseDriver;
 use crate::models::{
-    ColumnInfo, ConnectionForm, QueryColumn, QueryResult, TableDataResponse, TableInfo,
-    TableStructure,
+    ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
+    TableDataResponse, TableInfo, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -131,10 +131,10 @@ impl DatabaseDriver for MysqlDriver {
         let mut columns = Vec::new();
         for row in rows {
             columns.push(ColumnInfo {
-                name: row.try_get("column_name").unwrap_or_default(),
-                r#type: row.try_get("data_type").unwrap_or_default(),
-                nullable: row.try_get::<String, _>("is_nullable").unwrap_or_default() == "YES",
-                default_value: row.try_get("column_default").ok(),
+                name: row.try_get(0).unwrap_or_default(),
+                r#type: row.try_get(1).unwrap_or_default(),
+                nullable: row.try_get::<String, _>(2).unwrap_or_default() == "YES",
+                default_value: row.try_get(3).ok(),
                 primary_key: false, // TODO
                 comment: None,
             });
@@ -142,11 +142,7 @@ impl DatabaseDriver for MysqlDriver {
         Ok(TableStructure { columns })
     }
 
-    async fn get_table_ddl(
-        &self,
-        schema: String,
-        table: String,
-    ) -> Result<String, String> {
+    async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String> {
         let pool = self.get_pool().await?;
         let qualified = if schema.is_empty() {
             format!("`{}`", table)
@@ -274,6 +270,7 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
+        let start = std::time::Instant::now();
         let pool = self.get_pool().await?;
         let rows = sqlx::query(&sql)
             .fetch_all(&pool)
@@ -361,14 +358,90 @@ impl DatabaseDriver for MysqlDriver {
             data.push(serde_json::Value::Object(obj));
         }
 
+        let duration = start.elapsed();
         Ok(QueryResult {
             data,
             row_count: rows.len() as i64,
             columns,
-            time_taken_ms: 0,
+            time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
         })
+    }
+
+    async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String> {
+        let pool = self.get_pool().await?;
+
+        let sql = "SELECT table_schema, table_name, column_name, data_type \
+             FROM information_schema.columns"
+            .to_string();
+
+        let rows = if let Some(s) = schema {
+            sqlx::query(&format!(
+                "{} WHERE table_schema = ? ORDER BY table_schema, table_name, ordinal_position",
+                sql
+            ))
+            .bind(s)
+            .fetch_all(&pool)
+            .await
+        } else {
+            let db = self.form.database.clone().unwrap_or_default();
+            if !db.is_empty() {
+                sqlx::query(&format!(
+                    "{} WHERE table_schema = ? ORDER BY table_schema, table_name, ordinal_position",
+                    sql
+                ))
+                .bind(db)
+                .fetch_all(&pool)
+                .await
+            } else {
+                sqlx::query(&format!("{} WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY table_schema, table_name, ordinal_position", sql))
+                .fetch_all(&pool)
+                .await
+            }
+        };
+
+        let rows = rows.map_err(|e| {
+            eprintln!("[QUERY_ERROR] Raw error: {}", e);
+            "[QUERY_ERROR] Failed to fetch schema overview".to_string()
+        })?;
+
+        let mut tables_map: std::collections::HashMap<(String, String), Vec<ColumnSchema>> =
+            std::collections::HashMap::new();
+
+        for row in rows {
+            let schema_name: String = row
+                .try_get(0)
+                .map_err(|e| format!("[PARSE_ERROR] Failed to get table_schema: {}", e))?;
+            let table_name: String = row
+                .try_get(1)
+                .map_err(|e| format!("[PARSE_ERROR] Failed to get table_name: {}", e))?;
+            let col_name: String = row
+                .try_get(2)
+                .map_err(|e| format!("[PARSE_ERROR] Failed to get column_name: {}", e))?;
+            let data_type: String = row
+                .try_get(3)
+                .map_err(|e| format!("[PARSE_ERROR] Failed to get data_type: {}", e))?;
+
+            let key = (schema_name, table_name);
+            tables_map.entry(key).or_default().push(ColumnSchema {
+                name: col_name,
+                r#type: data_type,
+            });
+        }
+
+        let mut tables = Vec::new();
+        for ((schema_name, table_name), columns) in tables_map {
+            tables.push(TableSchema {
+                schema: schema_name,
+                name: table_name,
+                columns,
+            });
+        }
+
+        tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
+
+        Ok(SchemaOverview { tables })
     }
 }
 

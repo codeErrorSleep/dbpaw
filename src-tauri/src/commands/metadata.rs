@@ -1,7 +1,30 @@
 use crate::db::drivers::get_driver;
-use crate::models::{ConnectionForm, TableInfo, TableStructure};
+use crate::models::{ConnectionForm, TableInfo, TableStructure, SchemaOverview};
 use crate::state::AppState;
 use tauri::State;
+
+#[tauri::command]
+pub async fn get_schema_overview(
+    state: State<'_, AppState>,
+    id: i64,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<SchemaOverview, String> {
+    let local_db = state.local_db.lock().await;
+    let db = local_db.as_ref().ok_or("Local DB not initialized")?;
+
+    let mut form = db.get_connection_form_by_id(id).await?;
+
+    if let Some(db_name) = database {
+        form.database = Some(db_name);
+    }
+    if let Some(sch) = schema {
+        form.schema = Some(sch);
+    }
+
+    let driver = get_driver(&form)?;
+    driver.get_schema_overview(form.schema).await
+}
 
 #[tauri::command]
 pub async fn list_tables_by_conn(form: ConnectionForm) -> Result<Vec<TableInfo>, String> {

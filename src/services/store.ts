@@ -1,13 +1,30 @@
 import { Store } from "@tauri-apps/plugin-store";
 import { isTauri } from "./api";
 
-// Initialize the store. "settings.json" will be created in the app's appData directory.
+// Initialize the store lazily. "settings.json" will be created in the app's appData directory.
 // We use a singleton pattern to ensure we're always using the same store instance.
-export const settingsStore = isTauri() ? new Store("settings.json") : null;
+let storePromise: Promise<Store> | null = null;
+
+async function getStore(): Promise<Store | null> {
+  if (!isTauri()) return null;
+
+  if (!storePromise) {
+    storePromise = Store.load("settings.json");
+  }
+
+  try {
+    return await storePromise;
+  } catch (e) {
+    console.error("Failed to load store:", e);
+    return null;
+  }
+}
 
 // Helper to save immediately after set
 export async function saveSetting<T>(key: string, value: T): Promise<void> {
-  if (!settingsStore) {
+  const store = await getStore();
+
+  if (!store) {
     // Fallback for web mode: localStorage
     try {
       localStorage.setItem(key, JSON.stringify(value));
@@ -18,8 +35,8 @@ export async function saveSetting<T>(key: string, value: T): Promise<void> {
   }
 
   try {
-    await settingsStore.set(key, value);
-    await settingsStore.save();
+    await store.set(key, value);
+    await store.save();
   } catch (err) {
     console.error(`Failed to save setting ${key}:`, err);
   }
@@ -27,18 +44,21 @@ export async function saveSetting<T>(key: string, value: T): Promise<void> {
 
 // Helper to get with fallback
 export async function getSetting<T>(key: string, defaultValue: T): Promise<T> {
-  if (!settingsStore) {
+  const store = await getStore();
+
+  if (!store) {
     // Fallback for web mode
     try {
       const item = localStorage.getItem(key);
       return item ? JSON.parse(item) : defaultValue;
-    } catch {
+    } catch (e) {
+      console.warn(`Failed to parse setting ${key} from localStorage:`, e);
       return defaultValue;
     }
   }
 
   try {
-    const val = await settingsStore.get<T>(key);
+    const val = await store.get<T>(key);
     return val !== null && val !== undefined ? val : defaultValue;
   } catch (err) {
     console.error(`Failed to get setting ${key}:`, err);

@@ -29,8 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { api, isTauri } from "@/services/api";
-import type { ConnectionForm } from "@/services/api";
+import { api, isTauri, SchemaOverview } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 
@@ -55,6 +54,7 @@ interface TabItem {
     columns: string[];
     executionTime: string;
   } | null;
+  schemaOverview?: SchemaOverview;
 }
 
 export default function App() {
@@ -85,7 +85,11 @@ export default function App() {
     };
   }, []);
 
-  const handleCreateQuery = (connectionId: number, databaseName: string) => {
+  const handleCreateQuery = (
+    connectionId: number,
+    databaseName: string,
+    driver: string,
+  ) => {
     const newTabId = `query-${connectionId}-${databaseName}-${Date.now()}`;
     const newTab: TabItem = {
       id: newTabId,
@@ -93,11 +97,21 @@ export default function App() {
       title: `Query (${databaseName})`,
       connectionId,
       database: databaseName,
+      driver,
       sqlContent: "-- Enter your SQL query here\n",
       queryResults: null,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTab(newTabId);
+
+    // Fetch schema overview for completion
+    api.metadata.getSchemaOverview(connectionId, databaseName)
+      .then((schemaOverview) => {
+        setTabs((prev) =>
+          prev.map((t) => (t.id === newTabId ? { ...t, schemaOverview } : t))
+        );
+      })
+      .catch((e) => console.error("Failed to fetch schema overview:", e));
   };
 
   const handleSqlChange = (tabId: string, sql: string) => {
@@ -135,7 +149,7 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("execute_query failed", e);
+      console.error("execute_query failed:", e instanceof Error ? e.message : String(e));
       setTabs((prev) =>
         prev.map((t) => {
           if (t.id !== tabId) return t;
@@ -336,7 +350,7 @@ export default function App() {
                       <TabsTrigger
                         key={tab.id}
                         value={tab.id}
-                        className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50"
+                        className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50 border-r border-border/40 last:border-r-0"
                         onMouseDown={(e) => {
                           if (e.button === 1) {
                             e.preventDefault();
@@ -377,10 +391,13 @@ export default function App() {
                         <SqlEditor
                           databaseName={tab.database}
                           onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
-                          onCancel={() => api.query.cancel("unused", "q-1")}
+                          onCancel={() => api.query.cancel(tab.id, `q-${tab.connectionId}`)}
                           queryResults={tab.queryResults}
                           value={tab.sqlContent}
                           onChange={(sql) => handleSqlChange(tab.id, sql)}
+                          connectionId={tab.connectionId}
+                          driver={tab.driver}
+                          schemaOverview={tab.schemaOverview}
                         />
                       ) : (
                         <TableView

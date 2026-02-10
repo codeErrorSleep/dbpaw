@@ -1,7 +1,7 @@
 use super::DatabaseDriver;
 use crate::models::{
-    ColumnInfo, ConnectionForm, QueryColumn, QueryResult, TableDataResponse, TableInfo,
-    TableStructure,
+    ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
+    TableDataResponse, TableInfo, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -124,10 +124,10 @@ impl DatabaseDriver for PostgresDriver {
         let mut columns = Vec::new();
         for row in rows {
             columns.push(ColumnInfo {
-                name: row.try_get("column_name").unwrap_or_default(),
-                r#type: row.try_get("data_type").unwrap_or_default(),
-                nullable: row.try_get::<String, _>("is_nullable").unwrap_or_default() == "YES",
-                default_value: row.try_get("column_default").ok(),
+                name: row.try_get(0).unwrap_or_default(),
+                r#type: row.try_get(1).unwrap_or_default(),
+                nullable: row.try_get::<String, _>(2).unwrap_or_default() == "YES",
+                default_value: row.try_get(3).ok(),
                 primary_key: false, // TODO: 需要查询 constraint
                 comment: None,
             });
@@ -273,6 +273,7 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
+        let start = std::time::Instant::now();
         let pool = self.get_pool().await?;
         let rows = sqlx::query(&sql)
             .fetch_all(&pool)
@@ -358,14 +359,85 @@ impl DatabaseDriver for PostgresDriver {
             data.push(serde_json::Value::Object(obj));
         }
 
+        let duration = start.elapsed();
         Ok(QueryResult {
             data,
             row_count: rows.len() as i64,
             columns,
-            time_taken_ms: 0,
+            time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
         })
+    }
+
+    async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String> {
+        let pool = self.get_pool().await?;
+
+        // Note: Using a simpler approach for now since sqlx QueryBuilder needs specific DB type setup
+        // and I don't want to overcomplicate.
+
+        let rows = if let Some(s) = schema {
+            sqlx::query(
+                "SELECT table_schema, table_name, column_name, data_type \
+             FROM information_schema.columns \
+             WHERE table_schema = $1 \
+             ORDER BY table_schema, table_name, ordinal_position",
+            )
+            .bind(s)
+            .fetch_all(&pool)
+            .await
+        } else {
+            sqlx::query(
+                "SELECT table_schema, table_name, column_name, data_type \
+             FROM information_schema.columns \
+             WHERE table_schema NOT IN ('information_schema', 'pg_catalog') \
+             ORDER BY table_schema, table_name, ordinal_position",
+            )
+            .fetch_all(&pool)
+            .await
+        };
+
+        let rows = rows.map_err(|e| {
+            eprintln!("[QUERY_ERROR] Raw error: {}", e);
+            "[QUERY_ERROR] Failed to fetch schema overview".to_string()
+        })?;
+
+        let mut tables_map: std::collections::HashMap<(String, String), Vec<ColumnSchema>> =
+            std::collections::HashMap::new();
+
+        for row in rows {
+            let schema_name: String = row
+                .try_get(0)
+                .map_err(|e| format!("[PARSE_ERROR] Postgres table_schema: {}", e))?;
+            let table_name: String = row
+                .try_get(1)
+                .map_err(|e| format!("[PARSE_ERROR] Postgres table_name: {}", e))?;
+            let col_name: String = row
+                .try_get(2)
+                .map_err(|e| format!("[PARSE_ERROR] Postgres column_name: {}", e))?;
+            let data_type: String = row
+                .try_get(3)
+                .map_err(|e| format!("[PARSE_ERROR] Postgres data_type: {}", e))?;
+
+            let key = (schema_name, table_name);
+            tables_map.entry(key).or_default().push(ColumnSchema {
+                name: col_name,
+                r#type: data_type,
+            });
+        }
+
+        let mut tables = Vec::new();
+        for ((schema_name, table_name), columns) in tables_map {
+            tables.push(TableSchema {
+                schema: schema_name,
+                name: table_name,
+                columns,
+            });
+        }
+
+        tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
+
+        Ok(SchemaOverview { tables })
     }
 }
 

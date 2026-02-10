@@ -47,6 +47,21 @@ export interface TestConnectionResult {
   latencyMs?: number;
 }
 
+export interface ColumnSchema {
+  name: string;
+  type: string;
+}
+
+export interface TableSchema {
+  schema: string;
+  name: string;
+  columns: ColumnSchema[];
+}
+
+export interface SchemaOverview {
+  tables: TableSchema[];
+}
+
 export const api = {
   query: {
     execute: (id: number, query: string, database?: string) =>
@@ -83,6 +98,8 @@ export const api = {
       invoke<string[]>("list_databases", { form }),
     listDatabasesById: (id: number) =>
       invoke<string[]>("list_databases_by_id", { id }),
+    getSchemaOverview: (id: number, database?: string, schema?: string) =>
+      invoke<SchemaOverview>("get_schema_overview", { id, database, schema }),
   },
   tableData: {
     get: (params: {

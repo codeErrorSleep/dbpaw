@@ -129,7 +129,11 @@ interface DatabaseSidebarProps {
     driver: string,
   ) => void;
   onConnect?: (form: ConnectionForm) => void;
-  onCreateQuery?: (connectionId: number, databaseName: string) => void;
+  onCreateQuery?: (
+    connectionId: number,
+    databaseName: string,
+    driver: string,
+  ) => void;
 }
 
 export function DatabaseSidebar({
@@ -868,9 +872,15 @@ export function DatabaseSidebar({
                   contextMenu.connectionId &&
                   contextMenu.databaseName
                 ) {
+                  const conn = connections.find(
+                    (c) => c.id === contextMenu.connectionId,
+                  );
+                  const driver = conn ? conn.type : "postgres";
+
                   onCreateQuery(
                     Number(contextMenu.connectionId),
                     contextMenu.databaseName,
+                    driver,
                   );
                 }
                 setContextMenu((prev) => ({ ...prev, visible: false }));

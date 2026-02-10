@@ -74,6 +74,9 @@ export function TableView({
   const [ddlContent, setDDLContent] = useState("");
   const [isLoadingDDL, setIsLoadingDDL] = useState(false);
 
+  // Refs for table header cells to measure actual width
+  const thRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
+
   const handleShowDDL = async () => {
     if (!tableContext) return;
     setIsDDLModalOpen(true);
@@ -100,6 +103,16 @@ export function TableView({
     startX: number;
     startWidth: number;
   } | null>(null);
+
+  const DEFAULT_COL_WIDTH = 150;
+  const INDEX_COL_WIDTH = 48; // w-12 = 3rem
+  const getColWidth = useCallback(
+    (column: string) => columnWidths[column] ?? DEFAULT_COL_WIDTH,
+    [columnWidths],
+  );
+  const tableWidthPx =
+    INDEX_COL_WIDTH +
+    columns.reduce((sum, c) => sum + getColWidth(c), 0);
 
   const filteredData = data.filter((row) =>
     Object.values(row).some((value) =>
@@ -150,7 +163,13 @@ export function TableView({
   const handleMouseDown = (e: React.MouseEvent, column: string) => {
     e.preventDefault();
     e.stopPropagation();
-    const startWidth = columnWidths[column] || 150; // Default initial width
+    
+    // Get the current actual width from the DOM element
+    const currentTh = thRefs.current[column];
+    const startWidth = currentTh
+      ? currentTh.getBoundingClientRect().width
+      : getColWidth(column);
+
     resizingRef.current = { column, startX: e.clientX, startWidth };
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
@@ -207,7 +226,25 @@ export function TableView({
       )}
 
       <div className="flex-1 overflow-auto">
-        <table className="w-max min-w-full border-collapse table-fixed">
+        <table
+          className="border-collapse table-fixed"
+          style={{
+            width: tableWidthPx,
+            minWidth: "100%",
+          }}
+        >
+          <colgroup>
+            <col className="w-12" style={{ width: INDEX_COL_WIDTH }} />
+            {columns.map((column) => (
+              <col
+                key={column}
+                style={{
+                  width: getColWidth(column),
+                  minWidth: 50,
+                }}
+              />
+            ))}
+          </colgroup>
           <thead className="bg-muted/40 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
@@ -216,16 +253,19 @@ export function TableView({
               {columns.map((column) => (
                 <th
                   key={column}
+                  ref={(el) => {
+                    thRefs.current[column] = el;
+                  }}
                   className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
                   style={{
-                    width: columnWidths[column],
-                    minWidth: columnWidths[column] || 150,
+                    width: getColWidth(column),
+                    minWidth: 50,
                   }}
                 >
                   <div className="flex items-center justify-between">
                     <span className="truncate">{column}</span>
                     <div
-                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20"
+                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
                       onMouseDown={(e) => handleMouseDown(e, column)}
                     />
                   </div>
@@ -245,6 +285,10 @@ export function TableView({
                       <td
                         key={column}
                         className="px-4 py-2 text-sm text-foreground font-mono truncate border-r border-border"
+                        style={{
+                          width: getColWidth(column),
+                          minWidth: 50,
+                        }}
                       >
                         {row[column] !== null && row[column] !== undefined ? (
                           String(row[column])

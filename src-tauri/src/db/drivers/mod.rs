@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::models::{ConnectionForm, QueryResult, TableInfo, TableStructure, TableDataResponse};
+use crate::models::{ConnectionForm, QueryResult, TableInfo, TableStructure, TableDataResponse, SchemaOverview};
 use self::postgres::PostgresDriver;
 use self::mysql::MysqlDriver;
 
@@ -15,6 +15,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String>;
     async fn get_table_data(&self, schema: String, table: String, page: i64, limit: i64) -> Result<TableDataResponse, String>;
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String>;
+    async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String>;
 }
 
 pub fn get_driver(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, String> {
