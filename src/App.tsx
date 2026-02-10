@@ -350,7 +350,7 @@ export default function App() {
                       <TabsTrigger
                         key={tab.id}
                         value={tab.id}
-                        className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50"
+                        className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50 border-r border-border/40 last:border-r-0"
                         onMouseDown={(e) => {
                           if (e.button === 1) {
                             e.preventDefault();
