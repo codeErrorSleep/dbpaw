@@ -12,7 +12,7 @@ pub async fn get_table_data_by_conn(
     limit: i64,
 ) -> Result<TableDataResponse, String> {
     let driver = get_driver(&form)?;
-    driver.get_table_data(schema, table, page, limit).await
+    driver.get_table_data(schema, table, page, limit, None, None).await
 }
 
 #[tauri::command]
@@ -64,14 +64,14 @@ pub async fn get_table_data(
     sort_column: Option<String>,
     sort_direction: Option<String>,
 ) -> Result<TableDataResponse, String> {
-    let _ = (filter, sort_column, sort_direction); // TODO: Implement filters
+    let _ = filter; // TODO: Implement filters
     
     let local_db = state.local_db.lock().await;
     let db = local_db.as_ref().ok_or("Local DB not initialized")?;
     
     let form = db.get_connection_form_by_id(id).await?;
     let driver = get_driver(&form)?;
-    driver.get_table_data(schema, table, page, limit).await
+    driver.get_table_data(schema, table, page, limit, sort_column, sort_direction).await
 }
 
 #[tauri::command]

@@ -173,6 +173,8 @@ impl DatabaseDriver for PostgresDriver {
         table: String,
         page: i64,
         limit: i64,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
     ) -> Result<TableDataResponse, String> {
         let start = std::time::Instant::now();
         let pool = self.get_pool().await?;
@@ -185,7 +187,22 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
-        let query = format!("SELECT * FROM {}.{} LIMIT $1 OFFSET $2", schema, table);
+        // Build ORDER BY clause if sort parameters are provided
+        let order_clause = if let Some(ref col) = sort_column {
+            // Validate column name to prevent SQL injection
+            if !col.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err("[VALIDATION_ERROR] Invalid sort column name".to_string());
+            }
+            let dir = match sort_direction.as_deref() {
+                Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY \"{}\" {}", col, dir)
+        } else {
+            String::new()
+        };
+
+        let query = format!("SELECT * FROM {}.{}{} LIMIT $1 OFFSET $2", schema, table, order_clause);
         let rows = sqlx::query(&query)
             .bind(limit)
             .bind(offset)

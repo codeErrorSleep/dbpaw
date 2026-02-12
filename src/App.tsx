@@ -49,6 +49,8 @@ interface TabItem {
   connectionId?: number;
   driver?: string;
   sqlContent?: string;
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
   queryResults?: {
     data: any[];
     columns: string[];
@@ -225,6 +227,8 @@ export default function App() {
         table: tab.tableName,
         page,
         limit: tab.pageSize || 50,
+        sortColumn: tab.sortColumn,
+        sortDirection: tab.sortDirection,
       });
 
       setTabs((prev) =>
@@ -241,6 +245,49 @@ export default function App() {
       );
     } catch (e) {
       console.error("handlePageChange failed", e);
+    }
+  };
+
+  const handleSortChange = async (tabId: string, column: string, direction: "asc" | "desc") => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
+
+    // Optimistically update sort state
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId) return t;
+        return { ...t, sortColumn: column, sortDirection: direction };
+      }),
+    );
+
+    try {
+      const schema = tab.driver === "mysql" ? tab.database : "public";
+      const resp = await api.tableData.get({
+        id: tab.connectionId,
+        schema: schema || "public",
+        table: tab.tableName,
+        page: 1, // Reset to first page on sort change
+        limit: tab.pageSize || 50,
+        sortColumn: column,
+        sortDirection: direction,
+      });
+
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== tabId) return t;
+          return {
+            ...t,
+            data: resp.data,
+            total: resp.total,
+            page: resp.page,
+            executionTimeMs: resp.executionTimeMs,
+            sortColumn: column,
+            sortDirection: direction,
+          };
+        }),
+      );
+    } catch (e) {
+      console.error("handleSortChange failed", e);
     }
   };
 
@@ -408,6 +455,9 @@ export default function App() {
                           pageSize={tab.pageSize}
                           executionTimeMs={tab.executionTimeMs}
                           onPageChange={(p) => handlePageChange(tab.id, p)}
+                          sortColumn={tab.sortColumn}
+                          sortDirection={tab.sortDirection}
+                          onSortChange={(col, dir) => handleSortChange(tab.id, col, dir)}
                           tableContext={
                             tab.connectionId && tab.database && tab.tableName
                               ? {

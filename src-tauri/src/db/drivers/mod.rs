@@ -13,7 +13,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn list_tables(&self, schema: Option<String>) -> Result<Vec<TableInfo>, String>;
     async fn get_table_structure(&self, schema: String, table: String) -> Result<TableStructure, String>;
     async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String>;
-    async fn get_table_data(&self, schema: String, table: String, page: i64, limit: i64) -> Result<TableDataResponse, String>;
+    async fn get_table_data(&self, schema: String, table: String, page: i64, limit: i64, sort_column: Option<String>, sort_direction: Option<String>) -> Result<TableDataResponse, String>;
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String>;
     async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String>;
 }

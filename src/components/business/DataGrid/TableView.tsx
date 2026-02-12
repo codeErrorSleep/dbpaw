@@ -1,10 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Download,
   Filter,
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
   Copy,
   Table as TableIcon,
   Files,
@@ -49,6 +52,9 @@ interface TableViewProps {
   pageSize?: number;
   executionTimeMs?: number;
   onPageChange?: (page: number) => void;
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
+  onSortChange?: (column: string, direction: "asc" | "desc") => void;
   tableContext?: {
     connectionId: number;
     database: string;
@@ -66,6 +72,9 @@ export function TableView({
   pageSize = 50,
   executionTimeMs = 0,
   onPageChange,
+  sortColumn: controlledSortColumn,
+  sortDirection: controlledSortDirection,
+  onSortChange,
   tableContext,
 }: TableViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -73,6 +82,35 @@ export function TableView({
   const [isDDLModalOpen, setIsDDLModalOpen] = useState(false);
   const [ddlContent, setDDLContent] = useState("");
   const [isLoadingDDL, setIsLoadingDDL] = useState(false);
+
+  // Sort state: controlled (via props) or uncontrolled (internal state for client-side sorting)
+  const [internalSortColumn, setInternalSortColumn] = useState<string | undefined>();
+  const [internalSortDirection, setInternalSortDirection] = useState<"asc" | "desc" | undefined>();
+
+  const isControlledSort = !!onSortChange;
+  const activeSortColumn = isControlledSort ? controlledSortColumn : internalSortColumn;
+  const activeSortDirection = isControlledSort ? controlledSortDirection : internalSortDirection;
+
+  const handleSortClick = (column: string) => {
+    if (isControlledSort) {
+      // Controlled mode: delegate to parent
+      if (activeSortColumn === column) {
+        // Toggle direction
+        onSortChange(column, activeSortDirection === "asc" ? "desc" : "asc");
+      } else {
+        // New column, start with asc
+        onSortChange(column, "asc");
+      }
+    } else {
+      // Uncontrolled mode: manage internally for client-side sorting
+      if (internalSortColumn === column) {
+        setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      } else {
+        setInternalSortColumn(column);
+        setInternalSortDirection("asc");
+      }
+    }
+  };
 
   // Refs for table header cells to measure actual width
   const thRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
@@ -120,15 +158,43 @@ export function TableView({
     ),
   );
 
+  // Client-side sorting (used in uncontrolled mode, e.g. SQL query results)
+  const sortedData = useMemo(() => {
+    if (isControlledSort || !activeSortColumn || !activeSortDirection) {
+      return filteredData;
+    }
+    const col = activeSortColumn;
+    const dir = activeSortDirection;
+    return [...filteredData].sort((a, b) => {
+      const va = a[col];
+      const vb = b[col];
+      // NULL/undefined always goes to the end
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      // Try numeric comparison
+      const numA = Number(va);
+      const numB = Number(vb);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return dir === "asc" ? numA - numB : numB - numA;
+      }
+      // String comparison
+      const strA = String(va);
+      const strB = String(vb);
+      const cmp = strA.localeCompare(strB);
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }, [filteredData, isControlledSort, activeSortColumn, activeSortDirection]);
+
   // If using external pagination, totalPages is based on total count
   // Otherwise fallback to filtered data length
-  const totalPages = Math.ceil((total || filteredData.length) / pageSize);
+  const totalPages = Math.ceil((total || sortedData.length) / pageSize);
 
   // If external pagination is used (onPageChange provided), we assume data is already the current page
   // Otherwise we slice locally
   const currentData = onPageChange
-    ? filteredData
-    : filteredData.slice((page - 1) * pageSize, page * pageSize);
+    ? sortedData
+    : sortedData.slice((page - 1) * pageSize, page * pageSize);
 
   // Correctly calculate start index for display
   const startIndex = (page - 1) * pageSize;
@@ -216,7 +282,7 @@ export function TableView({
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-{startIndex + currentData.length} of{" "}
-              {total || filteredData.length} rows
+              {total || sortedData.length} rows
             </span>
             <Button variant="outline" size="sm" className="gap-2">
               <Download className="w-4 h-4" />
@@ -250,27 +316,48 @@ export function TableView({
               <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
                 #
               </th>
-              {columns.map((column) => (
-                <th
-                  key={column}
-                  ref={(el) => {
-                    thRefs.current[column] = el;
-                  }}
-                  className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
-                  style={{
-                    width: getColWidth(column),
-                    minWidth: 50,
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="truncate">{column}</span>
-                    <div
-                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
-                      onMouseDown={(e) => handleMouseDown(e, column)}
-                    />
-                  </div>
-                </th>
-              ))}
+              {columns.map((column) => {
+                const isSorted = activeSortColumn === column;
+                const direction = isSorted ? activeSortDirection : undefined;
+                return (
+                  <th
+                    key={column}
+                    ref={(el) => {
+                      thRefs.current[column] = el;
+                    }}
+                    className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
+                    style={{
+                      width: getColWidth(column),
+                      minWidth: 50,
+                    }}
+                  >
+                    <div className="flex items-center justify-between pr-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1"
+                        onClick={() => handleSortClick(column)}
+                      >
+                        <span className="truncate">{column}</span>
+                        <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                          {isSorted ? (
+                            direction === "asc" ? (
+                              <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 text-primary" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </span>
+                      </button>
+                      <div
+                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
+                        onMouseDown={(e) => handleMouseDown(e, column)}
+                      />
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -331,7 +418,7 @@ export function TableView({
         <div className="text-sm text-muted-foreground">
           Query executed in{" "}
           {executionTimeMs ? (executionTimeMs / 1000).toFixed(3) : "0.000"}s •{" "}
-          {filteredData.length} rows returned
+          {sortedData.length} rows returned
         </div>
         <div className="flex items-center gap-2">
           <Button
