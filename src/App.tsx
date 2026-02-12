@@ -491,8 +491,9 @@ export default function App() {
                             handleSortChange(tab.id, col, dir)
                           }
                           onOpenDDL={handleOpenTableDDL}
+                          onDataRefresh={() => handlePageChange(tab.id, tab.page || 1)}
                           tableContext={
-                            tab.connectionId && tab.database && tab.tableName
+                            tab.connectionId && tab.database && tab.tableName && tab.driver
                               ? {
                                 connectionId: tab.connectionId,
                                 database: tab.database,
@@ -501,6 +502,7 @@ export default function App() {
                                     ? tab.database
                                     : "public",
                                 table: tab.tableName,
+                                driver: tab.driver,
                               }
                               : undefined
                           }

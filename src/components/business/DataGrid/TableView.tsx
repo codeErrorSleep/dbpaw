@@ -12,6 +12,9 @@ import {
   Table as TableIcon,
   Files,
   FileCode,
+  Save,
+  Undo2,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +28,15 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
+import { api } from "@/services/api";
+
+interface PendingChange {
+  rowIndex: number;
+  column: string;
+  originalValue: any;
+  newValue: string;
+}
+
 interface TableViewProps {
   data?: any[];
   columns?: string[];
@@ -43,11 +55,13 @@ interface TableViewProps {
     schema: string;
     table: string;
   }) => void;
+  onDataRefresh?: () => void;
   tableContext?: {
     connectionId: number;
     database: string;
     schema: string;
     table: string;
+    driver: string;
   };
 }
 
@@ -64,10 +78,21 @@ export function TableView({
   sortDirection: controlledSortDirection,
   onSortChange,
   onOpenDDL,
+  onDataRefresh,
   tableContext,
 }: TableViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  // --- Cell selection & editing state ---
+  const [selectedCell, setSelectedCell] = useState<{ row: number; col: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+  const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
+  const [primaryKeys, setPrimaryKeys] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   // Sort state: controlled (via props) or uncontrolled (internal state for client-side sorting)
   const [internalSortColumn, setInternalSortColumn] = useState<string | undefined>();
@@ -105,6 +130,253 @@ export function TableView({
     if (!tableContext) return;
     onOpenDDL?.(tableContext);
   };
+
+  // --- Fetch primary keys when tableContext is available ---
+  useEffect(() => {
+    if (!tableContext) {
+      setPrimaryKeys([]);
+      return;
+    }
+    api.metadata
+      .getTableMetadata(
+        tableContext.connectionId,
+        tableContext.database,
+        tableContext.schema,
+        tableContext.table,
+      )
+      .then((meta) => {
+        const pks = meta.columns
+          .filter((c) => c.primaryKey)
+          .map((c) => c.name);
+        setPrimaryKeys(pks);
+      })
+      .catch((e) => {
+        console.error("Failed to fetch primary keys:", e);
+        setPrimaryKeys([]);
+      });
+  }, [tableContext?.connectionId, tableContext?.database, tableContext?.schema, tableContext?.table]);
+
+  // Clear pending changes when data/page changes
+  useEffect(() => {
+    setPendingChanges(new Map());
+    setEditingCell(null);
+    setSelectedCell(null);
+    setSaveError(null);
+  }, [data, page]);
+
+  const isEditable = !!tableContext && primaryKeys.length > 0;
+  const hasPendingChanges = pendingChanges.size > 0;
+
+  // --- Cell interaction handlers ---
+  const handleCellClick = useCallback(
+    (rowIndex: number, col: string) => {
+      // If clicking a different cell while editing, commit current edit first
+      if (editingCell && (editingCell.row !== rowIndex || editingCell.col !== col)) {
+        commitEdit();
+      }
+      setSelectedCell({ row: rowIndex, col });
+    },
+    [editingCell],
+  );
+
+  const handleCellDoubleClick = useCallback(
+    (rowIndex: number, col: string, currentValue: any) => {
+      if (!isEditable) return;
+      // Check if there's a pending change for this cell
+      const key = `${rowIndex}_${col}`;
+      const pending = pendingChanges.get(key);
+      const value = pending ? pending.newValue : (currentValue !== null && currentValue !== undefined ? String(currentValue) : "");
+      setEditingCell({ row: rowIndex, col });
+      setEditValue(value);
+      setSelectedCell({ row: rowIndex, col });
+      // Focus input on next tick
+      setTimeout(() => editInputRef.current?.focus(), 0);
+    },
+    [isEditable, pendingChanges],
+  );
+
+  const commitEdit = useCallback(() => {
+    if (!editingCell) return;
+    const { row, col } = editingCell;
+    const originalValue = data[row]?.[col];
+    const originalStr = originalValue !== null && originalValue !== undefined ? String(originalValue) : "";
+    const key = `${row}_${col}`;
+
+    if (editValue !== originalStr) {
+      setPendingChanges((prev) => {
+        const next = new Map(prev);
+        next.set(key, {
+          rowIndex: row,
+          column: col,
+          originalValue,
+          newValue: editValue,
+        });
+        return next;
+      });
+    } else {
+      // Value reverted to original, remove from pending
+      setPendingChanges((prev) => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+    setEditingCell(null);
+  }, [editingCell, editValue, data]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingCell(null);
+  }, []);
+
+  const handleEditKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        commitEdit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEdit();
+      }
+    },
+    [commitEdit, cancelEdit],
+  );
+
+  const handleDiscardChanges = useCallback(() => {
+    setPendingChanges(new Map());
+    setEditingCell(null);
+    setSaveError(null);
+  }, []);
+
+  // --- SQL generation & save ---
+  const escapeSQL = (value: string): string => {
+    return value.replace(/'/g, "''");
+  };
+
+  // MySQL uses backticks, PostgreSQL uses double quotes
+  const quoteIdent = useCallback(
+    (name: string): string => {
+      if (tableContext?.driver === "mysql") {
+        return `\`${name}\``;
+      }
+      return `"${name}"`;
+    },
+    [tableContext?.driver],
+  );
+
+  const formatSQLValue = (value: string, originalValue: any): string => {
+    // Handle NULL
+    if (value === "" && (originalValue === null || originalValue === undefined)) {
+      return "NULL";
+    }
+    // Check if originally numeric
+    if (typeof originalValue === "number" || (!isNaN(Number(value)) && value.trim() !== "")) {
+      return value;
+    }
+    // Check for boolean
+    if (typeof originalValue === "boolean") {
+      return value.toLowerCase() === "true" ? "TRUE" : "FALSE";
+    }
+    // Default: string with quotes
+    return `'${escapeSQL(value)}'`;
+  };
+
+  const generateUpdateSQL = useCallback(() => {
+    if (!tableContext || primaryKeys.length === 0) return [];
+
+    // Group changes by rowIndex
+    const changesByRow = new Map<number, PendingChange[]>();
+    pendingChanges.forEach((change) => {
+      const existing = changesByRow.get(change.rowIndex) || [];
+      existing.push(change);
+      changesByRow.set(change.rowIndex, existing);
+    });
+
+    const sqls: string[] = [];
+    const { schema, table, driver } = tableContext;
+
+    changesByRow.forEach((changes, rowIndex) => {
+      const row = data[rowIndex];
+      if (!row) return;
+
+      // Build SET clause - only modified columns
+      const setClauses = changes.map((c) => {
+        const formattedValue = formatSQLValue(c.newValue, c.originalValue);
+        return `${quoteIdent(c.column)} = ${formattedValue}`;
+      });
+
+      // Build WHERE clause using primary keys
+      const whereClauses = primaryKeys.map((pk) => {
+        const pkValue = row[pk];
+        if (pkValue === null || pkValue === undefined) {
+          return `${quoteIdent(pk)} IS NULL`;
+        }
+        if (typeof pkValue === "number") {
+          return `${quoteIdent(pk)} = ${pkValue}`;
+        }
+        return `${quoteIdent(pk)} = '${escapeSQL(String(pkValue))}'`;
+      });
+
+      // MySQL: `schema`.`table`, PostgreSQL: "schema"."table"
+      const tableName = driver === "mysql"
+        ? `${quoteIdent(table)}`
+        : `${quoteIdent(schema)}.${quoteIdent(table)}`;
+
+      const sql = `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")}`;
+      sqls.push(sql);
+    });
+
+    return sqls;
+  }, [tableContext, primaryKeys, pendingChanges, data, quoteIdent]);
+
+  const handleSave = useCallback(async () => {
+    if (!tableContext || !hasPendingChanges) return;
+    const sqls = generateUpdateSQL();
+    if (sqls.length === 0) return;
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    const errors: string[] = [];
+    for (const sql of sqls) {
+      try {
+        await api.query.execute(
+          tableContext.connectionId,
+          sql,
+          tableContext.database,
+        );
+      } catch (e) {
+        errors.push(`${sql}\n  -> ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    setIsSaving(false);
+
+    if (errors.length > 0) {
+      setSaveError(`${errors.length} 条更新失败:\n${errors.join("\n")}`);
+    } else {
+      setPendingChanges(new Map());
+      setSaveError(null);
+      onDataRefresh?.();
+    }
+  }, [tableContext, hasPendingChanges, generateUpdateSQL, onDataRefresh]);
+
+  // Helper: get display value for a cell (considering pending changes)
+  const getCellDisplayValue = useCallback(
+    (rowIndex: number, column: string, originalValue: any) => {
+      const key = `${rowIndex}_${column}`;
+      const pending = pendingChanges.get(key);
+      if (pending) return pending.newValue;
+      return originalValue;
+    },
+    [pendingChanges],
+  );
+
+  const isCellModified = useCallback(
+    (rowIndex: number, column: string) => {
+      return pendingChanges.has(`${rowIndex}_${column}`);
+    },
+    [pendingChanges],
+  );
 
   const resizingRef = useRef<{
     column: string;
@@ -248,6 +520,43 @@ export function TableView({
                 <FileCode className="w-4 h-4" />
               </Button>
             )}
+            {hasPendingChanges && (
+              <>
+                <div className="w-px h-5 bg-border" />
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  保存
+                  <span className="bg-primary-foreground/20 text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                    {pendingChanges.size}
+                  </span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleDiscardChanges}
+                  disabled={isSaving}
+                >
+                  <Undo2 className="w-4 h-4" />
+                  撤销
+                </Button>
+              </>
+            )}
+            {tableContext && !isEditable && primaryKeys.length === 0 && (
+              <span className="text-xs text-muted-foreground italic" title="该表没有主键，不支持内联编辑">
+                只读
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
@@ -331,64 +640,142 @@ export function TableView({
             </tr>
           </thead>
           <tbody>
-            {currentData.map((row, rowIndex) => (
-              <ContextMenu key={rowIndex}>
-                <ContextMenuTrigger asChild>
-                  <tr className="hover:bg-muted/50 border-b border-border group">
-                    <td className="px-4 py-2 text-xs text-muted-foreground border-r border-border">
-                      {startIndex + rowIndex + 1}
-                    </td>
-                    {columns.map((column) => (
-                      <td
-                        key={column}
-                        className="px-4 py-2 text-sm text-foreground font-mono truncate border-r border-border"
-                        style={{
-                          width: getColWidth(column),
-                          minWidth: 50,
-                        }}
-                      >
-                        {row[column] !== null && row[column] !== undefined ? (
-                          String(row[column])
-                        ) : (
-                          <span className="text-muted-foreground italic">NULL</span>
-                        )}
+            {currentData.map((row, rowIndex) => {
+              const isEditing = (col: string) =>
+                editingCell?.row === rowIndex && editingCell?.col === col;
+              const isSelected = (col: string) =>
+                selectedCell?.row === rowIndex && selectedCell?.col === col;
+
+              return (
+                <ContextMenu key={rowIndex}>
+                  <ContextMenuTrigger asChild>
+                    <tr className="hover:bg-muted/50 border-b border-border group">
+                      <td className="px-4 py-2 text-xs text-muted-foreground border-r border-border">
+                        {startIndex + rowIndex + 1}
                       </td>
-                    ))}
-                  </tr>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copy
-                  </ContextMenuItem>
-                  <ContextMenuItem>
-                    <TableIcon className="w-4 h-4 mr-2" />
-                    Copy Row
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger>
-                      <Files className="w-4 h-4 mr-2" />
-                      Copy as
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent>
-                      <ContextMenuItem>Copy as CSV</ContextMenuItem>
-                      <ContextMenuItem>Copy as Insert SQL</ContextMenuItem>
-                      <ContextMenuItem>Copy as Update SQL</ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                </ContextMenuContent>
-              </ContextMenu>
-            ))}
+                      {columns.map((column) => {
+                        const modified = isCellModified(rowIndex, column);
+                        const displayValue = getCellDisplayValue(rowIndex, column, row[column]);
+                        const editing = isEditing(column);
+                        const selected = isSelected(column);
+
+                        return (
+                          <td
+                            key={column}
+                            className={[
+                              "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative",
+                              selected && !editing ? "bg-primary/10 ring-1 ring-inset ring-primary/50" : "",
+                              modified && !editing ? "border-l-2 border-l-orange-400" : "",
+                              isEditable ? "cursor-pointer" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            style={{
+                              width: getColWidth(column),
+                              minWidth: 50,
+                            }}
+                            onClick={() => handleCellClick(rowIndex, column)}
+                            onDoubleClick={() =>
+                              handleCellDoubleClick(rowIndex, column, row[column])
+                            }
+                          >
+                            {editing ? (
+                              <input
+                                ref={editInputRef}
+                                type="text"
+                                className="w-full h-full px-4 py-2 bg-background border-2 border-primary outline-none font-mono text-sm"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={handleEditKeyDown}
+                                onBlur={commitEdit}
+                              />
+                            ) : (
+                              <div className="px-4 py-2 truncate">
+                                {displayValue !== null && displayValue !== undefined ? (
+                                  <span className={modified ? "text-orange-600 dark:text-orange-400" : ""}>
+                                    {String(displayValue)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground italic">NULL</span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy
+                    </ContextMenuItem>
+                    <ContextMenuItem>
+                      <TableIcon className="w-4 h-4 mr-2" />
+                      Copy Row
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    {isEditable && isCellModified(rowIndex, selectedCell?.col || "") && (
+                      <>
+                        <ContextMenuItem
+                          onClick={() => {
+                            if (selectedCell && selectedCell.row === rowIndex) {
+                              const key = `${rowIndex}_${selectedCell.col}`;
+                              setPendingChanges((prev) => {
+                                const next = new Map(prev);
+                                next.delete(key);
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          <Undo2 className="w-4 h-4 mr-2" />
+                          撤销此单元格
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                      </>
+                    )}
+                    <ContextMenuSub>
+                      <ContextMenuSubTrigger>
+                        <Files className="w-4 h-4 mr-2" />
+                        Copy as
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent>
+                        <ContextMenuItem>Copy as CSV</ContextMenuItem>
+                        <ContextMenuItem>Copy as Insert SQL</ContextMenuItem>
+                        <ContextMenuItem>Copy as Update SQL</ContextMenuItem>
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {saveError && (
+        <div className="px-4 py-2 border-t border-destructive/30 bg-destructive/10 text-destructive text-xs font-mono whitespace-pre-wrap">
+          {saveError}
+          <button
+            className="ml-2 underline hover:no-underline"
+            onClick={() => setSaveError(null)}
+          >
+            关闭
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-4 py-1 border-t border-border bg-muted/40">
         <div className="text-sm text-muted-foreground">
           Query executed in{" "}
           {executionTimeMs ? (executionTimeMs / 1000).toFixed(3) : "0.000"}s •{" "}
           {sortedData.length} rows returned
+          {hasPendingChanges && (
+            <span className="text-orange-600 dark:text-orange-400 ml-2">
+              • {pendingChanges.size} 处修改未保存
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
