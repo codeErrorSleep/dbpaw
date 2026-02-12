@@ -1,12 +1,13 @@
 use super::DatabaseDriver;
 use crate::models::{
-    ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
-    TableDataResponse, TableInfo, TableSchema, TableStructure,
+    ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
+    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use rust_decimal::Decimal;
 use sqlx::{mysql::MySqlPoolOptions, Column, Row, TypeInfo};
+use std::collections::{HashMap, HashSet};
 
 pub struct MysqlDriver {
     pub form: ConnectionForm,
@@ -142,6 +143,161 @@ impl DatabaseDriver for MysqlDriver {
         Ok(TableStructure { columns })
     }
 
+    async fn get_table_metadata(
+        &self,
+        schema: String,
+        table: String,
+    ) -> Result<TableMetadata, String> {
+        let pool = self.get_pool().await?;
+
+        let pk_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT kcu.column_name \
+             FROM information_schema.table_constraints tc \
+             JOIN information_schema.key_column_usage kcu \
+               ON tc.constraint_name = kcu.constraint_name \
+              AND tc.table_schema = kcu.table_schema \
+              AND tc.table_name = kcu.table_name \
+             WHERE tc.constraint_type = 'PRIMARY KEY' \
+               AND tc.table_schema = ? \
+               AND tc.table_name = ? \
+             ORDER BY kcu.ordinal_position",
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let pk_set: HashSet<String> = pk_rows.into_iter().map(|r| r.0).collect();
+
+        let column_rows = sqlx::query(
+            "SELECT column_name, column_type, is_nullable, column_default, column_comment \
+             FROM information_schema.columns \
+             WHERE table_schema = ? AND table_name = ? \
+             ORDER BY ordinal_position",
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut columns = Vec::new();
+        for row in column_rows {
+            let name: String = row.try_get(0).unwrap_or_default();
+            let comment: Option<String> = row.try_get::<Option<String>, _>(4).unwrap_or(None);
+            let comment = comment.and_then(|c| {
+                let trimmed = c.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            });
+            columns.push(ColumnInfo {
+                name: name.clone(),
+                r#type: row.try_get(1).unwrap_or_default(),
+                nullable: row.try_get::<String, _>(2).unwrap_or_default() == "YES",
+                default_value: row.try_get::<Option<String>, _>(3).unwrap_or(None),
+                primary_key: pk_set.contains(&name),
+                comment,
+            });
+        }
+
+        let index_rows = sqlx::query(
+            "SELECT index_name, non_unique, index_type, seq_in_index, column_name \
+             FROM information_schema.statistics \
+             WHERE table_schema = ? AND table_name = ? \
+             ORDER BY index_name, seq_in_index",
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut index_map: HashMap<String, (bool, Option<String>, Vec<(i64, String)>)> =
+            HashMap::new();
+        for row in index_rows {
+            let index_name: String = row.try_get(0).unwrap_or_default();
+            let non_unique: i64 = row.try_get(1).unwrap_or(1);
+            let index_type: Option<String> = row.try_get::<Option<String>, _>(2).unwrap_or(None);
+            let seq: i64 = row.try_get(3).unwrap_or(0);
+            let column_name: Option<String> = row.try_get::<Option<String>, _>(4).unwrap_or(None);
+            let Some(column_name) = column_name else { continue };
+
+            let entry = index_map
+                .entry(index_name)
+                .or_insert((non_unique == 0, index_type.clone(), Vec::new()));
+            entry.0 = non_unique == 0;
+            if entry.1.is_none() {
+                entry.1 = index_type;
+            }
+            entry.2.push((seq, column_name));
+        }
+
+        let mut indexes = index_map
+            .into_iter()
+            .map(|(name, (unique, index_type, mut cols))| {
+                cols.sort_by_key(|c| c.0);
+                IndexInfo {
+                    name,
+                    unique,
+                    index_type,
+                    columns: cols.into_iter().map(|c| c.1).collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        indexes.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let fk_rows = sqlx::query(
+            "SELECT \
+               kcu.constraint_name, \
+               kcu.column_name, \
+               kcu.referenced_table_schema, \
+               kcu.referenced_table_name, \
+               kcu.referenced_column_name, \
+               rc.update_rule, \
+               rc.delete_rule \
+             FROM information_schema.table_constraints tc \
+             JOIN information_schema.key_column_usage kcu \
+               ON tc.constraint_name = kcu.constraint_name \
+              AND tc.table_schema = kcu.table_schema \
+              AND tc.table_name = kcu.table_name \
+             LEFT JOIN information_schema.referential_constraints rc \
+               ON rc.constraint_name = tc.constraint_name \
+              AND rc.constraint_schema = tc.table_schema \
+             WHERE tc.constraint_type = 'FOREIGN KEY' \
+               AND tc.table_schema = ? \
+               AND tc.table_name = ? \
+             ORDER BY kcu.constraint_name, kcu.ordinal_position",
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut foreign_keys = Vec::new();
+        for row in fk_rows {
+            foreign_keys.push(ForeignKeyInfo {
+                name: row.try_get(0).unwrap_or_default(),
+                column: row.try_get(1).unwrap_or_default(),
+                referenced_schema: row.try_get::<Option<String>, _>(2).unwrap_or(None),
+                referenced_table: row.try_get(3).unwrap_or_default(),
+                referenced_column: row.try_get(4).unwrap_or_default(),
+                on_update: row.try_get::<Option<String>, _>(5).unwrap_or(None),
+                on_delete: row.try_get::<Option<String>, _>(6).unwrap_or(None),
+            });
+        }
+
+        Ok(TableMetadata {
+            columns,
+            indexes,
+            foreign_keys,
+        })
+    }
+
     async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String> {
         let pool = self.get_pool().await?;
         let qualified = if schema.is_empty() {
@@ -163,6 +319,8 @@ impl DatabaseDriver for MysqlDriver {
         table: String,
         page: i64,
         limit: i64,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
     ) -> Result<TableDataResponse, String> {
         let start = std::time::Instant::now();
         let pool = self.get_pool().await?;
@@ -180,7 +338,22 @@ impl DatabaseDriver for MysqlDriver {
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
-        let query = format!("SELECT * FROM {} LIMIT ? OFFSET ?", qualified);
+        // Build ORDER BY clause if sort parameters are provided
+        let order_clause = if let Some(ref col) = sort_column {
+            // Validate column name to prevent SQL injection
+            if !col.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err("[VALIDATION_ERROR] Invalid sort column name".to_string());
+            }
+            let dir = match sort_direction.as_deref() {
+                Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY `{}` {}", col, dir)
+        } else {
+            String::new()
+        };
+
+        let query = format!("SELECT * FROM {}{} LIMIT ? OFFSET ?", qualified, order_clause);
         let rows = sqlx::query(&query)
             .bind(limit)
             .bind(offset)

@@ -1,5 +1,5 @@
 use crate::db::drivers::get_driver;
-use crate::models::{ConnectionForm, TableInfo, TableStructure, SchemaOverview};
+use crate::models::{ConnectionForm, SchemaOverview, TableInfo, TableMetadata, TableStructure};
 use crate::state::AppState;
 use tauri::State;
 
@@ -89,4 +89,24 @@ pub async fn get_table_ddl(
 
     let driver = get_driver(&form)?;
     driver.get_table_ddl(schema, table).await
+}
+
+#[tauri::command]
+pub async fn get_table_metadata(
+    state: State<'_, AppState>,
+    id: i64,
+    database: Option<String>,
+    schema: String,
+    table: String,
+) -> Result<TableMetadata, String> {
+    let local_db = state.local_db.lock().await;
+    let db = local_db.as_ref().ok_or("Local DB not initialized")?;
+
+    let mut form = db.get_connection_form_by_id(id).await?;
+    if let Some(db_name) = database {
+        form.database = Some(db_name);
+    }
+
+    let driver = get_driver(&form)?;
+    driver.get_table_metadata(schema, table).await
 }

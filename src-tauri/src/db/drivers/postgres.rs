@@ -1,11 +1,12 @@
 use super::DatabaseDriver;
 use crate::models::{
-    ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
-    TableDataResponse, TableInfo, TableSchema, TableStructure,
+    ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
+    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use sqlx::{postgres::PgPoolOptions, Column, Row, TypeInfo};
+use std::collections::HashSet;
 
 pub struct PostgresDriver {
     pub form: ConnectionForm,
@@ -135,6 +136,199 @@ impl DatabaseDriver for PostgresDriver {
         Ok(TableStructure { columns })
     }
 
+    async fn get_table_metadata(
+        &self,
+        schema: String,
+        table: String,
+    ) -> Result<TableMetadata, String> {
+        let pool = self.get_pool().await?;
+
+        let pk_rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_class c ON c.oid = i.indrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
+            WHERE i.indisprimary = true
+              AND n.nspname = $1
+              AND c.relname = $2
+            ORDER BY k.ord
+            "#,
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let pk_set: HashSet<String> = pk_rows.into_iter().map(|r| r.0).collect();
+
+        let column_rows = sqlx::query(
+            r#"
+            SELECT
+              a.attname AS column_name,
+              format_type(a.atttypid, a.atttypmod) AS column_type,
+              a.attnotnull AS not_null,
+              pg_get_expr(ad.adbin, ad.adrelid) AS column_default,
+              d.description AS comment
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid
+            LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+            LEFT JOIN pg_description d ON d.objoid = a.attrelid AND d.objsubid = a.attnum
+            WHERE n.nspname = $1
+              AND c.relname = $2
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum
+            "#,
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut columns = Vec::new();
+        for row in column_rows {
+            let name: String = row.try_get(0).unwrap_or_default();
+            let comment: Option<String> = row.try_get::<Option<String>, _>(4).unwrap_or(None);
+            let comment = comment.and_then(|c| {
+                let trimmed = c.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            });
+            let not_null: bool = row.try_get(2).unwrap_or(false);
+
+            columns.push(ColumnInfo {
+                name: name.clone(),
+                r#type: row.try_get(1).unwrap_or_default(),
+                nullable: !not_null,
+                default_value: row.try_get::<Option<String>, _>(3).unwrap_or(None),
+                primary_key: pk_set.contains(&name),
+                comment,
+            });
+        }
+
+        let index_rows = sqlx::query(
+            r#"
+            SELECT
+              ic.relname AS index_name,
+              i.indisunique AS is_unique,
+              am.amname AS index_type,
+              array_agg(a.attname ORDER BY k.ord) FILTER (WHERE a.attname IS NOT NULL) AS columns
+            FROM pg_index i
+            JOIN pg_class tc ON tc.oid = i.indrelid
+            JOIN pg_namespace n ON n.oid = tc.relnamespace
+            JOIN pg_class ic ON ic.oid = i.indexrelid
+            JOIN pg_am am ON am.oid = ic.relam
+            JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
+            LEFT JOIN pg_attribute a ON a.attrelid = tc.oid AND a.attnum = k.attnum
+            WHERE n.nspname = $1
+              AND tc.relname = $2
+            GROUP BY ic.relname, i.indisunique, am.amname
+            ORDER BY ic.relname
+            "#,
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut indexes = Vec::new();
+        for row in index_rows {
+            let name: String = row.try_get(0).unwrap_or_default();
+            let unique: bool = row.try_get(1).unwrap_or(false);
+            let index_type: String = row.try_get(2).unwrap_or_default();
+            let columns: Option<Vec<String>> = row.try_get(3).ok();
+            indexes.push(IndexInfo {
+                name,
+                unique,
+                index_type: if index_type.is_empty() {
+                    None
+                } else {
+                    Some(index_type)
+                },
+                columns: columns.unwrap_or_default(),
+            });
+        }
+
+        let fk_rows = sqlx::query(
+            r#"
+            SELECT
+              con.conname AS constraint_name,
+              a.attname AS column_name,
+              fn.nspname AS referenced_schema,
+              fc.relname AS referenced_table,
+              fa.attname AS referenced_column,
+              CASE con.confupdtype
+                WHEN 'a' THEN 'NO ACTION'
+                WHEN 'r' THEN 'RESTRICT'
+                WHEN 'c' THEN 'CASCADE'
+                WHEN 'n' THEN 'SET NULL'
+                WHEN 'd' THEN 'SET DEFAULT'
+                ELSE NULL
+              END AS on_update,
+              CASE con.confdeltype
+                WHEN 'a' THEN 'NO ACTION'
+                WHEN 'r' THEN 'RESTRICT'
+                WHEN 'c' THEN 'CASCADE'
+                WHEN 'n' THEN 'SET NULL'
+                WHEN 'd' THEN 'SET DEFAULT'
+                ELSE NULL
+              END AS on_delete
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_class fc ON fc.oid = con.confrelid
+            JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+            JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+            JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ck.attnum
+            JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = fk.attnum
+            WHERE con.contype = 'f'
+              AND n.nspname = $1
+              AND c.relname = $2
+            ORDER BY con.conname, ck.ord
+            "#,
+        )
+        .bind(&schema)
+        .bind(&table)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        let mut foreign_keys = Vec::new();
+        for row in fk_rows {
+            let referenced_schema: String = row.try_get(2).unwrap_or_default();
+            foreign_keys.push(ForeignKeyInfo {
+                name: row.try_get(0).unwrap_or_default(),
+                column: row.try_get(1).unwrap_or_default(),
+                referenced_schema: if referenced_schema.is_empty() {
+                    None
+                } else {
+                    Some(referenced_schema)
+                },
+                referenced_table: row.try_get(3).unwrap_or_default(),
+                referenced_column: row.try_get(4).unwrap_or_default(),
+                on_update: row.try_get::<Option<String>, _>(5).unwrap_or(None),
+                on_delete: row.try_get::<Option<String>, _>(6).unwrap_or(None),
+            });
+        }
+
+        Ok(TableMetadata {
+            columns,
+            indexes,
+            foreign_keys,
+        })
+    }
+
     async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, String> {
         let pool = self.get_pool().await?;
         let query = r#"
@@ -173,6 +367,8 @@ impl DatabaseDriver for PostgresDriver {
         table: String,
         page: i64,
         limit: i64,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
     ) -> Result<TableDataResponse, String> {
         let start = std::time::Instant::now();
         let pool = self.get_pool().await?;
@@ -185,7 +381,25 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
-        let query = format!("SELECT * FROM {}.{} LIMIT $1 OFFSET $2", schema, table);
+        // Build ORDER BY clause if sort parameters are provided
+        let order_clause = if let Some(ref col) = sort_column {
+            // Validate column name to prevent SQL injection
+            if !col.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err("[VALIDATION_ERROR] Invalid sort column name".to_string());
+            }
+            let dir = match sort_direction.as_deref() {
+                Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY \"{}\" {}", col, dir)
+        } else {
+            String::new()
+        };
+
+        let query = format!(
+            "SELECT * FROM {}.{}{} LIMIT $1 OFFSET $2",
+            schema, table, order_clause
+        );
         let rows = sqlx::query(&query)
             .bind(limit)
             .bind(offset)

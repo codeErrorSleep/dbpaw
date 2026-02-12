@@ -44,6 +44,35 @@ pub struct TableStructure {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct IndexInfo {
+    pub name: String,
+    pub unique: bool,
+    pub index_type: Option<String>,
+    pub columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyInfo {
+    pub name: String,
+    pub column: String,
+    pub referenced_schema: Option<String>,
+    pub referenced_table: String,
+    pub referenced_column: String,
+    pub on_update: Option<String>,
+    pub on_delete: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableMetadata {
+    pub columns: Vec<ColumnInfo>,
+    pub indexes: Vec<IndexInfo>,
+    pub foreign_keys: Vec<ForeignKeyInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryColumn {
     pub name: String,
     pub r#type: String,

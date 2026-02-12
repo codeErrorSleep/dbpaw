@@ -63,8 +63,6 @@ interface Connection {
   isConnected: boolean;
 }
 
-const DEFAULT_UUID = "dbpaw-default";
-
 interface TreeNodeProps {
   level: number;
   children: React.ReactNode;
@@ -148,7 +146,7 @@ export function DatabaseSidebar({
   const [expandedDatabases, setExpandedDatabases] = useState<Set<string>>(
     new Set(),
   );
-  const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const [expandedTables, _setExpandedTables] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -301,57 +299,6 @@ export function DatabaseSidebar({
     }
     setExpandedDatabases(newExpanded);
   };
-
-  const toggleTable = (key: string) => {
-    const newExpanded = new Set(expandedTables);
-    if (newExpanded.has(key)) {
-      newExpanded.delete(key);
-    } else {
-      newExpanded.add(key);
-    }
-    setExpandedTables(newExpanded);
-  };
-
-  const fetchAndSetTableColumns = async (
-    connectionId: string,
-    databaseName: string,
-    tableName: string,
-  ) => {
-    try {
-      const structure = await api.metadata.getTableStructure(
-        Number(connectionId),
-        databaseName, // Use databaseName as schema for now (or whatever logic was intended)
-        tableName,
-      );
-      setConnections((prev) =>
-        prev.map((conn) => {
-          if (conn.id !== connectionId) return conn;
-          return {
-            ...conn,
-            databases: conn.databases.map((db) => {
-              if (db.name !== databaseName) return db;
-              return {
-                ...db,
-                tables: db.tables.map((t) => {
-                  if (t.name !== tableName) return t;
-                  return {
-                    ...t,
-                    columns: (structure.columns || []).map((c) => ({
-                      name: c.name,
-                      type: c.type,
-                      isPrimaryKey: false,
-                    })),
-                  };
-                }),
-              };
-            }),
-          };
-        }),
-      );
-    } catch (e) {
-      console.error("getTableStructure failed", e);
-    }
-  };
   const handleTableClick = (
     connection: Connection,
     database: DatabaseInfo,
@@ -365,55 +312,6 @@ export function DatabaseSidebar({
         Number(connection.id),
         connection.type,
       );
-    }
-  };
-
-  const handleConnect = async () => {
-    try {
-      if (!requiredOk) return;
-      const test = await api.connections.testEphemeral(form);
-      if (!test.success) return;
-
-      let dbInfos: DatabaseInfo[] = [];
-
-      // 如果未指定 Database，则列出所有数据库
-      if (!form.database) {
-        const dbs = await api.metadata.listDatabases(form);
-        dbInfos = dbs.map((dbName) => ({
-          name: dbName,
-          tables: [], // 懒加载：初始时不加载表
-        }));
-      } else {
-        // 如果指定了 Database，直接加载该库的表
-        const tables = await api.metadata.listTablesByConn(form);
-        const dbName =
-          form.driver === "mysql" ? form.database : form.schema || "public";
-        dbInfos = [
-          {
-            name: dbName,
-            tables: tables.map((t) => ({ name: t.name, columns: [] })),
-          },
-        ];
-      }
-
-      setConnections((prev) =>
-        prev.map((conn) => ({
-          ...conn,
-          isConnected: true,
-          databases: dbInfos,
-        })),
-      );
-      setExpandedConnections(new Set(["1"]));
-      // 如果只有一个库，默认展开
-      if (dbInfos.length === 1) {
-        setExpandedDatabases(new Set(["1-" + dbInfos[0].name]));
-      } else {
-        setExpandedDatabases(new Set());
-      }
-      setIsDialogOpen(false);
-      if (onConnect) onConnect(form);
-    } catch (e) {
-      console.error("connect failed", e);
     }
   };
 

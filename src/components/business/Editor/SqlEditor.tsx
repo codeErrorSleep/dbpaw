@@ -4,8 +4,6 @@ import { sql, PostgreSQL, MySQL, SQLite, StandardSQL, SQLNamespace } from "@code
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap } from "@codemirror/view";
 import { CompletionContext } from "@codemirror/autocomplete";
-import { linter, lintGutter, Diagnostic } from "@codemirror/lint";
-import { syntaxTree } from "@codemirror/language";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -41,7 +39,7 @@ export function SqlEditor({
   databaseName,
   value,
   onChange,
-  connectionId,
+  connectionId: _connectionId,
   driver,
   schemaOverview,
 }: SqlEditorProps) {

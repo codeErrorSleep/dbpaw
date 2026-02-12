@@ -52,6 +52,38 @@ export interface ColumnSchema {
   type: string;
 }
 
+export interface ColumnInfo {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue?: string | null;
+  primaryKey: boolean;
+  comment?: string | null;
+}
+
+export interface IndexInfo {
+  name: string;
+  unique: boolean;
+  indexType?: string | null;
+  columns: string[];
+}
+
+export interface ForeignKeyInfo {
+  name: string;
+  column: string;
+  referencedSchema?: string | null;
+  referencedTable: string;
+  referencedColumn: string;
+  onUpdate?: string | null;
+  onDelete?: string | null;
+}
+
+export interface TableMetadata {
+  columns: ColumnInfo[];
+  indexes: IndexInfo[];
+  foreignKeys: ForeignKeyInfo[];
+}
+
 export interface TableSchema {
   schema: string;
   name: string;
@@ -89,6 +121,13 @@ export const api = {
       schema: string,
       table: string,
     ) => invoke<string>("get_table_ddl", { id, database, schema, table }),
+    getTableMetadata: (
+      id: number,
+      database: string | undefined,
+      schema: string,
+      table: string,
+    ) =>
+      invoke<TableMetadata>("get_table_metadata", { id, database, schema, table }),
     listTablesByConn: (form: ConnectionForm) =>
       invoke<{ schema: string; name: string; type: string }[]>(
         "list_tables_by_conn",
