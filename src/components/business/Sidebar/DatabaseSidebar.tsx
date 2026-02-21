@@ -250,7 +250,7 @@ export function DatabaseSidebar({
       setExpandedConnections(new Set());
       setExpandedDatabases(new Set());
     } catch (e) {
-      console.error("listConnections failed", e);
+      console.error("listConnections failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -287,7 +287,7 @@ export function DatabaseSidebar({
         }),
       );
     } catch (e) {
-      console.error("listDatabasesById failed", e);
+      console.error("listDatabasesById failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -320,7 +320,7 @@ export function DatabaseSidebar({
         }),
       );
     } catch (e) {
-      console.error("listTables failed", e);
+      console.error("listTables failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -386,7 +386,7 @@ export function DatabaseSidebar({
         }),
       );
     } catch (e) {
-      console.error("getTableMetadata failed", e);
+      console.error("getTableMetadata failed", e instanceof Error ? e.message : String(e));
     }
   };
 

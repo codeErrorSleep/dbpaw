@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Download,
-  RefreshCw,
   Filter,
   ChevronLeft,
   ChevronRight,
@@ -90,6 +89,14 @@ export function TableView({
   const [whereInput, setWhereInput] = useState(controlledFilter || "");
   const [orderByInput, setOrderByInput] = useState(controlledOrderBy || "");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setWhereInput(controlledFilter || "");
+  }, [controlledFilter]);
+
+  useEffect(() => {
+    setOrderByInput(controlledOrderBy || "");
+  }, [controlledOrderBy]);
 
   // --- Cell selection & editing state ---
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: string } | null>(null);

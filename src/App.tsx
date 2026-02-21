@@ -123,7 +123,7 @@ export default function App() {
           prev.map((t) => (t.id === newTabId ? { ...t, schemaOverview } : t))
         );
       })
-      .catch((e) => console.error("Failed to fetch schema overview:", e));
+      .catch((e) => console.error("Failed to fetch schema overview:", e instanceof Error ? e.message : String(e)));
   };
 
   const handleSqlChange = (tabId: string, sql: string) => {
@@ -221,7 +221,7 @@ export default function App() {
       setTabs([...tabs, newTab]);
       setActiveTab(tabId);
     } catch (e) {
-      console.error("get_table_data failed", e);
+      console.error("get_table_data failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -282,7 +282,7 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handlePageChange failed", e);
+      console.error("handlePageChange failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -327,7 +327,7 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handleSortChange failed", e);
+      console.error("handleSortChange failed", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -374,7 +374,7 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handleFilterChange failed", e);
+      console.error("handleFilterChange failed", e instanceof Error ? e.message : String(e));
     }
   };
 
