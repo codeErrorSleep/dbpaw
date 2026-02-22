@@ -455,6 +455,54 @@ export default function App() {
     setActiveTab(tabId);
   };
 
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Check for Mod key (Cmd on Mac, Ctrl on Windows)
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      switch (e.key.toLowerCase()) {
+        case "w":
+          e.preventDefault();
+          if (activeTab) {
+            handleCloseTab(activeTab);
+          }
+          break;
+        case "n":
+          e.preventDefault();
+          // Find current active tab to get context for new query
+          const currentTab = tabs.find((t) => t.id === activeTab);
+          if (
+            currentTab &&
+            currentTab.connectionId &&
+            currentTab.database &&
+            currentTab.driver
+          ) {
+            handleCreateQuery(
+              currentTab.connectionId,
+              currentTab.database,
+              currentTab.driver
+            );
+          }
+          break;
+        case "\\": // Backslash for AI toggle
+          e.preventDefault();
+          setAiVisible((v) => !v);
+          break;
+        case ",": // Comma for settings
+          e.preventDefault();
+          setOpenSettings(true);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [activeTab, tabs, aiVisible]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-muted/30">
       {/* Header */}

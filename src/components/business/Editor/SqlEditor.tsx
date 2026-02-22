@@ -242,6 +242,13 @@ export function SqlEditor({
             return true;
           },
         },
+        {
+          key: "Mod-s",
+          run: () => {
+            setIsSaveDialogOpen(true);
+            return true;
+          },
+        },
       ]),
     ];
 
