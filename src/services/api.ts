@@ -1,17 +1,33 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { invokeMock } from "./mocks";
 
 // Helper to check if running in Tauri
 export const isTauri = () => {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 };
 
+// Helper to check if Mock mode is enabled
+const useMockMode = () => {
+  return import.meta.env.VITE_USE_MOCK === "true";
+};
+
 // Safe invoke wrapper
 const invoke = async <T>(cmd: string, args?: any): Promise<T> => {
-  if (!isTauri()) {
-    console.warn(`[Mock] invoke ${cmd}`, args);
-    throw new Error("Tauri API not available. Please run in Tauri window.");
+  // If running in Tauri, use real Tauri invoke
+  if (isTauri()) {
+    return tauriInvoke(cmd, args);
   }
-  return tauriInvoke(cmd, args);
+
+  // If not in Tauri, check if Mock mode is enabled
+  if (useMockMode()) {
+    return invokeMock<T>(cmd, args);
+  }
+
+  // If not in Tauri and Mock mode is disabled, throw error
+  console.warn(`[API] invoke ${cmd}`, args);
+  throw new Error(
+    "Tauri API not available. Please run 'bun tauri dev' or enable Mock mode with 'VITE_USE_MOCK=true'."
+  );
 };
 
 export interface QueryColumn {

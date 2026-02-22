@@ -69,6 +69,9 @@ interface TabItem {
   schemaOverview?: SchemaOverview;
 }
 
+const TAB_TRIGGER_CLASS =
+  "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-10 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0";
+
 export default function App() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
@@ -483,39 +486,44 @@ export default function App() {
                 onValueChange={setActiveTab}
                 className="h-full flex flex-col"
               >
-                <div className="bg-muted/30 border-b border-border">
-                  <TabsList className="h-10 w-full justify-start gap-0 bg-transparent border-none p-0 overflow-x-auto">
+                <div className="bg-muted/30">
+                  <TabsList className="h-10 w-full justify-start gap-0 bg-transparent border-none border-b-0 p-0 overflow-x-auto">
                     {tabs.map((tab) => (
                       <ContextMenu key={tab.id}>
                         <ContextMenuTrigger asChild>
-                          <TabsTrigger
-                            value={tab.id}
-                            className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-10 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0"
-                            onMouseDown={(e) => {
-                              if (e.button === 1) {
-                                e.preventDefault();
-                                handleCloseTab(tab.id);
-                              }
-                            }}
-                          >
-                            {tab.type === "table" ? (
-                              <Table className="w-4 h-4 text-primary" />
-                            ) : (
-                              <FileCode className="w-4 h-4 text-primary" />
-                            )}
-                            <span className="truncate max-w-[120px]">
-                              {tab.title}
-                            </span>
-                            <div
-                              className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCloseTab(tab.id);
+                          {/* Wrapper avoids data-state conflict: ContextMenu and Tabs both set it; only the trigger must get Tabs' data-state=active for the indicator bar */}
+                          <span className="contents">
+                            <TabsTrigger
+                              value={tab.id}
+                              className={TAB_TRIGGER_CLASS}
+                              onMouseDown={(e) => {
+                                if (e.button === 1) {
+                                  e.preventDefault();
+                                  handleCloseTab(tab.id);
+                                }
                               }}
                             >
-                              <X className="w-3 h-3 text-muted-foreground" />
-                            </div>
-                          </TabsTrigger>
+                              {tab.type === "table" ? (
+                                <Table className="w-4 h-4 text-primary" />
+                              ) : (
+                                <FileCode className="w-4 h-4 text-primary" />
+                              )}
+                              <span className="truncate max-w-[120px]">
+                                {tab.title}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`Close ${tab.title}`}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCloseTab(tab.id);
+                                }}
+                              >
+                                <X className="w-3 h-3 text-muted-foreground" />
+                              </button>
+                            </TabsTrigger>
+                          </span>
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem onClick={() => handleCloseTab(tab.id)}>
