@@ -38,9 +38,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>设置</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            管理应用的外观和偏好设置。
+            Manage your app appearance and preferences.
           </DialogDescription>
         </DialogHeader>
 
@@ -48,31 +48,31 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* Appearance Section */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium flex items-center gap-2">
-              <Palette className="w-5 h-5" /> 外观
+              <Palette className="w-5 h-5" /> Appearance
             </h3>
 
             <div className="grid grid-cols-2 gap-4 items-center">
               <div className="space-y-1">
-                <Label className="text-base">主题模式</Label>
+                <Label className="text-base">Theme Mode</Label>
                 <p className="text-xs text-muted-foreground">
-                  选择界面风格
+                  Choose your interface style
                 </p>
               </div>
               <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="选择主题" />
+                  <SelectValue placeholder="Select theme" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="light">☀️ 浅色模式</SelectItem>
-                  <SelectItem value="dark">🌙 深色模式</SelectItem>
-                  <SelectItem value="system">🖥️ 跟随系统</SelectItem>
+                  <SelectItem value="light">☀️ Light Mode</SelectItem>
+                  <SelectItem value="dark">🌙 Dark Mode</SelectItem>
+                  <SelectItem value="system">🖥️ System</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
-                <Label className="text-base">强调色</Label>
+                <Label className="text-base">Accent Color</Label>
               </div>
               <div className="flex flex-wrap gap-3">
                 {THEME_COLORS.map((color) => (
@@ -100,7 +100,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* About Section */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium flex items-center gap-2">
-              <Info className="w-5 h-5" /> 关于
+              <Info className="w-5 h-5" /> About
             </h3>
             <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <div className="flex items-center justify-between">
@@ -108,7 +108,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <span className="text-sm text-muted-foreground">v0.1.0</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                现代化的数据库管理工具，为您提供流畅的开发体验。
+                A modern database management tool providing a smooth development experience.
               </p>
             </div>
           </div>

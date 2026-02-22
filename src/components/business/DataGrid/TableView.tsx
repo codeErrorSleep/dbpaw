@@ -366,7 +366,7 @@ export function TableView({
     setIsSaving(false);
 
     if (errors.length > 0) {
-      setSaveError(`${errors.length} 条更新失败:\n${errors.join("\n")}`);
+      setSaveError(`${errors.length} update(s) failed:\n${errors.join("\n")}`);
     } else {
       setPendingChanges(new Map());
       setSaveError(null);
@@ -564,7 +564,7 @@ export function TableView({
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  保存
+                  Save
                   <span className="bg-primary-foreground/20 text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
                     {pendingChanges.size}
                   </span>
@@ -577,13 +577,13 @@ export function TableView({
                   disabled={isSaving}
                 >
                   <Undo2 className="w-4 h-4" />
-                  撤销
+                  Undo
                 </Button>
               </>
             )}
             {tableContext && !isEditable && primaryKeys.length === 0 && (
-              <span className="text-xs text-muted-foreground italic" title="该表没有主键，不支持内联编辑">
-                只读
+              <span className="text-xs text-muted-foreground italic" title="This table has no primary key and does not support inline editing">
+                Read-only
               </span>
             )}
           </div>
@@ -758,7 +758,7 @@ export function TableView({
                           }}
                         >
                           <Undo2 className="w-4 h-4 mr-2" />
-                          撤销此单元格
+                          Undo This Cell
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                       </>
@@ -782,14 +782,14 @@ export function TableView({
         </table>
       </div>
 
-      {saveError && (
+          {saveError && (
         <div className="px-4 py-2 border-t border-destructive/30 bg-destructive/10 text-destructive text-xs font-mono whitespace-pre-wrap">
           {saveError}
           <button
             className="ml-2 underline hover:no-underline"
             onClick={() => setSaveError(null)}
           >
-            关闭
+            Close
           </button>
         </div>
       )}
@@ -801,7 +801,7 @@ export function TableView({
           {sortedData.length} rows returned
           {hasPendingChanges && (
             <span className="text-orange-600 dark:text-orange-400 ml-2">
-              • {pendingChanges.size} 处修改未保存
+              • {pendingChanges.size} unsaved change(s)
             </span>
           )}
         </div>

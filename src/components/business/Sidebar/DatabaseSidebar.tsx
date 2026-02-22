@@ -643,7 +643,7 @@ export function DatabaseSidebar({
                   onClick={async () => {
                     if (!requiredOk) {
                       setValidationMsg(
-                        "请填写必填项：Host、Port、Username、Password、Database",
+                        "Please fill in required fields: Host, Port, Username, Password, Database",
                       );
                       return;
                     }
@@ -687,7 +687,7 @@ export function DatabaseSidebar({
               {validationMsg && (
                 <div className="mt-3">
                   <Alert variant="destructive">
-                    <AlertTitle>校验失败</AlertTitle>
+                    <AlertTitle>Validation Failed</AlertTitle>
                     <AlertDescription>{validationMsg}</AlertDescription>
                   </Alert>
                 </div>
@@ -696,11 +696,11 @@ export function DatabaseSidebar({
                 <div className="mt-3">
                   <Alert variant={testMsg.ok ? "default" : "destructive"}>
                     <AlertTitle>
-                      {testMsg.ok ? "连接测试成功" : "连接测试失败"}
+                      {testMsg.ok ? "Connection Test Successful" : "Connection Test Failed"}
                     </AlertTitle>
                     <AlertDescription>
                       {testMsg.text}
-                      {testMsg.latency ? `（${testMsg.latency}ms）` : ""}
+                      {testMsg.latency ? `(${testMsg.latency}ms)` : ""}
                     </AlertDescription>
                   </Alert>
                 </div>
@@ -854,33 +854,33 @@ export function DatabaseSidebar({
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                 onClick={() => {
-                  console.log("编辑连接", contextMenu.connectionId);
+                  console.log("Edit connection", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
                 <Edit3 className="w-4 h-4" />
-                编辑
+                Edit
               </button>
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                 onClick={() => {
-                  console.log("重新连接", contextMenu.connectionId);
+                  console.log("Reconnect", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
                 <Plug className="w-4 h-4" />
-                重新连接
+                Reconnect
               </button>
               <div className="h-px bg-border my-1" />
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent text-destructive flex items-center gap-2"
                 onClick={() => {
-                  console.log("删除连接", contextMenu.connectionId);
+                  console.log("Delete connection", contextMenu.connectionId);
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
                 <Trash2 className="w-4 h-4" />
-                删除
+                Delete
               </button>
             </>
           ) : (
@@ -907,7 +907,7 @@ export function DatabaseSidebar({
               }}
             >
               <FileCode className="w-4 h-4" />
-              新建查询
+              New Query
             </button>
           )}
         </div>

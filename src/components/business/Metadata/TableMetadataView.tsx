@@ -79,24 +79,24 @@ export function TableMetadataView({
       )}
 
       <section className="space-y-2">
-        <div className="text-sm font-semibold">字段</div>
+        <div className="text-sm font-semibold">Columns</div>
         <div className="border border-border rounded-md overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[220px]">字段名</TableHead>
-                <TableHead className="w-[220px]">类型</TableHead>
-                <TableHead className="w-[90px]">可空</TableHead>
-                <TableHead className="w-[220px]">默认值</TableHead>
-                <TableHead className="w-[160px]">主键/外键</TableHead>
-                <TableHead>描述</TableHead>
+                <TableHead className="w-[220px]">Column Name</TableHead>
+                <TableHead className="w-[220px]">Type</TableHead>
+                <TableHead className="w-[90px]">Nullable</TableHead>
+                <TableHead className="w-[220px]">Default Value</TableHead>
+                <TableHead className="w-[160px]">PK/FK</TableHead>
+                <TableHead>Description</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(metadata?.columns ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-muted-foreground">
-                    暂无字段信息
+                    No column information
                   </TableCell>
                 </TableRow>
               ) : (
@@ -127,22 +127,22 @@ export function TableMetadataView({
       </section>
 
       <section className="space-y-2">
-        <div className="text-sm font-semibold">索引</div>
+        <div className="text-sm font-semibold">Indexes</div>
         <div className="border border-border rounded-md overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[240px]">索引名</TableHead>
-                <TableHead className="w-[120px]">唯一</TableHead>
-                <TableHead className="w-[160px]">类型</TableHead>
-                <TableHead>字段</TableHead>
+                <TableHead className="w-[240px]">Index Name</TableHead>
+                <TableHead className="w-[120px]">Unique</TableHead>
+                <TableHead className="w-[160px]">Type</TableHead>
+                <TableHead>Columns</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(metadata?.indexes ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-muted-foreground">
-                    暂无索引信息
+                    No index information
                   </TableCell>
                 </TableRow>
               ) : (
@@ -171,14 +171,14 @@ export function TableMetadataView({
       </section>
 
       <section className="space-y-2">
-        <div className="text-sm font-semibold">外键</div>
+        <div className="text-sm font-semibold">Foreign Keys</div>
         <div className="border border-border rounded-md overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[240px]">外键名</TableHead>
-                <TableHead className="w-[180px]">本表字段</TableHead>
-                <TableHead className="w-[320px]">引用</TableHead>
+                <TableHead className="w-[240px]">FK Name</TableHead>
+                <TableHead className="w-[180px]">Local Column</TableHead>
+                <TableHead className="w-[320px]">References</TableHead>
                 <TableHead className="w-[140px]">On Update</TableHead>
                 <TableHead className="w-[140px]">On Delete</TableHead>
               </TableRow>
@@ -187,7 +187,7 @@ export function TableMetadataView({
               {(metadata?.foreignKeys ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-muted-foreground">
-                    暂无外键信息
+                    No foreign key information
                   </TableCell>
                 </TableRow>
               ) : (

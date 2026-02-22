@@ -418,7 +418,7 @@ export default function App() {
             size="sm"
             className="h-8 w-8 p-0"
             onClick={() => setAiVisible((v) => !v)}
-            title={aiVisible ? "隐藏 AI 面板" : "显示 AI 面板"}
+            title={aiVisible ? "Hide AI Panel" : "Show AI Panel"}
             aria-label={aiVisible ? "Hide AI panel" : "Show AI panel"}
           >
             <Sparkles className="w-4 h-4" />
@@ -434,20 +434,20 @@ export default function App() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>我的账号</DropdownMenuLabel>
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="w-4 h-4 mr-2" />
-                个人资料
+                Profile
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setOpenSettings(true)}>
                 <Settings className="w-4 h-4 mr-2" />
-                设置
+                Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <LogOut className="w-4 h-4 mr-2" />
-                退出登录
+                Logout
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -490,7 +490,7 @@ export default function App() {
                         <ContextMenuTrigger asChild>
                           <TabsTrigger
                             value={tab.id}
-                            className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary border-transparent rounded-none h-10 hover:bg-muted/50 border-r border-border/40 last:border-r-0"
+                            className="gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-10 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0"
                             onMouseDown={(e) => {
                               if (e.button === 1) {
                                 e.preventDefault();
@@ -519,10 +519,10 @@ export default function App() {
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem onClick={() => handleCloseTab(tab.id)}>
-                            关闭当前标签
+                            Close Tab
                           </ContextMenuItem>
                           <ContextMenuItem onClick={() => handleCloseOtherTabs(tab.id)}>
-                            关闭其他标签
+                            Close Other Tabs
                           </ContextMenuItem>
                         </ContextMenuContent>
                       </ContextMenu>
