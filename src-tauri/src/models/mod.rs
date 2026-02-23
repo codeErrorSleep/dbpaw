@@ -13,6 +13,12 @@ pub struct Connection {
     pub username: String,
     pub ssl: bool,
     pub file_path: Option<String>,
+    pub ssh_enabled: bool,
+    pub ssh_host: Option<String>,
+    pub ssh_port: Option<i64>,
+    pub ssh_username: Option<String>,
+    pub ssh_password: Option<String>,
+    pub ssh_key_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -125,6 +131,12 @@ pub struct ConnectionForm {
     pub password: Option<String>,
     pub ssl: Option<bool>,
     pub file_path: Option<String>,
+    pub ssh_enabled: Option<bool>,
+    pub ssh_host: Option<String>,
+    pub ssh_port: Option<i64>,
+    pub ssh_username: Option<String>,
+    pub ssh_password: Option<String>,
+    pub ssh_key_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

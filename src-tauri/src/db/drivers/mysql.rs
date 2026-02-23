@@ -9,8 +9,11 @@ use rust_decimal::Decimal;
 use sqlx::{mysql::MySqlPoolOptions, Column, Row, TypeInfo};
 use std::collections::{HashMap, HashSet};
 
+use crate::ssh::SshTunnel;
+
 pub struct MysqlDriver {
     pub pool: sqlx::MySqlPool,
+    pub ssh_tunnel: Option<SshTunnel>,
 }
 
 fn build_dsn(form: &ConnectionForm) -> Result<String, String> {
@@ -43,7 +46,17 @@ fn build_dsn(form: &ConnectionForm) -> Result<String, String> {
 
 impl MysqlDriver {
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
-        let dsn = build_dsn(form)?;
+        let mut dsn_form = form.clone();
+        let mut ssh_tunnel = None;
+
+        if let Some(true) = form.ssh_enabled {
+            let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+            dsn_form.host = Some("127.0.0.1".to_string());
+            dsn_form.port = Some(tunnel.local_port as i64);
+            ssh_tunnel = Some(tunnel);
+        }
+
+        let dsn = build_dsn(&dsn_form)?;
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(5))
@@ -51,7 +64,7 @@ impl MysqlDriver {
             .await
             .map_err(|e| format!("[CONN_FAILED] {e}"))?;
         
-        Ok(Self { pool })
+        Ok(Self { pool, ssh_tunnel })
     }
 }
 

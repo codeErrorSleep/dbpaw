@@ -51,6 +51,25 @@ impl LocalDb {
                 .map_err(|e| format!("[MIGRATION_003_ERROR] {e}"))?;
         }
 
+        // Check if ssh_enabled column exists in connections
+        let has_ssh_column: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('connections') WHERE name='ssh_enabled')"
+        )
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("[MIGRATION_004_CHECK_ERROR] {e}"))?;
+
+        if !has_ssh_column {
+            // Split migration because sqlite doesn't support multiple ALTER TABLE in one query usually via sqlx wrapper sometimes
+            // But let's try execute multiple or one by one.
+            // Safe bet: run the script which has multiple statements if supported, or read line by line.
+            // SQLx execute support multiple statements for sqlite? Yes usually.
+            sqlx::query(include_str!("../../migrations/004_add_ssh_fields.sql"))
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("[MIGRATION_004_ERROR] {e}"))?;
+        }
+
         Ok(Self { pool })
     }
 
@@ -73,8 +92,8 @@ impl LocalDb {
         }
 
         let id = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO connections (uuid, type, name, host, port, database, username, password, ssl) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
+            "INSERT INTO connections (uuid, type, name, host, port, database, username, password, ssl, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
         )
         .bind(&uuid)
         .bind(&form.driver)
@@ -85,6 +104,12 @@ impl LocalDb {
         .bind(&form.username.unwrap_or_default())
         .bind(&form.password.unwrap_or_default()) // TODO: Encrypt password
         .bind(form.ssl.unwrap_or(false))
+        .bind(form.ssh_enabled.unwrap_or(false))
+        .bind(form.ssh_host)
+        .bind(form.ssh_port)
+        .bind(form.ssh_username)
+        .bind(form.ssh_password)
+        .bind(form.ssh_key_path)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| format!("[INSERT_ERROR] {e}"))?;
@@ -98,7 +123,7 @@ impl LocalDb {
         form: ConnectionForm,
     ) -> Result<Connection, String> {
         sqlx::query(
-            "UPDATE connections SET type = ?, host = ?, port = ?, database = ?, username = ?, password = ?, ssl = ?, updated_at = datetime('now') WHERE id = ?"
+            "UPDATE connections SET type = ?, host = ?, port = ?, database = ?, username = ?, password = ?, ssl = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, updated_at = datetime('now') WHERE id = ?"
         )
         .bind(&form.driver)
         .bind(&form.host.unwrap_or_default())
@@ -107,6 +132,12 @@ impl LocalDb {
         .bind(&form.username.unwrap_or_default())
         .bind(&form.password.unwrap_or_default()) // TODO: Encrypt
         .bind(form.ssl.unwrap_or(false))
+        .bind(form.ssh_enabled.unwrap_or(false))
+        .bind(form.ssh_host)
+        .bind(form.ssh_port)
+        .bind(form.ssh_username)
+        .bind(form.ssh_password)
+        .bind(form.ssh_key_path)
         .bind(id)
         .execute(&self.pool)
         .await
@@ -127,7 +158,9 @@ impl LocalDb {
     pub async fn list_connections(&self) -> Result<Vec<Connection>, String> {
         let rows = sqlx::query_as::<_, Connection>(
             r#"SELECT 
-                id, uuid, name, type as db_type, host, port, database, username, ssl, file_path, created_at, updated_at 
+                id, uuid, name, type as db_type, host, port, database, username, ssl, file_path, 
+                ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path,
+                created_at, updated_at 
                FROM connections 
                ORDER BY updated_at DESC"#
         )
@@ -140,7 +173,9 @@ impl LocalDb {
     pub async fn get_connection_by_id(&self, id: i64) -> Result<Connection, String> {
         sqlx::query_as::<_, Connection>(
             r#"SELECT 
-                id, uuid, name, type as db_type, host, port, database, username, ssl, file_path, created_at, updated_at 
+                id, uuid, name, type as db_type, host, port, database, username, ssl, file_path, 
+                ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path,
+                created_at, updated_at 
                FROM connections 
                WHERE id = ?"#
         )
@@ -152,7 +187,7 @@ impl LocalDb {
 
     pub async fn get_connection_form_by_id(&self, id: i64) -> Result<ConnectionForm, String> {
         let row = sqlx::query(
-            "SELECT type as db_type, name, host, port, database, username, password, ssl FROM connections WHERE id = ?"
+            "SELECT type as db_type, name, host, port, database, username, password, ssl, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path FROM connections WHERE id = ?"
         )
         .bind(id)
         .fetch_one(&self.pool)
@@ -171,6 +206,12 @@ impl LocalDb {
             password: row.try_get("password").ok(),
             ssl: row.try_get::<bool, _>("ssl").ok().map(|v| v), // bool mapping
             file_path: None,
+            ssh_enabled: row.try_get::<bool, _>("ssh_enabled").ok().map(|v| v),
+            ssh_host: row.try_get("ssh_host").ok(),
+            ssh_port: row.try_get("ssh_port").ok(),
+            ssh_username: row.try_get("ssh_username").ok(),
+            ssh_password: row.try_get("ssh_password").ok(),
+            ssh_key_path: row.try_get("ssh_key_path").ok(),
         })
     }
 

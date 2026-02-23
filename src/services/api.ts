@@ -56,6 +56,12 @@ export interface ConnectionForm {
   password?: string;
   ssl?: boolean;
   filePath?: string;
+  sshEnabled?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUsername?: string;
+  sshPassword?: string;
+  sshKeyPath?: string;
 }
 export interface TestConnectionResult {
   success: boolean;

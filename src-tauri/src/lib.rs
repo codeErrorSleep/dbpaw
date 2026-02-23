@@ -82,3 +82,4 @@ pub mod events;
 pub mod models;
 pub mod state;
 pub mod utils;
+pub mod ssh;
