@@ -65,15 +65,15 @@ export function SavedQueriesList({ onSelectQuery }: SavedQueriesListProps) {
 
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
-      <div className="p-2 border-b border-border flex items-center justify-between">
+      <div className="px-2 py-1 border-b border-border flex items-center justify-between h-8">
         <h2 className="font-semibold text-sm">Saved Queries</h2>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0"
+          className="h-6 w-6 p-0"
           onClick={fetchQueriesAndConnections}
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3.5 h-3.5" />
         </Button>
       </div>
 

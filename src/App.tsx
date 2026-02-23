@@ -15,27 +15,15 @@ import {
   Table,
   X,
   Settings,
-  User,
-  Bell,
-  LogOut,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api, isTauri, SchemaOverview, SavedQuery } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
@@ -527,10 +515,6 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Notifications">
-            <Bell className="w-4 h-4" />
-          </Button>
-
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setOpenSettings(true)} title="Settings">
             <Settings className="w-4 h-4" />
           </Button>
@@ -544,34 +528,6 @@ export default function App() {
           >
             <Sparkles className="w-4 h-4" />
           </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-7 w-7 p-0 justify-center rounded-full ml-1">
-                <Avatar className="w-6 h-6">
-                  <AvatarImage src="https://github.com/shadcn.png" />
-                  <AvatarFallback>AD</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setOpenSettings(true)}>
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 

@@ -29,12 +29,10 @@ export function Sidebar({
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
         <Tabs defaultValue="connections" className="h-full flex flex-col">
-            <div className="p-1">
-                <TabsList className="w-full grid grid-cols-2">
-                    <TabsTrigger value="connections">Connections</TabsTrigger>
-                    <TabsTrigger value="queries">Queries</TabsTrigger>
-                </TabsList>
-            </div>
+            <TabsList className="w-full grid grid-cols-2">
+                <TabsTrigger value="connections">Connections</TabsTrigger>
+                <TabsTrigger value="queries">Queries</TabsTrigger>
+            </TabsList>
             <div className="flex-1 overflow-hidden mt-2">
                 <TabsContent value="connections" className="h-full m-0 border-0">
                     <ConnectionList

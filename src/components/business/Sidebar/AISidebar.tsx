@@ -15,8 +15,7 @@ const initialMessages: Message[] = [
   {
     id: "1",
     role: "assistant",
-    content:
-      "Hi! I'm your SQL assistant. I can help you write queries, optimize your database schema, explain query results, and answer questions about your data. What can I help you with?",
+    content: "Not ok",
     timestamp: new Date(),
   },
 ];
@@ -84,8 +83,8 @@ export function AISidebar() {
 
   return (
     <div className="h-full flex flex-col bg-white border-l border-gray-200">
-      <div className="p-3 border-b border-gray-200 flex items-center gap-2">
-        <Sparkles className="w-5 h-5 text-purple-600" />
+      <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 h-10">
+        <Sparkles className="w-4 h-4 text-purple-600" />
         <h2 className="font-semibold text-sm">AI Assistant</h2>
       </div>
 
@@ -97,11 +96,10 @@ export function AISidebar() {
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-lg px-4 py-2 ${
-                  message.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-900"
-                }`}
+                className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-900"
+                  }`}
               >
                 <div className="text-sm whitespace-pre-wrap">
                   {message.content}
