@@ -18,6 +18,7 @@ interface SidebarProps {
     driver: string,
   ) => void;
   onSelectSavedQuery: (query: SavedQuery) => void;
+  lastUpdated?: number;
 }
 
 export function Sidebar({
@@ -25,6 +26,7 @@ export function Sidebar({
   onConnect,
   onCreateQuery,
   onSelectSavedQuery,
+  lastUpdated,
 }: SidebarProps) {
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
@@ -42,7 +44,7 @@ export function Sidebar({
                     />
                 </TabsContent>
                 <TabsContent value="queries" className="h-full m-0 border-0">
-                    <SavedQueriesList onSelectQuery={onSelectSavedQuery} />
+                    <SavedQueriesList onSelectQuery={onSelectSavedQuery} lastUpdated={lastUpdated} />
                 </TabsContent>
             </div>
         </Tabs>

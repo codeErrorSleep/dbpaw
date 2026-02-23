@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 
 interface SavedQueriesListProps {
   onSelectQuery: (query: SavedQuery) => void;
+  lastUpdated?: number;
 }
 
-export function SavedQueriesList({ onSelectQuery }: SavedQueriesListProps) {
+export function SavedQueriesList({ onSelectQuery, lastUpdated }: SavedQueriesListProps) {
   const [queries, setQueries] = useState<SavedQuery[]>([]);
   const [connections, setConnections] = useState<Record<number, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
@@ -21,7 +22,7 @@ export function SavedQueriesList({ onSelectQuery }: SavedQueriesListProps) {
 
   useEffect(() => {
     fetchQueriesAndConnections();
-  }, []);
+  }, [lastUpdated]);
 
   const fetchQueriesAndConnections = async () => {
     try {

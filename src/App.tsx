@@ -69,6 +69,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>("");
   const [aiVisible, setAiVisible] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  const [queriesLastUpdated, setQueriesLastUpdated] = useState(0);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -544,6 +545,7 @@ export default function App() {
               onConnect={() => { }}
               onCreateQuery={handleCreateQuery}
               onSelectSavedQuery={handleOpenSavedQuery}
+              lastUpdated={queriesLastUpdated}
             />
           </ResizablePanel>
 
@@ -640,6 +642,7 @@ export default function App() {
                           initialName={tab.title.startsWith("Query (") ? "" : tab.title}
                           initialDescription={tab.savedQueryDescription}
                           onSaveSuccess={(savedQuery) => {
+                            setQueriesLastUpdated(Date.now());
                             setTabs((prev) =>
                               prev.map((t) => {
                                 if (t.id === tab.id) {
