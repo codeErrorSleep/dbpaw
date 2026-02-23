@@ -46,6 +46,8 @@ interface TabItem {
   connectionId?: number;
   driver?: string;
   sqlContent?: string;
+  lastSavedSql?: string;
+  isDirty?: boolean;
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   filter?: string;
@@ -60,6 +62,8 @@ interface TabItem {
   savedQueryId?: number;
   savedQueryDescription?: string;
 }
+
+const DEFAULT_SQL = "-- Enter your SQL query here\n";
 
 const TAB_TRIGGER_CLASS =
   "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0";
@@ -108,7 +112,9 @@ export default function App() {
       connectionId,
       database: databaseName,
       driver,
-      sqlContent: "-- Enter your SQL query here\n",
+      sqlContent: DEFAULT_SQL,
+      lastSavedSql: DEFAULT_SQL,
+      isDirty: false,
       queryResults: null,
     };
     setTabs((prev) => [...prev, newTab]);
@@ -177,6 +183,8 @@ export default function App() {
       database,
       driver,
       sqlContent: query.query,
+      lastSavedSql: query.query,
+      isDirty: false,
       savedQueryId: query.id,
       savedQueryDescription: query.description || undefined,
       queryResults: null,
@@ -189,7 +197,11 @@ export default function App() {
     setTabs((prev) =>
       prev.map((t) => {
         if (t.id !== tabId) return t;
-        return { ...t, sqlContent: sql };
+        return {
+          ...t,
+          sqlContent: sql,
+          isDirty: sql !== (t.lastSavedSql ?? ""),
+        };
       }),
     );
   };
@@ -588,8 +600,14 @@ export default function App() {
                               ) : (
                                 <FileCode className="w-4 h-4 text-primary" />
                               )}
-                              <span className="truncate max-w-[120px]">
-                                {tab.title}
+                              <span className="max-w-[120px] flex items-center">
+                                <span className="truncate">{tab.title}</span>
+                                {tab.type === "editor" && tab.isDirty && (
+                                  <span
+                                    className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 ml-1 shrink-0"
+                                    aria-label="Unsaved changes"
+                                  />
+                                )}
                               </span>
                               <button
                                 type="button"
@@ -651,6 +669,9 @@ export default function App() {
                                     savedQueryId: savedQuery.id,
                                     title: savedQuery.name,
                                     savedQueryDescription: savedQuery.description || undefined,
+                                    sqlContent: savedQuery.query,
+                                    lastSavedSql: savedQuery.query,
+                                    isDirty: false,
                                   };
                                 }
                                 return t;
