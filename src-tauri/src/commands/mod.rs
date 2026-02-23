@@ -93,13 +93,13 @@ where
 
                 state.pool_manager.remove(&key).await;
                 let driver = ensure_connection_with_db(state, id, database).await?;
-                task(driver).await.map_err(|_e| {
-                    println!("[Pool] Retry failed. Error details hidden.");
-                    "Database operation failed after retry. Please check your connection.".to_string()
+                task(driver).await.map_err(|e| {
+                    println!("[Pool] Retry failed: {}", e);
+                    e
                 })
             } else {
-                println!("[Pool] Operation failed. Error details hidden.");
-                Err("Database operation failed. Please check your query and connection.".to_string())
+                println!("[Pool] Operation failed: {}", e);
+                Err(e)
             }
         }
     }

@@ -25,6 +25,7 @@ pub struct SavedQuery {
     pub query: String,
     pub description: Option<String>,
     pub connection_id: Option<i64>,
+    pub database: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

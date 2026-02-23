@@ -9,10 +9,11 @@ pub async fn save_query(
     query: String,
     description: Option<String>,
     connection_id: Option<i64>,
+    database: Option<String>,
 ) -> Result<SavedQuery, String> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
-        db.create_saved_query(name, query, description, connection_id).await
+        db.create_saved_query(name, query, description, connection_id, database).await
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -26,10 +27,11 @@ pub async fn update_saved_query(
     query: String,
     description: Option<String>,
     connection_id: Option<i64>,
+    database: Option<String>,
 ) -> Result<SavedQuery, String> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
-        db.update_saved_query(id, name, query, description, connection_id).await
+        db.update_saved_query(id, name, query, description, connection_id, database).await
     } else {
         Err("Local DB not initialized".to_string())
     }

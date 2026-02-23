@@ -36,6 +36,11 @@ impl LocalDb {
             .await
             .map_err(|e| format!("[MIGRATION_002_ERROR] {e}"))?;
 
+        sqlx::query(include_str!("../../migrations/003_add_database_to_saved_queries.sql"))
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("[MIGRATION_003_ERROR] {e}"))?;
+
         Ok(Self { pool })
     }
 
@@ -165,14 +170,16 @@ impl LocalDb {
         query: String,
         description: Option<String>,
         connection_id: Option<i64>,
+        database: Option<String>,
     ) -> Result<SavedQuery, String> {
         let id = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO saved_queries (name, query, description, connection_id) VALUES (?, ?, ?, ?) RETURNING id"
+            "INSERT INTO saved_queries (name, query, description, connection_id, database) VALUES (?, ?, ?, ?, ?) RETURNING id"
         )
         .bind(&name)
         .bind(&query)
         .bind(description)
         .bind(connection_id)
+        .bind(database)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| format!("[CREATE_QUERY_ERROR] {e}"))?;
@@ -187,14 +194,16 @@ impl LocalDb {
         query: String,
         description: Option<String>,
         connection_id: Option<i64>,
+        database: Option<String>,
     ) -> Result<SavedQuery, String> {
         sqlx::query(
-            "UPDATE saved_queries SET name = ?, query = ?, description = ?, connection_id = ?, updated_at = datetime('now') WHERE id = ?"
+            "UPDATE saved_queries SET name = ?, query = ?, description = ?, connection_id = ?, database = ?, updated_at = datetime('now') WHERE id = ?"
         )
         .bind(&name)
         .bind(&query)
         .bind(description)
         .bind(connection_id)
+        .bind(database)
         .bind(id)
         .execute(&self.pool)
         .await
@@ -214,7 +223,7 @@ impl LocalDb {
 
     pub async fn list_saved_queries(&self) -> Result<Vec<SavedQuery>, String> {
         let rows = sqlx::query_as::<_, SavedQuery>(
-            "SELECT id, name, query, description, connection_id, created_at, updated_at FROM saved_queries ORDER BY updated_at DESC"
+            "SELECT id, name, query, description, connection_id, database, created_at, updated_at FROM saved_queries ORDER BY updated_at DESC"
         )
         .fetch_all(&self.pool)
         .await
@@ -224,7 +233,7 @@ impl LocalDb {
 
     pub async fn get_saved_query_by_id(&self, id: i64) -> Result<SavedQuery, String> {
         sqlx::query_as::<_, SavedQuery>(
-            "SELECT id, name, query, description, connection_id, created_at, updated_at FROM saved_queries WHERE id = ?"
+            "SELECT id, name, query, description, connection_id, database, created_at, updated_at FROM saved_queries WHERE id = ?"
         )
         .bind(id)
         .fetch_one(&self.pool)

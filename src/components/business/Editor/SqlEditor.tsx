@@ -28,6 +28,7 @@ interface SqlEditorProps {
     data: any[];
     columns: string[];
     executionTime?: string;
+    error?: string;
   } | null;
   onExecute?: (sql: string) => void;
   onCancel?: () => void;
@@ -132,6 +133,7 @@ export function SqlEditor({
           description,
           query: code,
           connectionId: _connectionId || undefined,
+          database: databaseName,
         });
       } else {
         result = await api.queries.create({
@@ -139,6 +141,7 @@ export function SqlEditor({
           description,
           query: code,
           connectionId: _connectionId || undefined,
+          database: databaseName,
         });
       }
       if (onSaveSuccess) {
@@ -407,14 +410,20 @@ export function SqlEditor({
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={50} minSize={20}>
                 <div className="h-full flex flex-col">
-                  {/* Header removed as requested */}
-                  <div className="flex-1 overflow-hidden">
-                    <TableView
-                      data={queryResults.data}
-                      columns={queryResults.columns}
-                      hideHeader
-                    />
-                  </div>
+                  {queryResults.error ? (
+                    <div className="h-full p-4 bg-destructive/10 text-destructive overflow-auto font-mono text-sm whitespace-pre-wrap">
+                      <div className="font-bold mb-2">Error executing query:</div>
+                      {queryResults.error}
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-hidden">
+                      <TableView
+                        data={queryResults.data}
+                        columns={queryResults.columns}
+                        hideHeader
+                      />
+                    </div>
+                  )}
                 </div>
               </ResizablePanel>
             </>

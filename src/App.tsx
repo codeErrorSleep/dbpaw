@@ -65,6 +65,7 @@ interface TabItem {
     data: any[];
     columns: string[];
     executionTime: string;
+    error?: string;
   } | null;
   schemaOverview?: SchemaOverview;
   savedQueryId?: number;
@@ -142,7 +143,7 @@ export default function App() {
 
     let connectionId = query.connectionId || undefined;
     let driver: string | undefined = undefined;
-    let database: string | undefined = undefined;
+    let database: string | undefined = query.database || undefined;
 
     // If query is linked to a connection, try to fetch connection details
     if (connectionId) {
@@ -163,7 +164,10 @@ export default function App() {
         const conn = conns.find((c: any) => c.id === connectionId);
         if (conn) {
           driver = conn.dbType;
-          database = conn.database;
+          // Only fallback to connection default if no specific database was saved
+          if (!database) {
+            database = conn.database;
+          }
         }
       } catch (e) {
         console.error("Failed to fetch connection details for saved query", e);
@@ -224,7 +228,8 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("execute_query failed:", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("execute_query failed:", errorMessage);
       setTabs((prev) =>
         prev.map((t) => {
           if (t.id !== tabId) return t;
@@ -234,6 +239,7 @@ export default function App() {
               data: [],
               columns: [],
               executionTime: "0ms",
+              error: errorMessage,
             },
           };
         }),
