@@ -97,7 +97,13 @@ pub async fn export_table_data(
                             order_by.clone(),
                         )
                         .await?;
-                    exported += writer.write_rows(&resp.data, &columns, &table, &driver)?;
+                    exported += writer.write_rows(
+                        &resp.data,
+                        &columns,
+                        Some(&schema),
+                        &table,
+                        &driver,
+                    )?;
                 }
                 ExportScope::Filtered | ExportScope::FullTable => {
                     let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
@@ -139,7 +145,13 @@ pub async fn export_table_data(
                             break;
                         }
 
-                        exported += writer.write_rows(&resp.data, &columns, &table, &driver)?;
+                        exported += writer.write_rows(
+                            &resp.data,
+                            &columns,
+                            Some(&schema),
+                            &table,
+                            &driver,
+                        )?;
                         if exported >= resp.total {
                             break;
                         }
@@ -183,7 +195,7 @@ pub async fn export_query_result(
             let result = db_driver.execute_query(sql).await?;
             let columns = result.columns.into_iter().map(|c| c.name).collect::<Vec<_>>();
             let mut writer = ExportWriter::new(output_path.clone(), format, columns.clone())?;
-            let exported = writer.write_rows(&result.data, &columns, "query_result", &driver)?;
+            let exported = writer.write_rows(&result.data, &columns, None, "query_result", &driver)?;
             writer.finish()?;
             Ok(ExportResult {
                 file_path: output_path.to_string_lossy().to_string(),
@@ -315,6 +327,7 @@ impl ExportWriter {
         &mut self,
         rows: &[Value],
         columns: &[String],
+        schema: Option<&str>,
         table: &str,
         driver: &str,
     ) -> Result<i64, String> {
@@ -323,7 +336,7 @@ impl ExportWriter {
             let obj = row
                 .as_object()
                 .ok_or("[EXPORT_ERROR] row is not a JSON object")?;
-            self.write_row(obj, columns, table, driver)?;
+            self.write_row(obj, columns, schema, table, driver)?;
             count += 1;
         }
         Ok(count)
@@ -333,6 +346,7 @@ impl ExportWriter {
         &mut self,
         row: &Map<String, Value>,
         columns: &[String],
+        schema: Option<&str>,
         table: &str,
         driver: &str,
     ) -> Result<(), String> {
@@ -377,7 +391,7 @@ impl ExportWriter {
                     .join(", ");
                 let statement = format!(
                     "INSERT INTO {} ({}) VALUES ({});\n",
-                    quote_ident(table, driver),
+                    quote_target(schema, table, driver),
                     quoted_cols,
                     values
                 );
@@ -445,6 +459,17 @@ fn quote_ident(name: &str, driver: &str) -> String {
     }
 }
 
+fn quote_target(schema: Option<&str>, table: &str, driver: &str) -> String {
+    match schema.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(schema_name) => format!(
+            "{}.{}",
+            quote_ident(schema_name, driver),
+            quote_ident(table, driver)
+        ),
+        None => quote_ident(table, driver),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,5 +486,26 @@ mod tests {
         assert_eq!(sql_value(&Value::Null), "NULL");
         assert_eq!(sql_value(&Value::Bool(true)), "TRUE");
         assert_eq!(sql_value(&Value::String("O'Reilly".to_string())), "'O''Reilly'");
+    }
+
+    #[test]
+    fn quote_target_uses_schema_when_present() {
+        assert_eq!(
+            quote_target(Some("public"), "users", "postgres"),
+            "\"public\".\"users\""
+        );
+        assert_eq!(
+            quote_target(Some("analytics"), "events", "mysql"),
+            "`analytics`.`events`"
+        );
+    }
+
+    #[test]
+    fn quote_target_ignores_empty_schema() {
+        assert_eq!(
+            quote_target(Some("  "), "users", "postgres"),
+            "\"users\""
+        );
+        assert_eq!(quote_target(None, "users", "mysql"), "`users`");
     }
 }
