@@ -6,7 +6,74 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@v4
+        id: git_cliff
+        with:
+          config: cliff.toml
+          args: --verbose --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Create or Update Release Body
+        uses: actions/github-script@v7
+        env:
+          RELEASE_BODY: ${{ steps.git_cliff.outputs.content || 'See the assets to download this version and install.' }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = context.ref_name;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const body = process.env.RELEASE_BODY;
+            const releaseName = `DbPaw ${tag}`;
+
+            try {
+              const { data: existing } = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag,
+              });
+
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: existing.id,
+                tag_name: tag,
+                name: releaseName,
+                body,
+                draft: true,
+                prerelease: false,
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+
+              await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                name: releaseName,
+                body,
+                draft: true,
+                prerelease: false,
+              });
+            }
+
   release:
+    needs: prepare-release
     permissions:
       contents: write
     strategy:
@@ -43,15 +110,6 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Generate Changelog
-        uses: orhun/git-cliff-action@v4
-        id: git-cliff
-        with:
-          config: cliff.toml
-          args: --verbose --latest --strip header
-        env:
-          OUTPUT: CHANGELOG.md
-
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -59,6 +117,5 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'DbPaw ${{ github.ref_name }}'
-          releaseBody: ${{ steps.git-cliff.outputs.content || 'See the assets to download this version and install.' }}
           releaseDraft: true
           prerelease: false
