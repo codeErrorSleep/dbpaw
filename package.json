@@ -13,7 +13,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
+    "website:dev": "cd website && bun run start",
+    "website:build": "cd website && bun run build"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",

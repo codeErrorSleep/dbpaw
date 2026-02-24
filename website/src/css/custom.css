@@ -1,0 +1,32 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  /* Pink Theme (matching DbPaw Logo) - Light Mode */
+  --ifm-color-primary: #db2777; /* pink-600 */
+  --ifm-color-primary-dark: #c5236b;
+  --ifm-color-primary-darker: #ba2165;
+  --ifm-color-primary-darkest: #991b53;
+  --ifm-color-primary-light: #e15292;
+  --ifm-color-primary-lighter: #e4689f;
+  --ifm-color-primary-lightest: #ec94c0;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  /* Pink Theme - Dark Mode (Slightly lighter/brighter for contrast) */
+  --ifm-color-primary: #f472b6; /* pink-400 */
+  --ifm-color-primary-dark: #db66a4;
+  --ifm-color-primary-darker: #cf619b;
+  --ifm-color-primary-darkest: #aa507f;
+  --ifm-color-primary-light: #f694ca;
+  --ifm-color-primary-lighter: #f7a5d4;
+  --ifm-color-primary-lightest: #fadbf0;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
