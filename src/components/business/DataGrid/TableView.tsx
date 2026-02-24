@@ -283,19 +283,48 @@ export function TableView({
     [tableContext?.driver],
   );
 
-  const formatSQLValue = (value: string, originalValue: any): string => {
+  const formatSQLValue = (
+    value: string,
+    originalValue: any,
+    context: "execution" | "copy" = "execution",
+  ): string => {
     // Handle NULL
     if (value === "" && (originalValue === null || originalValue === undefined)) {
       return "NULL";
     }
+
+    const trimmed = value.trim();
+    const numericRegex = /^-?\d+(\.\d+)?$/;
+
     // Check if originally numeric
-    if (typeof originalValue === "number" || (!isNaN(Number(value)) && value.trim() !== "")) {
-      return value;
+    if (typeof originalValue === "number") {
+      if (numericRegex.test(trimmed)) {
+        return trimmed;
+      }
+      if (context === "execution") {
+        throw new Error(`Invalid numeric value: "${value}"`);
+      }
+      // Fallback: quote for copy
     }
+    // Check if it looks like a number (for cases where originalValue might be null)
+    else if (!isNaN(Number(value)) && trimmed !== "") {
+      // Only return raw if it passes strict regex
+      if (numericRegex.test(trimmed)) {
+        return trimmed;
+      }
+    }
+
     // Check for boolean
     if (typeof originalValue === "boolean") {
-      return value.toLowerCase() === "true" ? "TRUE" : "FALSE";
+      const lower = value.toLowerCase();
+      if (["true", "t", "1"].includes(lower)) return "TRUE";
+      if (["false", "f", "0"].includes(lower)) return "FALSE";
+
+      if (context === "execution") {
+        throw new Error(`Invalid boolean value: "${value}"`);
+      }
     }
+
     // Default: string with quotes
     return `'${escapeSQL(value)}'`;
   };
@@ -350,11 +379,23 @@ export function TableView({
 
   const handleSave = useCallback(async () => {
     if (!tableContext || !hasPendingChanges) return;
-    const sqls = generateUpdateSQL();
-    if (sqls.length === 0) return;
 
     setIsSaving(true);
     setSaveError(null);
+
+    let sqls: string[] = [];
+    try {
+      sqls = generateUpdateSQL();
+    } catch (err) {
+      setIsSaving(false);
+      setSaveError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    if (sqls.length === 0) {
+      setIsSaving(false);
+      return;
+    }
 
     const errors: string[] = [];
     for (const sql of sqls) {
@@ -871,7 +912,8 @@ export function TableView({
                                 const val = getCellDisplayValue(rowIndex, col, row[col]);
                                 return formatSQLValue(
                                   val === null || val === undefined ? "" : String(val),
-                                  row[col]
+                                  row[col],
+                                  "copy"
                                 );
                               })
                               .join(", ");
@@ -894,7 +936,8 @@ export function TableView({
                               const val = getCellDisplayValue(rowIndex, col, row[col]);
                               const formattedValue = formatSQLValue(
                                 val === null || val === undefined ? "" : String(val),
-                                row[col]
+                                row[col],
+                                "copy"
                               );
                               return `${quoteIdent(col)} = ${formattedValue}`;
                             });
