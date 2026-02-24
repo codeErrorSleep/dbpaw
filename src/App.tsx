@@ -692,9 +692,18 @@ export default function App() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId={aiVisible ? "main-layout-with-ai" : "main-layout"}
+        >
           {/* Left Sidebar - Database Connections */}
-          <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+          <ResizablePanel
+            id="left-sidebar"
+            order={1}
+            defaultSize={20}
+            minSize={15}
+            maxSize={30}
+          >
             <Sidebar
               onTableSelect={handleTableSelect}
               onConnect={() => { }}
@@ -708,7 +717,7 @@ export default function App() {
           <ResizableHandle />
 
           {/* Main Panel - SQL Editor & Results */}
-          <ResizablePanel defaultSize={60} minSize={40}>
+          <ResizablePanel id="main-panel" order={2} defaultSize={60} minSize={40}>
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
@@ -904,7 +913,13 @@ export default function App() {
 
           {/* Right Sidebar - AI Assistant */}
           {aiVisible && (
-            <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+            <ResizablePanel
+              id="ai-sidebar"
+              order={3}
+              defaultSize={20}
+              minSize={15}
+              maxSize={30}
+            >
               <AISidebar />
             </ResizablePanel>
           )}
