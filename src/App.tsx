@@ -29,6 +29,20 @@ import { listen } from "@tauri-apps/api/event";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { UpdaterChecker } from "@/components/updater-checker";
 import { isModKey, shouldIgnoreGlobalShortcut } from "@/lib/keyboard";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { SortableTab } from "@/components/ui/sortable-tab";
 
 interface TabItem {
   id: string;
@@ -75,6 +89,27 @@ export default function App() {
   const [aiVisible, setAiVisible] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const [queriesLastUpdated, setQueriesLastUpdated] = useState(0);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setTabs((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -599,59 +634,72 @@ export default function App() {
               >
                 <div className="bg-muted/30">
                   <TabsList className="h-9 w-full justify-start gap-0 bg-transparent border-none border-b-0 p-0 overflow-x-auto">
-                    {tabs.map((tab) => (
-                      <ContextMenu key={tab.id}>
-                        <ContextMenuTrigger asChild>
-                          {/* Wrapper avoids data-state conflict: ContextMenu and Tabs both set it; only the trigger must get Tabs' data-state=active for the indicator bar */}
-                          <span className="contents">
-                            <TabsTrigger
-                              value={tab.id}
-                              className={TAB_TRIGGER_CLASS}
-                              onMouseDown={(e) => {
-                                if (e.button === 1) {
-                                  e.preventDefault();
-                                  handleCloseTab(tab.id);
-                                }
-                              }}
-                            >
-                              {tab.type === "table" ? (
-                                <Table className="w-4 h-4 text-primary" />
-                              ) : (
-                                <FileCode className="w-4 h-4 text-primary" />
-                              )}
-                              <span className="max-w-[120px] flex items-center">
-                                <span className="truncate">{tab.title}</span>
-                                {tab.type === "editor" && tab.isDirty && (
-                                  <span
-                                    className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 ml-1 shrink-0"
-                                    aria-label="Unsaved changes"
-                                  />
-                                )}
-                              </span>
-                              <button
-                                type="button"
-                                aria-label={`Close ${tab.title}`}
-                                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCloseTab(tab.id);
-                                }}
-                              >
-                                <X className="w-3 h-3 text-muted-foreground" />
-                              </button>
-                            </TabsTrigger>
-                          </span>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem onClick={() => handleCloseTab(tab.id)}>
-                            Close Tab
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={() => handleCloseOtherTabs(tab.id)}>
-                            Close Other Tabs
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ))}
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={tabs.map((t) => t.id)}
+                        strategy={horizontalListSortingStrategy}
+                      >
+                        {tabs.map((tab) => (
+                          <SortableTab key={tab.id} id={tab.id}>
+                            <ContextMenu>
+                              <ContextMenuTrigger asChild>
+                                {/* Wrapper avoids data-state conflict: ContextMenu and Tabs both set it; only the trigger must get Tabs' data-state=active for the indicator bar */}
+                                <span className="contents">
+                                  <TabsTrigger
+                                    value={tab.id}
+                                    className={TAB_TRIGGER_CLASS}
+                                    onMouseDown={(e) => {
+                                      if (e.button === 1) {
+                                        e.preventDefault();
+                                        handleCloseTab(tab.id);
+                                      }
+                                    }}
+                                  >
+                                    {tab.type === "table" ? (
+                                      <Table className="w-4 h-4 text-primary" />
+                                    ) : (
+                                      <FileCode className="w-4 h-4 text-primary" />
+                                    )}
+                                    <span className="max-w-[120px] flex items-center">
+                                      <span className="truncate">{tab.title}</span>
+                                      {tab.type === "editor" && tab.isDirty && (
+                                        <span
+                                          className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 ml-1 shrink-0"
+                                          aria-label="Unsaved changes"
+                                        />
+                                      )}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Close ${tab.title}`}
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCloseTab(tab.id);
+                                      }}
+                                    >
+                                      <X className="w-3 h-3 text-muted-foreground" />
+                                    </button>
+                                  </TabsTrigger>
+                                </span>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem onClick={() => handleCloseTab(tab.id)}>
+                                  Close Tab
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => handleCloseOtherTabs(tab.id)}>
+                                  Close Other Tabs
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          </SortableTab>
+                        ))}
+                      </SortableContext>
+                    </DndContext>
                   </TabsList>
                 </div>
 
