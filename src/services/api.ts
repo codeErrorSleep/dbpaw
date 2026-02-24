@@ -210,6 +210,9 @@ export const api = {
   connections: {
     list: () => invoke<any[]>("get_connections"),
     create: (form: ConnectionForm) => invoke<any>("create_connection", { form }),
+    update: (id: number, form: ConnectionForm) =>
+      invoke<any>("update_connection", { id, form }),
+    delete: (id: number) => invoke<void>("delete_connection", { id }),
     testEphemeral: (form: ConnectionForm) =>
       invoke<TestConnectionResult>("test_connection_ephemeral", { form }),
   },

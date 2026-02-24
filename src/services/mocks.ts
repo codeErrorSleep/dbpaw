@@ -496,7 +496,7 @@ export async function mockGetConnections(): Promise<any[]> {
 export async function mockCreateConnection(form: ConnectionForm): Promise<any> {
   await new Promise((resolve) => setTimeout(resolve, 100));
 
-  return {
+  const newConnection = {
     id: mockConnections.length + 1,
     name: form.name || "New Connection",
     dbType: form.driver,
@@ -504,8 +504,76 @@ export async function mockCreateConnection(form: ConnectionForm): Promise<any> {
     port: form.port,
     database: form.database,
     username: form.username,
+    ssl: form.ssl ?? false,
+    filePath: form.filePath ?? null,
+    sshEnabled: form.sshEnabled ?? false,
+    sshHost: form.sshHost ?? null,
+    sshPort: form.sshPort ?? null,
+    sshUsername: form.sshUsername ?? null,
+    sshPassword: form.sshPassword ?? null,
+    sshKeyPath: form.sshKeyPath ?? null,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
+
+  mockConnections.push(newConnection);
+  return newConnection;
+}
+
+/**
+ * Mock update connection
+ */
+export async function mockUpdateConnection(
+  id: number,
+  form: ConnectionForm
+): Promise<any> {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const index = mockConnections.findIndex((c) => c.id === id);
+  if (index === -1) {
+    throw new Error(`Connection with id ${id} not found`);
+  }
+
+  const existing = mockConnections[index];
+  const nextPassword =
+    form.password !== undefined && form.password !== ""
+      ? form.password
+      : existing.password;
+
+  const updatedConnection = {
+    ...existing,
+    name: form.name || existing.name,
+    dbType: form.driver || existing.dbType,
+    host: form.host ?? existing.host,
+    port: form.port ?? existing.port,
+    database: form.database ?? existing.database,
+    username: form.username ?? existing.username,
+    password: nextPassword,
+    ssl: form.ssl ?? existing.ssl ?? false,
+    filePath: form.filePath ?? existing.filePath ?? null,
+    sshEnabled: form.sshEnabled ?? existing.sshEnabled ?? false,
+    sshHost: form.sshHost ?? existing.sshHost ?? null,
+    sshPort: form.sshPort ?? existing.sshPort ?? null,
+    sshUsername: form.sshUsername ?? existing.sshUsername ?? null,
+    sshPassword: form.sshPassword ?? existing.sshPassword ?? null,
+    sshKeyPath: form.sshKeyPath ?? existing.sshKeyPath ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  mockConnections[index] = updatedConnection;
+  return updatedConnection;
+}
+
+/**
+ * Mock delete connection
+ */
+export async function mockDeleteConnection(id: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const index = mockConnections.findIndex((c) => c.id === id);
+  if (index === -1) {
+    throw new Error(`Connection with id ${id} not found`);
+  }
+  mockConnections.splice(index, 1);
 }
 
 /**
@@ -685,6 +753,12 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
 
     case "create_connection":
       return mockCreateConnection(args.form) as Promise<T>;
+
+    case "update_connection":
+      return mockUpdateConnection(args.id, args.form) as Promise<T>;
+
+    case "delete_connection":
+      return mockDeleteConnection(args.id) as Promise<T>;
 
     case "test_connection_ephemeral":
       return mockTestConnectionEphemeral(args.form) as Promise<T>;

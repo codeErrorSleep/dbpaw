@@ -24,6 +24,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -59,13 +69,37 @@ interface DatabaseInfo {
 interface Connection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "mongodb" | "sqlite";
+  type: Driver;
   host: string;
   port: string;
+  database?: string;
   username: string;
+  ssl?: boolean;
+  filePath?: string;
+  sshEnabled?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUsername?: string;
+  sshPassword?: string;
+  sshKeyPath?: string;
   databases: DatabaseInfo[];
   isConnected: boolean;
 }
+
+const defaultForm: ConnectionForm = {
+  driver: "postgres",
+  name: "My Database",
+  host: "localhost",
+  port: 5432,
+  database: "",
+  schema: "public",
+  username: "",
+  password: "",
+  ssl: false,
+  sshEnabled: false,
+  sshPort: 22,
+  sshUsername: "root",
+};
 
 interface TreeNodeProps {
   level: number;
@@ -160,28 +194,20 @@ export function ConnectionList({
     type: "connection" | "database";
   }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteTargetConnectionId, setDeleteTargetConnectionId] = useState<string | null>(null);
   const [testMsg, setTestMsg] = useState<{
     ok: boolean;
     text: string;
     latency?: number;
   } | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
-  const [form, setForm] = useState<ConnectionForm>({
-    driver: "postgres",
-    name: "My Database",
-    host: "localhost",
-    port: 5432,
-    database: "",
-    schema: "public",
-    username: "",
-    password: "",
-    ssl: false,
-    sshEnabled: false,
-    sshPort: 22,
-    sshUsername: "root",
-  });
+  const [form, setForm] = useState<ConnectionForm>(defaultForm);
   const [searchTerm, setSearchTerm] = useState("");
 
   const filteredConnections = useMemo(() => {
@@ -227,9 +253,10 @@ export function ConnectionList({
   const isSqlite = form.driver === "sqlite";
   const requiredOk = useMemo(() => {
     if (isSqlite) return !!form.filePath;
-    // Database is no longer required, allowing listing all databases after connecting to server
-    return !!form.host && !!form.port && !!form.username && !!form.password;
-  }, [form, isSqlite]);
+    const hasBasic = !!form.host && !!form.port && !!form.username;
+    if (dialogMode === "edit") return hasBasic;
+    return hasBasic && !!form.password;
+  }, [form, isSqlite, dialogMode]);
 
   useEffect(() => {
     fetchConnections();
@@ -242,10 +269,19 @@ export function ConnectionList({
         conns.map((c) => ({
           id: String(c.id),
           name: c.name || "Unknown",
-          type: c.dbType,
-          host: c.host,
-          port: String(c.port),
-          username: c.username,
+          type: (c.dbType as Driver) || "postgres",
+          host: c.host || "",
+          port: String(c.port || ""),
+          database: c.database || "",
+          username: c.username || "",
+          ssl: c.ssl || false,
+          filePath: c.filePath || "",
+          sshEnabled: c.sshEnabled || false,
+          sshHost: c.sshHost || "",
+          sshPort: c.sshPort || 22,
+          sshUsername: c.sshUsername || "root",
+          sshPassword: c.sshPassword || "",
+          sshKeyPath: c.sshKeyPath || "",
           isConnected: false,
           databases: [],
         })),
@@ -448,9 +484,10 @@ export function ConnectionList({
 
   const handleConnect = async () => {
     if (!requiredOk) {
-      setValidationMsg(
-        "Please fill in required fields: Host, Port, Username, Password, Database",
-      );
+      const requiredFields = isSqlite
+        ? "File path"
+        : "Host, Port, Username, Password";
+      setValidationMsg(`Please fill in required fields: ${requiredFields}`);
       return;
     }
     setValidationMsg(null);
@@ -461,16 +498,26 @@ export function ConnectionList({
         {
           id: String(res.id),
           name: res.name || "Unknown",
-          type: res.dbType as any,
-          host: res.host,
-          port: String(res.port),
-          username: res.username,
+          type: (res.dbType as Driver) || "postgres",
+          host: res.host || "",
+          port: String(res.port || ""),
+          database: res.database || "",
+          username: res.username || "",
+          ssl: res.ssl || false,
+          filePath: res.filePath || "",
+          sshEnabled: res.sshEnabled || false,
+          sshHost: res.sshHost || "",
+          sshPort: res.sshPort || 22,
+          sshUsername: res.sshUsername || "root",
+          sshPassword: "",
+          sshKeyPath: res.sshKeyPath || "",
           isConnected: false,
           databases: [],
         },
         ...prev,
       ]);
       setIsDialogOpen(false);
+      setForm(defaultForm);
       if (onConnect) onConnect(form);
     } catch (e: any) {
       setValidationMsg(String(e?.message || e));
@@ -479,9 +526,129 @@ export function ConnectionList({
     }
   };
 
-  const handleConnectSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSaveEdit = async () => {
+    if (!editingConnectionId) return;
+    if (!requiredOk) {
+      const requiredFields = isSqlite
+        ? "File path"
+        : "Host, Port, Username";
+      setValidationMsg(`Please fill in required fields: ${requiredFields}`);
+      return;
+    }
+
+    setValidationMsg(null);
+    setIsSavingEdit(true);
+    try {
+      await api.connections.update(Number(editingConnectionId), form);
+      await fetchConnections();
+      setIsDialogOpen(false);
+      setDialogMode("create");
+      setEditingConnectionId(null);
+      setForm(defaultForm);
+    } catch (e: any) {
+      setValidationMsg(String(e?.message || e));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDialogSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (dialogMode === "edit") {
+      void handleSaveEdit();
+      return;
+    }
     void handleConnect();
+  };
+
+  const openCreateDialog = () => {
+    setDialogMode("create");
+    setEditingConnectionId(null);
+    setValidationMsg(null);
+    setTestMsg(null);
+    setForm(defaultForm);
+    setIsDialogOpen(true);
+  };
+
+  const openEditDialog = (connectionId: string) => {
+    const conn = connections.find((c) => c.id === connectionId);
+    if (!conn) return;
+
+    setDialogMode("edit");
+    setEditingConnectionId(connectionId);
+    setValidationMsg(null);
+    setTestMsg(null);
+    setForm({
+      driver: conn.type,
+      name: conn.name,
+      host: conn.host || "",
+      port: Number(conn.port) || undefined,
+      database: conn.database || "",
+      schema: conn.type === "postgres" ? "public" : "",
+      username: conn.username || "",
+      password: "",
+      ssl: conn.ssl || false,
+      filePath: conn.filePath || "",
+      sshEnabled: conn.sshEnabled || false,
+      sshHost: conn.sshHost || "",
+      sshPort: conn.sshPort || 22,
+      sshUsername: conn.sshUsername || "root",
+      sshPassword: "",
+      sshKeyPath: conn.sshKeyPath || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleReconnect = async (connectionId: string) => {
+    setConnections((prev) =>
+      prev.map((conn) => {
+        if (conn.id !== connectionId) return conn;
+        return { ...conn, isConnected: false, databases: [] };
+      }),
+    );
+    setExpandedDatabases((prev) => {
+      const next = new Set(
+        [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
+      );
+      return next;
+    });
+    setExpandedTables((prev) => {
+      const next = new Set(
+        [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
+      );
+      return next;
+    });
+    await fetchAndSetDatabases(connectionId);
+  };
+
+  const handleDeleteConnection = async (connectionId: string) => {
+    setIsDeleting(true);
+    try {
+      await api.connections.delete(Number(connectionId));
+      setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+      setExpandedConnections((prev) => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
+      setExpandedDatabases((prev) => {
+        const next = new Set(
+          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
+        );
+        return next;
+      });
+      setExpandedTables((prev) => {
+        const next = new Set(
+          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
+        );
+        return next;
+      });
+      setDeleteTargetConnectionId(null);
+    } catch (e) {
+      console.error("deleteConnection failed", e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -497,16 +664,34 @@ export function ConnectionList({
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setValidationMsg(null);
+                setTestMsg(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={openCreateDialog}
+              >
                 <Plus className="w-3.5 h-3.5" />
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <form onSubmit={handleConnectSubmit}>
+              <form onSubmit={handleDialogSubmit}>
                 <DialogHeader>
-                  <DialogTitle>New Database Connection</DialogTitle>
+                  <DialogTitle>
+                    {dialogMode === "edit"
+                      ? "Edit Database Connection"
+                      : "New Database Connection"}
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
@@ -598,11 +783,19 @@ export function ConnectionList({
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="password">
-                          Password <span className="text-red-600">*</span>
+                          Password{" "}
+                          {dialogMode === "create" && (
+                            <span className="text-red-600">*</span>
+                          )}
                         </Label>
                         <Input
                           id="password"
                           type="password"
+                          placeholder={
+                            dialogMode === "edit"
+                              ? "Leave empty to keep current password"
+                              : undefined
+                          }
                           value={form.password || ""}
                           onChange={(e) =>
                             setForm((f) => ({ ...f, password: e.target.value }))
@@ -773,9 +966,18 @@ export function ConnectionList({
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isConnecting || !requiredOk}
+                    disabled={(dialogMode === "edit" ? isSavingEdit : isConnecting) || !requiredOk}
                   >
-                  {isConnecting ? (
+                  {dialogMode === "edit" ? (
+                    isSavingEdit ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save"
+                    )
+                  ) : isConnecting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Connecting…
@@ -833,7 +1035,7 @@ export function ConnectionList({
             key={connection.id}
             level={0}
             icon={<Server className="w-4 h-4" />}
-            label={`${connection.name} (${connection.type})`}
+            label={connection.name}
             isExpanded={expandedConnections.has(connection.id)}
             onToggle={() => toggleConnection(connection.id)}
             onContextMenu={(e) => {
@@ -955,8 +1157,10 @@ export function ConnectionList({
             <>
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
-                onClick={() => {
-                  console.log("Edit connection", contextMenu.connectionId);
+                onClick={async () => {
+                  if (contextMenu.connectionId) {
+                    openEditDialog(contextMenu.connectionId);
+                  }
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
@@ -965,8 +1169,10 @@ export function ConnectionList({
               </button>
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
-                onClick={() => {
-                  console.log("Reconnect", contextMenu.connectionId);
+                onClick={async () => {
+                  if (contextMenu.connectionId) {
+                    await handleReconnect(contextMenu.connectionId);
+                  }
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
@@ -977,7 +1183,9 @@ export function ConnectionList({
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent text-destructive flex items-center gap-2"
                 onClick={() => {
-                  console.log("Delete connection", contextMenu.connectionId);
+                  if (contextMenu.connectionId) {
+                    setDeleteTargetConnectionId(contextMenu.connectionId);
+                  }
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
@@ -1014,6 +1222,37 @@ export function ConnectionList({
           )}
         </div>
       )}
+      <AlertDialog
+        open={!!deleteTargetConnectionId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTargetConnectionId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Connection</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected connection configuration
+              will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting || !deleteTargetConnectionId}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!deleteTargetConnectionId) return;
+                await handleDeleteConnection(deleteTargetConnectionId);
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

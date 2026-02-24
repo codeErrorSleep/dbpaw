@@ -123,14 +123,15 @@ impl LocalDb {
         form: ConnectionForm,
     ) -> Result<Connection, String> {
         sqlx::query(
-            "UPDATE connections SET type = ?, host = ?, port = ?, database = ?, username = ?, password = ?, ssl = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, updated_at = datetime('now') WHERE id = ?"
+            "UPDATE connections SET name = COALESCE(NULLIF(?, ''), name), type = ?, host = ?, port = ?, database = ?, username = ?, password = COALESCE(NULLIF(?, ''), password), ssl = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, updated_at = datetime('now') WHERE id = ?"
         )
+        .bind(form.name)
         .bind(&form.driver)
         .bind(&form.host.unwrap_or_default())
         .bind(&form.port.unwrap_or(0))
         .bind(&form.database.unwrap_or_default())
         .bind(&form.username.unwrap_or_default())
-        .bind(&form.password.unwrap_or_default()) // TODO: Encrypt
+        .bind(form.password) // TODO: Encrypt
         .bind(form.ssl.unwrap_or(false))
         .bind(form.ssh_enabled.unwrap_or(false))
         .bind(form.ssh_host)
