@@ -36,6 +36,62 @@ pub struct SavedQuery {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProvider {
+    pub id: i64,
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
+    pub is_default: bool,
+    pub enabled: bool,
+    pub extra_json: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderForm {
+    pub name: String,
+    pub provider_type: Option<String>,
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
+    pub is_default: Option<bool>,
+    pub enabled: Option<bool>,
+    pub extra_json: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AiConversation {
+    pub id: i64,
+    pub title: String,
+    pub scenario: String,
+    pub connection_id: Option<i64>,
+    pub database: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMessage {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub role: String,
+    pub content: String,
+    pub prompt_version: Option<String>,
+    pub model: Option<String>,
+    pub token_in: Option<i64>,
+    pub token_out: Option<i64>,
+    pub latency_ms: Option<i64>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableInfo {

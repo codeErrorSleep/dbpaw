@@ -706,6 +706,8 @@ export default function App() {
     };
   }, [activeTab, tabs]);
 
+  const activeTabItem = tabs.find((t) => t.id === activeTab);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-muted/30">
       {!isFullscreen && (
@@ -959,7 +961,11 @@ export default function App() {
               minSize={15}
               maxSize={30}
             >
-              <AISidebar />
+              <AISidebar
+                connectionId={activeTabItem?.connectionId}
+                database={activeTabItem?.database}
+                schemaOverview={activeTabItem?.schemaOverview}
+              />
             </ResizablePanel>
           )}
         </ResizablePanelGroup>

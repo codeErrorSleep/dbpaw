@@ -127,6 +127,95 @@ export interface SavedQuery {
   updatedAt: string;
 }
 
+export interface AIProviderConfig {
+  id: number;
+  name: string;
+  providerType: AIProviderType;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  isDefault: boolean;
+  enabled: boolean;
+  extraJson?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AIProviderType = "openai" | "kimi" | "glm";
+
+export interface AIProviderForm {
+  name: string;
+  providerType?: AIProviderType;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  isDefault?: boolean;
+  enabled?: boolean;
+  extraJson?: string;
+}
+
+export interface AIUsage {
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  totalTokens?: number | null;
+}
+
+export interface AIConversation {
+  id: number;
+  title: string;
+  scenario: string;
+  connectionId?: number | null;
+  database?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIMessage {
+  id: number;
+  conversationId: number;
+  role: "system" | "developer" | "user" | "assistant" | "tool" | string;
+  content: string;
+  promptVersion?: string | null;
+  model?: string | null;
+  tokenIn?: number | null;
+  tokenOut?: number | null;
+  latencyMs?: number | null;
+  createdAt: string;
+}
+
+export interface AIConversationDetail {
+  conversation: AIConversation;
+  messages: AIMessage[];
+}
+
+export interface AITableSummary {
+  schema: string;
+  name: string;
+  columns: { name: string; type: string }[];
+}
+
+export interface AISchemaOverview {
+  tables: AITableSummary[];
+}
+
+export interface AIChatRequest {
+  requestId: string;
+  providerId?: number;
+  conversationId?: number;
+  scenario: "sql_generate" | "sql_optimize" | "sql_explain" | string;
+  input: string;
+  title?: string;
+  connectionId?: number;
+  database?: string;
+  schemaOverview?: AISchemaOverview;
+}
+
+export interface AIChatResponse {
+  conversationId: number;
+  userMessageId: number;
+  assistantMessageId: number;
+}
+
 export type TransferFormat = "csv" | "json" | "sql";
 export type ExportScope =
   | "current_page"
@@ -275,5 +364,36 @@ export const api = {
       },
     ) => invoke<SavedQuery>("update_saved_query", { id, ...data }),
     delete: (id: number) => invoke<void>("delete_saved_query", { id }),
+  },
+  ai: {
+    providers: {
+      list: () => invoke<AIProviderConfig[]>("ai_list_providers"),
+      create: (config: AIProviderForm) =>
+        invoke<AIProviderConfig>("ai_create_provider", { config }),
+      update: (id: number, config: AIProviderForm) =>
+        invoke<AIProviderConfig>("ai_update_provider", { id, config }),
+      delete: (id: number) => invoke<void>("ai_delete_provider", { id }),
+      setDefault: (id: number) =>
+        invoke<void>("ai_set_default_provider", { id }),
+    },
+    chat: {
+      start: (request: AIChatRequest) =>
+        invoke<AIChatResponse>("ai_chat_start", { request }),
+      continue: (request: AIChatRequest) =>
+        invoke<AIChatResponse>("ai_chat_continue", { request }),
+    },
+    conversations: {
+      list: (filters?: { connectionId?: number; database?: string }) =>
+        invoke<AIConversation[]>("ai_list_conversations", {
+          connectionId: filters?.connectionId,
+          database: filters?.database,
+        }),
+      get: (conversationId: number) =>
+        invoke<AIConversationDetail>("ai_get_conversation", {
+          conversationId,
+        }),
+      delete: (conversationId: number) =>
+        invoke<void>("ai_delete_conversation", { conversationId }),
+    },
   },
 };

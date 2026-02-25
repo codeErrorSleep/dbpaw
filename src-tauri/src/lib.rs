@@ -126,6 +126,16 @@ pub fn run() {
             commands::storage::get_saved_queries,
             commands::storage::update_saved_query,
             commands::storage::delete_saved_query,
+            commands::ai::ai_list_providers,
+            commands::ai::ai_create_provider,
+            commands::ai::ai_update_provider,
+            commands::ai::ai_delete_provider,
+            commands::ai::ai_set_default_provider,
+            commands::ai::ai_chat_start,
+            commands::ai::ai_chat_continue,
+            commands::ai::ai_list_conversations,
+            commands::ai::ai_get_conversation,
+            commands::ai::ai_delete_conversation,
             commands::transfer::export_table_data,
             commands::transfer::export_query_result,
         ])
@@ -144,6 +154,7 @@ pub fn run() {
 }
 
 pub mod commands;
+pub mod ai;
 pub mod db;
 pub mod error;
 pub mod events;
