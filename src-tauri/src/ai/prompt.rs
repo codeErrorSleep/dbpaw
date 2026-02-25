@@ -24,14 +24,9 @@ pub fn build_prompt_bundle(
         content: build_template(scenario, &schema_text),
     };
 
-    let user = AiChatMessage {
-        role: "user".to_string(),
-        content: input.to_string(),
-    };
-
     AiPromptBundle {
         prompt_version: PROMPT_VERSION.to_string(),
-        messages: vec![system, developer, user],
+        messages: vec![system, developer],
     }
 }
 
