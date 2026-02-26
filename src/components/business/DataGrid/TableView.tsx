@@ -139,17 +139,19 @@ export function TableView({
     let hasChanges = false;
 
     // Configuration for auto-sizing
-    const CHAR_WIDTH = 9; // Approximate width per character in px
-    const PADDING = 36;   // Padding + icon space
+    const DATA_CHAR_WIDTH = 9; // Approximate width per character in px
+    const DATA_PADDING = 36; // Padding for cell content
+    const HEADER_CHAR_WIDTH = 9; // Approximate width per character in px
+    const HEADER_PADDING = 56; // Header padding + sort icon + resize affordance
     // Dynamically adjust min width based on column count to fill space better for small tables
     const MIN_WIDTH = columns.length <= 3 ? 250 : 100;
-    const MAX_WIDTH = 500;
+    const MAX_WIDTH = 900;
 
     columns.forEach((col) => {
       // Only calculate if width is not already set (preserve manual resizes and previous calcs)
       if (columnWidths[col] !== undefined) return;
 
-      let maxLen = col.length;
+      let sampledMaxLen = 0;
       // Sample up to 20 rows to estimate width
       const sampleSize = Math.min(data.length, 20);
 
@@ -159,13 +161,15 @@ export function TableView({
           const str = String(val);
           // Simple length check, capping at 100 chars
           const len = str.length > 100 ? 100 : str.length;
-          if (len > maxLen) maxLen = len;
+          if (len > sampledMaxLen) sampledMaxLen = len;
         }
       }
 
+      const headerRequiredWidth = col.length * HEADER_CHAR_WIDTH + HEADER_PADDING;
+      const sampledDataWidth = sampledMaxLen * DATA_CHAR_WIDTH + DATA_PADDING;
       const calculatedWidth = Math.min(
         MAX_WIDTH,
-        Math.max(MIN_WIDTH, maxLen * CHAR_WIDTH + PADDING)
+        Math.max(MIN_WIDTH, headerRequiredWidth, sampledDataWidth),
       );
 
       newWidths[col] = calculatedWidth;
@@ -1089,7 +1093,9 @@ export function TableView({
                         className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1"
                         onClick={() => handleSortClick(column)}
                       >
-                        <span className="truncate">{column}</span>
+                        <span className="truncate" title={column}>
+                          {column}
+                        </span>
                         <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
                           {isSorted ? (
                             direction === "asc" ? (
