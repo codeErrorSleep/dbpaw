@@ -380,7 +380,7 @@ export function AISidebar({ connectionId, database, schemaOverview }: AISidebarP
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-l border-border/80 bg-background">
-      <div className="flex h-10 shrink-0 min-w-0 items-center justify-between border-b border-border/70 px-3">
+      <div className="flex h-9 shrink-0 min-w-0 items-center justify-between border-b border-border/70 px-3">
         <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <h2 className="truncate text-sm font-semibold text-foreground">AI Assistant</h2>

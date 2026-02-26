@@ -761,7 +761,7 @@ export default function App() {
               onValueChange={setActiveTab}
               className="h-full flex flex-col"
             >
-              <div className="bg-background border-b border-border flex items-center">
+              <div className="bg-background border-b border-border flex items-center h-9">
                 <div className="min-w-0 flex-1">
                   <TabsList className="h-9 min-w-0 w-full justify-start gap-0 bg-transparent border-none p-0 overflow-x-auto">
                     <DndContext
