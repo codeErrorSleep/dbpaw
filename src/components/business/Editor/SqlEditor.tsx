@@ -81,6 +81,12 @@ const aiDarkEditorOverrides = EditorView.theme(
   { dark: true },
 );
 
+const editorFontSizeExtension = EditorView.theme({
+  ".cm-scroller": {
+    fontSize: "1rem",
+  },
+});
+
 interface SqlEditorProps {
   queryResults?: {
     data: any[];
@@ -400,6 +406,7 @@ export function SqlEditor({
   const extensions = useMemo(() => {
     const exts: Extension[] = [
       EditorView.lineWrapping,
+      editorFontSizeExtension,
       sql({
         dialect,
         schema: sqlSchema,

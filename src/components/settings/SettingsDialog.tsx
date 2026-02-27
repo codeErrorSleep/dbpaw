@@ -1,5 +1,10 @@
 import { Bot, Info, Palette, RefreshCw, Settings2 } from "lucide-react";
-import { useTheme, Theme } from "@/components/theme-provider";
+import {
+  useTheme,
+  Theme,
+  MIN_FONT_SIZE_PX,
+  MAX_FONT_SIZE_PX,
+} from "@/components/theme-provider";
 import { useState, useEffect } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -121,7 +126,8 @@ const GITHUB_URL = "https://github.com/codeErrorSleep/dbpaw";
 const APP_VERSION = packageJson.version;
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const { theme, setTheme, accentColor, setAccentColor } = useTheme();
+  const { theme, setTheme, accentColor, setAccentColor, fontSizePx, setFontSizePx } =
+    useTheme();
   const [activeSection, setActiveSection] = useState<SettingsSection>("general");
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -136,10 +142,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     AI_PROVIDER_OPTIONS[0].model,
   );
   const [providerApiKey, setProviderApiKey] = useState("");
+  const [fontSizeInput, setFontSizeInput] = useState(String(fontSizePx));
+
+  const clampFontSize = (size: number) => {
+    const rounded = Math.round(size);
+    return Math.min(MAX_FONT_SIZE_PX, Math.max(MIN_FONT_SIZE_PX, rounded));
+  };
 
   useEffect(() => {
     if (open) {
       setActiveSection("general");
+      setFontSizeInput(String(fontSizePx));
       getSetting("autoUpdate", true).then(setAutoUpdate);
       api.ai.providers.list().then((list) => {
         setProviders(list);
@@ -155,6 +168,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       });
     }
   }, [open]);
+
+  useEffect(() => {
+    setFontSizeInput(String(fontSizePx));
+  }, [fontSizePx]);
 
   function applyProviderToForm(providerType: AIProviderType, source: AIProviderConfig[]) {
     const option = AI_PROVIDER_OPTIONS_BY_TYPE[providerType] ?? AI_PROVIDER_OPTIONS[0];
@@ -247,6 +264,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   };
 
+  const commitFontSizeInput = () => {
+    const trimmed = fontSizeInput.trim();
+    if (!trimmed) {
+      setFontSizeInput(String(fontSizePx));
+      return;
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      setFontSizeInput(String(fontSizePx));
+      return;
+    }
+
+    const normalized = clampFontSize(parsed);
+    setFontSizePx(normalized);
+    setFontSizeInput(String(normalized));
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[860px] w-[92vw] h-[80vh] max-h-[80vh] flex flex-col overflow-hidden">
@@ -318,6 +353,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         <SelectItem value="system">🖥️ System</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 items-center">
+                    <div className="space-y-1">
+                      <Label className="text-base">Font Size</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Adjust global text size across the app (Range: 10-24px)
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={MIN_FONT_SIZE_PX}
+                        max={MAX_FONT_SIZE_PX}
+                        step={1}
+                        value={fontSizeInput}
+                        onChange={(e) => setFontSizeInput(e.target.value)}
+                        onBlur={commitFontSizeInput}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitFontSizeInput();
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-muted-foreground">px</span>
+                    </div>
                   </div>
 
                   <div className="space-y-3 pt-2">
