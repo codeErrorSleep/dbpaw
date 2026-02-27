@@ -45,15 +45,17 @@ export function ThemeProvider({
     const root = document.documentElement;
     root.classList.remove("light", "dark");
 
+    let resolvedTheme: "dark" | "light";
     if (t === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
+      resolvedTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
-      root.classList.add(systemTheme);
     } else {
-      root.classList.add(t);
+      resolvedTheme = t;
     }
+
+    root.classList.add(resolvedTheme);
+    root.style.colorScheme = resolvedTheme;
   };
 
   // Helper to apply accent color
@@ -77,14 +79,14 @@ export function ThemeProvider({
     const loadSettings = async () => {
       const savedTheme = await getSetting<Theme>("theme", defaultTheme);
       const savedAccent = await getSetting<string>("accentColor", "Zinc");
-      
+
       setThemeState(savedTheme);
       setAccentColorState(savedAccent);
-      
+
       // Initial application
       applyTheme(savedTheme);
       applyAccentColor(savedAccent, savedTheme);
-      
+
       setIsLoaded(true);
     };
 
