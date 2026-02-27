@@ -33,10 +33,15 @@ function CodeBlock({
     );
   }
 
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(rawCode).then(() => {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(rawCode);
       toast.success("Copied");
-    });
+    } catch {
+      toast.error("Copy failed", {
+        description: "Please check clipboard permissions",
+      });
+    }
   };
 
   return (
