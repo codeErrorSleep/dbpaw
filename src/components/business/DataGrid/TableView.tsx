@@ -84,7 +84,7 @@ interface TableViewProps {
     limit?: number;
     filter?: string;
     orderBy?: string;
-  }) => void;
+  }) => void | Promise<unknown>;
   tableContext?: {
     connectionId: number;
     database: string;
@@ -207,6 +207,8 @@ export function TableView({
   const [columnComments, setColumnComments] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
@@ -612,7 +614,8 @@ export function TableView({
     }
   }, [tableContext, hasPendingChanges, generateUpdateSQL, onDataRefresh]);
 
-  const handleRefreshClick = useCallback(() => {
+  const handleRefreshClick = useCallback(async () => {
+    if (isRefreshing) return;
     if (hasPendingChanges) {
       const confirmed = window.confirm(
         "You have unsaved changes. Refreshing may discard your editing context. Continue?",
@@ -630,13 +633,38 @@ export function TableView({
     const nextFilter = whereInput.trim() || undefined;
     const nextOrderBy = orderByInput.trim() || undefined;
 
-    onDataRefresh?.({
-      page: nextPage,
-      limit: nextLimit,
-      filter: nextFilter,
-      orderBy: nextOrderBy,
-    });
-  }, [hasPendingChanges, pageInput, page, pageSizeInput, pageSize, whereInput, orderByInput, onDataRefresh]);
+    if (!onDataRefresh) return;
+
+    setIsRefreshing(true);
+    try {
+      const ret = onDataRefresh({
+        page: nextPage,
+        limit: nextLimit,
+        filter: nextFilter,
+        orderBy: nextOrderBy,
+      });
+      if (ret && typeof (ret as Promise<unknown>).then === "function") {
+        await ret;
+      } else {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      setLastRefreshedAt(new Date());
+    } catch (e) {
+      void e;
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    hasPendingChanges,
+    pageInput,
+    page,
+    pageSizeInput,
+    pageSize,
+    whereInput,
+    orderByInput,
+    onDataRefresh,
+    isRefreshing,
+  ]);
 
   // Helper: get display value for a cell (considering pending changes)
   const getCellDisplayValue = useCallback(
@@ -884,9 +912,10 @@ export function TableView({
                   size="sm"
                   className="h-7 gap-2"
                   onClick={handleRefreshClick}
-                  title="Refresh"
+                  disabled={isRefreshing}
+                  title={isRefreshing ? "Refreshing..." : "Refresh"}
                 >
-                  <RotateCw className="w-4 h-4" />
+                  <RotateCw className={["w-4 h-4", isRefreshing ? "animate-spin" : ""].filter(Boolean).join(" ")} />
                 </Button>
               )}
             </div>
@@ -1370,6 +1399,16 @@ export function TableView({
           Query executed in{" "}
           {executionTimeMs ? (executionTimeMs / 1000).toFixed(3) : "0.000"}s •{" "}
           {sortedData.length} rows returned
+          {isRefreshing && (
+            <span className="ml-2">
+              • Refreshing…
+            </span>
+          )}
+          {lastRefreshedAt && !isRefreshing && (
+            <span className="ml-2">
+              • Updated {lastRefreshedAt.toLocaleTimeString()}
+            </span>
+          )}
           {hasPendingChanges && (
             <span className="text-orange-600 dark:text-orange-400 ml-2">
               • {pendingChanges.size} unsaved change(s)
