@@ -1068,7 +1068,7 @@ export function TableView({
               />
             ))}
           </colgroup>
-          <thead className="bg-muted/40 sticky top-0 z-10">
+          <thead className="bg-muted/90 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
                 #
