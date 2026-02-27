@@ -430,7 +430,11 @@ export default function App() {
       setTabs([...tabs, newTab]);
       setActiveTab(tabId);
     } catch (e) {
-      console.error("get_table_data failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("get_table_data failed", errorMessage);
+      toast.error("Failed to load table data", {
+        description: errorMessage,
+      });
     }
   };
 
@@ -533,7 +537,11 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handleTableRefresh failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("handleTableRefresh failed", errorMessage);
+      toast.error("Failed to refresh table", {
+        description: errorMessage,
+      });
     }
   };
 
@@ -571,7 +579,11 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handlePageChange failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("handlePageChange failed", errorMessage);
+      toast.error("Failed to change page", {
+        description: errorMessage,
+      });
     }
   };
 
@@ -610,7 +622,11 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handlePageSizeChange failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("handlePageSizeChange failed", errorMessage);
+      toast.error("Failed to change page size", {
+        description: errorMessage,
+      });
     }
   };
 
@@ -658,7 +674,11 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handleSortChange failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("handleSortChange failed", errorMessage);
+      toast.error("Failed to sort table", {
+        description: errorMessage,
+      });
     }
   };
 
@@ -708,7 +728,11 @@ export default function App() {
         }),
       );
     } catch (e) {
-      console.error("handleFilterChange failed", e instanceof Error ? e.message : String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("handleFilterChange failed", errorMessage);
+      toast.error("Failed to filter table", {
+        description: errorMessage,
+      });
     }
   };
 
