@@ -459,38 +459,41 @@ impl DatabaseDriver for SqliteDriver {
             || sql_lower.contains(" returning ");
 
         if should_fetch_rows {
-            if let Ok(rows) = sqlx::query(&sql).fetch_all(&self.pool).await {
-                let mut data = Vec::new();
-                let mut columns = Vec::new();
+            let rows = sqlx::query(&sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
-                if let Some(first_row) = rows.first() {
-                    for col in first_row.columns() {
-                        columns.push(QueryColumn {
-                            name: col.name().to_string(),
-                            r#type: col.type_info().to_string(),
-                        });
-                    }
+            let mut data = Vec::new();
+            let mut columns = Vec::new();
+
+            if let Some(first_row) = rows.first() {
+                for col in first_row.columns() {
+                    columns.push(QueryColumn {
+                        name: col.name().to_string(),
+                        r#type: col.type_info().to_string(),
+                    });
                 }
-
-                for row in &rows {
-                    let mut obj = serde_json::Map::new();
-                    for col in row.columns() {
-                        let name = col.name();
-                        obj.insert(name.to_string(), sqlite_cell_to_json(row, name));
-                    }
-                    data.push(serde_json::Value::Object(obj));
-                }
-
-                let duration = start.elapsed();
-                return Ok(QueryResult {
-                    data,
-                    row_count: rows.len() as i64,
-                    columns,
-                    time_taken_ms: duration.as_millis() as i64,
-                    success: true,
-                    error: None,
-                });
             }
+
+            for row in &rows {
+                let mut obj = serde_json::Map::new();
+                for col in row.columns() {
+                    let name = col.name();
+                    obj.insert(name.to_string(), sqlite_cell_to_json(row, name));
+                }
+                data.push(serde_json::Value::Object(obj));
+            }
+
+            let duration = start.elapsed();
+            return Ok(QueryResult {
+                data,
+                row_count: rows.len() as i64,
+                columns,
+                time_taken_ms: duration.as_millis() as i64,
+                success: true,
+                error: None,
+            });
         }
 
         let exec = sqlx::query(&sql)
