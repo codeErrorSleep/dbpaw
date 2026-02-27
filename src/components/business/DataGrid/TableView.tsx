@@ -209,6 +209,7 @@ export function TableView({
   const [isExporting, setIsExporting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Sort state: controlled (via props) or uncontrolled (internal state for client-side sorting)
@@ -785,13 +786,16 @@ export function TableView({
       const container = containerRef.current;
       if (!container) return;
 
-      const activeElement = document.activeElement;
-      if (!activeElement || !container.contains(activeElement)) return;
+      const eventTarget = e.target instanceof Node ? e.target : null;
+      const eventInsideTable = eventTarget ? container.contains(eventTarget) : false;
+      const hasTableEditingContext =
+        eventInsideTable || !!selectedCell || !!editingCell || hasPendingChanges;
 
       if (isModKey(e) && e.key.toLowerCase() === "s") {
+        if (!hasTableEditingContext) return;
+        e.preventDefault();
         if (hasPendingChanges && !isSaving) {
-          e.preventDefault();
-          void handleSave();
+          saveButtonRef.current?.click();
         }
         return;
       }
@@ -815,9 +819,9 @@ export function TableView({
       window.removeEventListener("keydown", handleTableHotkeys);
     };
   }, [
+    selectedCell,
     hasPendingChanges,
     isSaving,
-    handleSave,
     editingCell,
     cancelEdit,
     handleDiscardChanges,
@@ -891,6 +895,7 @@ export function TableView({
               {hasPendingChanges && (
                 <>
                   <Button
+                    ref={saveButtonRef}
                     variant="default"
                     size="sm"
                     className="h-7 gap-1.5"
