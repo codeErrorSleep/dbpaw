@@ -43,6 +43,22 @@ export const mockTables: { schema: string; name: string; type: string }[] = [
   { schema: "public", name: "posts", type: "table" },
   { schema: "public", name: "comments", type: "table" },
   { schema: "public", name: "tags", type: "table" },
+  { schema: "public", name: "orders", type: "table" },
+  { schema: "public", name: "order_items", type: "table" },
+  { schema: "public", name: "products", type: "table" },
+  { schema: "public", name: "product_categories", type: "table" },
+  { schema: "public", name: "categories", type: "table" },
+  { schema: "public", name: "payments", type: "table" },
+  { schema: "public", name: "refunds", type: "table" },
+  { schema: "public", name: "invoices", type: "table" },
+  { schema: "public", name: "addresses", type: "table" },
+  { schema: "public", name: "audit_logs", type: "table" },
+  { schema: "public", name: "sessions", type: "table" },
+  { schema: "public", name: "roles", type: "table" },
+  { schema: "public", name: "user_roles", type: "table" },
+  { schema: "analytics", name: "page_views", type: "table" },
+  { schema: "analytics", name: "events", type: "table" },
+  { schema: "analytics", name: "funnels", type: "table" },
 ];
 
 export const mockTableStructure = {
@@ -274,8 +290,34 @@ const mockAiProviders: AIProviderConfig[] = [
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4.1-mini",
     apiKey: "sk-mock",
+    isDefault: false,
+    enabled: true,
+    extraJson: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    name: "OpenAI Compat",
+    providerType: "openai_compat",
+    baseUrl: "http://localhost:11434/v1",
+    model: "qwen2.5-coder:14b",
+    apiKey: "sk-mock",
     isDefault: true,
     enabled: true,
+    extraJson: JSON.stringify({ note: "mock provider" }),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    name: "Disabled Provider",
+    providerType: "openai",
+    baseUrl: "https://example.invalid/v1",
+    model: "gpt-4.1",
+    apiKey: "sk-mock",
+    isDefault: false,
+    enabled: false,
     extraJson: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -285,7 +327,7 @@ const mockAiProviders: AIProviderConfig[] = [
 const mockAiConversations: AIConversation[] = [
   {
     id: 1,
-    title: "Generate User Table",
+    title: "生成：订单列表 SQL",
     scenario: "sql_generate",
     connectionId: 1,
     database: "testdb",
@@ -294,12 +336,21 @@ const mockAiConversations: AIConversation[] = [
   },
   {
     id: 2,
-    title: "Optimize Query",
+    title: "优化：慢查询日志",
     scenario: "sql_optimize",
     connectionId: 1,
     database: "testdb",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    title: "解释：JOIN 语句",
+    scenario: "sql_explain",
+    connectionId: 1,
+    database: "testdb",
+    createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
   },
 ];
 
@@ -309,7 +360,7 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       id: 1,
       conversationId: 1,
       role: "user",
-      content: "Create a user table with id, name, and email.",
+      content: "列出最近 7 天每个用户的订单数量与总金额，按金额倒序。",
       createdAt: new Date(Date.now() - 86400000).toISOString(),
     },
     {
@@ -317,8 +368,8 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 1,
       role: "assistant",
       content:
-        "```sql\nCREATE TABLE users (\n  id SERIAL PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  email VARCHAR(255) NOT NULL UNIQUE\n);\n```",
-      model: "gpt-4",
+        "SELECT u.id,\n       u.username,\n       COUNT(o.id) AS order_count,\n       COALESCE(SUM(o.total_amount), 0) AS total_amount\nFROM public.users u\nLEFT JOIN public.orders o\n  ON o.user_id = u.id\n AND o.created_at >= NOW() - INTERVAL '7 days'\nGROUP BY u.id, u.username\nORDER BY total_amount DESC;",
+      model: "mock-model",
       createdAt: new Date(Date.now() - 86400000 + 1000).toISOString(),
     },
   ],
@@ -328,7 +379,7 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 2,
       role: "user",
       content:
-        "Optimize this query: SELECT * FROM logs WHERE created_at > '2023-01-01'",
+        "优化这个查询：SELECT * FROM audit_logs WHERE created_at > NOW() - INTERVAL '30 days' AND action = 'login'",
       createdAt: new Date().toISOString(),
     },
     {
@@ -336,9 +387,28 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 2,
       role: "assistant",
       content:
-        "To optimize this query, consider adding an index on `created_at` column.\n\n```sql\nCREATE INDEX idx_logs_created_at ON logs(created_at);\n```",
-      model: "gpt-4",
+        "SELECT id, user_id, action, created_at, ip\nFROM public.audit_logs\nWHERE action = 'login'\n  AND created_at > NOW() - INTERVAL '30 days'\nORDER BY created_at DESC;",
+      model: "mock-model",
       createdAt: new Date(Date.now() + 2000).toISOString(),
+    },
+  ],
+  3: [
+    {
+      id: 5,
+      conversationId: 3,
+      role: "user",
+      content:
+        "解释这条 SQL 在做什么：SELECT p.id, p.title FROM posts p JOIN users u ON u.id = p.user_id WHERE u.email LIKE '%@example.com' ORDER BY p.id DESC LIMIT 20",
+      createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    },
+    {
+      id: 6,
+      conversationId: 3,
+      role: "assistant",
+      content:
+        "这条 SQL 的意图是：\n1) 从 posts 表取文章（p.id, p.title）。\n2) 通过 p.user_id = u.id 关联 users 表，筛选作者邮箱以 @example.com 结尾（LIKE '%@example.com'）。\n3) 结果按文章 id 倒序排列，取最近 20 条。\n\n如果 posts 很大，建议确保 posts(user_id) 有索引，users(email) 也有索引（或使用更合适的模式匹配策略）。",
+      model: "mock-model",
+      createdAt: new Date(Date.now() - 3 * 3600 * 1000 + 1000).toISOString(),
     },
   ],
 };
@@ -985,6 +1055,7 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
     case "ai_chat_start":
     case "ai_chat_continue": {
       const input = args.request.input as string;
+      const selectedTables = (args.request.selectedTables as Array<{ schema: string; name: string }> | undefined) || [];
       let conversationId = args.request.conversationId as number | undefined;
       if (!conversationId) {
         conversationId = mockAiConversations.length
@@ -1013,11 +1084,30 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
         id: msgs.length + 1,
         conversationId,
         role: "assistant",
-        content: `SELECT * FROM users -- mock response for: ${input}`,
+        content: (() => {
+          const scenario = String(args.request.scenario || "sql_generate");
+          const first = selectedTables[0];
+          const from = first ? `${first.schema}.${first.name}` : "public.users";
+          if (scenario === "sql_optimize") {
+            return `SELECT *\nFROM ${from}\nWHERE 1=1\nLIMIT 100;`;
+          }
+          if (scenario === "sql_explain") {
+            return `这是一条 mock 解释：SQL 主要从 ${from} 读取数据。`;
+          }
+          if (selectedTables.length > 0) {
+            const names = selectedTables.map((t) => `${t.schema}.${t.name}`).join(", ");
+            return `SELECT *\nFROM ${from}\n-- selected tables: ${names}\nLIMIT 50;`;
+          }
+          return `SELECT *\nFROM ${from}\nLIMIT 50;`;
+        })(),
         model: "mock-model",
         createdAt: now,
       } as any);
       mockAiMessages[conversationId] = msgs;
+      const idx = mockAiConversations.findIndex((x) => x.id === conversationId);
+      if (idx >= 0) {
+        mockAiConversations[idx] = { ...mockAiConversations[idx], updatedAt: now };
+      }
       return Promise.resolve({
         conversationId,
         userMessageId: msgs[msgs.length - 2].id,
