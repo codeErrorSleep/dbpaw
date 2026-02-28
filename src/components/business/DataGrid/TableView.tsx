@@ -1046,70 +1046,88 @@ export function TableView({
   return (
     <div ref={containerRef} className="h-full flex flex-col bg-background">
       {!hideHeader && (
-        <div className="flex flex-col gap-1.5 px-4 py-2 border-b border-border">
+        <div className="flex flex-col gap-1.5 px-4 py-2 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">page</span>
-              <Input
-                type="text"
-                inputMode="numeric"
-                className="h-7 w-8 px-2 text-xs"
-                value={pageInput}
-                onChange={(e) =>
-                  setPageInput(e.target.value.replace(/\D/g, ""))
-                }
-                onBlur={handlePageInputCommit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handlePageInputCommit();
-                  }
-                }}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7"
-                onClick={handlePrevPage}
-                disabled={page <= 1}
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7"
-                onClick={handleNextPage}
-                disabled={page >= totalPages}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground">limit</span>
-              <Select
-                value={pageSizeInput}
-                onValueChange={handlePageSizeChange}
-              >
-                <SelectTrigger className="!h-7 w-20 text-xs [&_svg]:size-3">
-                  <SelectValue placeholder="100" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-1.5">
+              {/* Modern pagination control */}
+              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-0.5 border border-border/50">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-background"
+                  onClick={handlePrevPage}
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </Button>
+                <div className="flex items-center gap-1 px-1">
+                  <span className="text-xs text-muted-foreground">Page</span>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    className="h-5 w-10 px-1.5 text-xs text-center bg-background border-border/50"
+                    value={pageInput}
+                    onChange={(e) =>
+                      setPageInput(e.target.value.replace(/\D/g, ""))
+                    }
+                    onBlur={handlePageInputCommit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handlePageInputCommit();
+                      }
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    / {totalPages}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-background"
+                  onClick={handleNextPage}
+                  disabled={page >= totalPages}
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+
+              {/* Page size selector */}
+              <div className="flex items-center gap-2 ml-1">
+                <span className="text-xs text-muted-foreground">Limit</span>
+                <Select
+                  value={pageSizeInput}
+                  onValueChange={handlePageSizeChange}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-[70px] text-xs border-border/50 bg-muted/40 [&_svg]:size-3 px-2 gap-1 data-[size=sm]:h-6 data-[size=sm]:py-0"
+                  >
+                    <SelectValue placeholder="100" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={size} className="text-xs">
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {tableContext && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="h-7 gap-2"
+                  className="h-6 w-6 p-0 hover:bg-muted/60"
                   onClick={handleRefreshClick}
                   disabled={isRefreshing}
                   title={isRefreshing ? "Refreshing..." : "Refresh"}
                 >
                   <RotateCw
-                    className={["w-4 h-4", isRefreshing ? "animate-spin" : ""]
+                    className={[
+                      "w-3.5 h-3.5",
+                      isRefreshing ? "animate-spin" : "",
+                    ]
                       .filter(Boolean)
                       .join(" ")}
                   />
@@ -1118,47 +1136,49 @@ export function TableView({
               <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                 <PopoverTrigger asChild>
                   <Button
-                    variant={isSearchOpen ? "default" : "outline"}
+                    variant={isSearchOpen ? "secondary" : "ghost"}
                     size="sm"
-                    className="h-7 w-7 p-0"
+                    className="h-6 w-6 p-0 hover:bg-muted/60"
                     title="Search in current table (Ctrl/Cmd+F)"
                   >
-                    <Search className="w-4 h-4" />
+                    <Search className="w-3.5 h-3.5" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
                   align="start"
                   side="bottom"
                   sideOffset={6}
-                  className="w-[320px] p-2 space-y-1"
+                  className="w-[320px] p-3 space-y-2 shadow-lg"
                 >
                   <div className="flex items-center gap-2">
-                    <Input
-                      ref={searchInputRef}
-                      type="text"
-                      placeholder="Search keyword..."
-                      className="h-7 text-xs"
-                      value={searchKeyword}
-                      onChange={(e) => setSearchKeyword(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleSearchEnter();
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setIsSearchOpen(false);
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => setIsSearchOpen(false)}
-                      title="Close search"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        ref={searchInputRef}
+                        type="text"
+                        placeholder="Search keyword..."
+                        className="h-8 pl-8 pr-8 text-xs"
+                        value={searchKeyword}
+                        onChange={(e) => setSearchKeyword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleSearchEnter();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setIsSearchOpen(false);
+                          }
+                        }}
+                      />
+                      {searchKeyword && (
+                        <button
+                          onClick={() => setSearchKeyword("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {normalizedSearchKeyword ? (
                     <div className="text-[11px] text-muted-foreground">
@@ -1182,51 +1202,51 @@ export function TableView({
               </Popover>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {hasPendingChanges && (
-                <>
+                <div className="flex items-center gap-1 bg-amber-500/10 rounded-lg p-0.5 border border-amber-500/20">
                   <Button
                     ref={saveButtonRef}
-                    variant="default"
+                    variant="ghost"
                     size="sm"
-                    className="h-7 gap-1.5"
+                    className="h-6 gap-1.5 text-xs hover:bg-amber-500/20 text-amber-700 dark:text-amber-400"
                     onClick={handleSave}
                     disabled={isSaving}
                     title="Save changes (Cmd/Ctrl+S)"
                   >
                     {isSaving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
-                      <Save className="w-4 h-4" />
+                      <Save className="w-3.5 h-3.5" />
                     )}
                     Save
-                    <span className="bg-primary-foreground/20 text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                    <span className="bg-amber-500/20 text-amber-700 dark:text-amber-400 text-[10px] px-1.5 py-0 rounded-full font-medium">
                       {pendingChanges.size}
                     </span>
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="h-7 gap-1.5"
+                    className="h-6 w-6 p-0 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400"
                     onClick={handleDiscardChanges}
                     disabled={isSaving}
                     title="Discard changes (Esc)"
                   >
-                    <Undo2 className="w-4 h-4" />
-                    Undo
+                    <Undo2 className="w-3.5 h-3.5" />
                   </Button>
-                </>
+                </div>
               )}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="h-7 gap-2"
+                    className="h-6 w-6 p-0 hover:bg-muted/60"
                     disabled={!tableContext || isExporting}
+                    title="Export data"
                   >
-                    <Download className="w-4 h-4" />
+                    <Download className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -1303,13 +1323,13 @@ export function TableView({
 
               {tableContext && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="h-7 gap-2"
+                  className="h-6 w-6 p-0 hover:bg-muted/60"
                   onClick={handleShowDDL}
                   title="View Table Structure (DDL)"
                 >
-                  <FileCode className="w-4 h-4" />
+                  <FileCode className="w-3.5 h-3.5" />
                 </Button>
               )}
             </div>
@@ -1490,15 +1510,13 @@ export function TableView({
                             data-row-index={rowIndex}
                             data-col-index={colIndex}
                             className={[
-                              "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative",
-                              selected && !editing
-                                ? "bg-primary/10 ring-1 ring-inset ring-primary/50"
-                                : "",
+                              "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative transition-all duration-150 ease-out",
+                              selected && !editing ? "bg-primary/10" : "",
                               matched && !editing
                                 ? "bg-amber-100/60 dark:bg-amber-900/20"
                                 : "",
                               activeSearchMatch && !editing
-                                ? "ring-2 ring-inset ring-amber-500/70"
+                                ? "border-b-2 border-b-amber-500/70"
                                 : "",
                               modified && !editing
                                 ? "border-l-2 border-l-orange-400"
@@ -1528,7 +1546,7 @@ export function TableView({
                                 ref={editInputRef}
                                 type="text"
                                 autoCapitalize="off"
-                                className="w-full h-full px-4 py-2 bg-background border-2 border-primary outline-none font-mono text-sm"
+                                className="w-full h-full px-4 py-2 bg-background border-2 border-primary outline-none font-mono text-sm shadow-[0_0_0_3px_rgba(var(--primary)_0.15)] animate-in fade-in zoom-in-95 duration-150"
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
                                 onKeyDown={handleEditKeyDown}
@@ -1537,7 +1555,7 @@ export function TableView({
                             ) : (
                               <div className="px-4 py-2 truncate">
                                 {displayValue !== null &&
-                                displayValue !== undefined ? (
+                                  displayValue !== undefined ? (
                                   <span
                                     className={
                                       modified
