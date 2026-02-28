@@ -16,6 +16,8 @@ import {
   Undo2,
   Loader2,
   RotateCw,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, isTauri } from "@/services/api";
 import type { TransferFormat } from "@/services/api";
 import { isEditableTarget, isModKey } from "@/lib/keyboard";
@@ -55,6 +58,12 @@ interface PendingChange {
   column: string;
   originalValue: any;
   newValue: string;
+}
+
+interface SearchMatch {
+  row: number;
+  col: string;
+  colIndex: number;
 }
 
 interface TableViewProps {
@@ -210,7 +219,11 @@ export function TableView({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchCursorIndex, setSearchCursorIndex] = useState(-1);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -738,8 +751,85 @@ export function TableView({
     ? sortedData
     : sortedData.slice((page - 1) * pageSize, page * pageSize);
 
+  const normalizedSearchKeyword = searchKeyword.trim().toLowerCase();
+
+  const searchMatches = useMemo(() => {
+    if (!normalizedSearchKeyword) {
+      return [] as SearchMatch[];
+    }
+
+    const matches: SearchMatch[] = [];
+    currentData.forEach((row, rowIndex) => {
+      columns.forEach((column, colIndex) => {
+        const value = getCellDisplayValue(rowIndex, column, row[column]);
+        if (value === null || value === undefined) return;
+        const content = String(value).toLowerCase();
+        if (content.includes(normalizedSearchKeyword)) {
+          matches.push({ row: rowIndex, col: column, colIndex });
+        }
+      });
+    });
+    return matches;
+  }, [normalizedSearchKeyword, currentData, columns, getCellDisplayValue]);
+
+  const matchedRows = useMemo(() => {
+    const rows = new Set<number>();
+    searchMatches.forEach((match) => {
+      rows.add(match.row);
+    });
+    return rows;
+  }, [searchMatches]);
+
+  const matchedCellKeys = useMemo(() => {
+    const keys = new Set<string>();
+    searchMatches.forEach((match) => {
+      keys.add(`${match.row}::${match.col}`);
+    });
+    return keys;
+  }, [searchMatches]);
+
+  const currentSearchMatch =
+    searchCursorIndex >= 0 && searchCursorIndex < searchMatches.length
+      ? searchMatches[searchCursorIndex]
+      : null;
+
   // Correctly calculate start index for display
   const startIndex = (page - 1) * pageSize;
+
+  const focusSearchInput = useCallback(() => {
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, []);
+
+  const jumpToSearchMatch = useCallback(
+    (matchIndex: number) => {
+      if (!searchMatches.length) return;
+      const safeIndex = ((matchIndex % searchMatches.length) + searchMatches.length) % searchMatches.length;
+      const nextMatch = searchMatches[safeIndex];
+
+      if (editingCell) {
+        commitEdit();
+      }
+
+      setSelectedCell({ row: nextMatch.row, col: nextMatch.col });
+      setSearchCursorIndex(safeIndex);
+
+      requestAnimationFrame(() => {
+        const row = nextMatch.row;
+        const colIndex = nextMatch.colIndex;
+        const target = containerRef.current?.querySelector<HTMLElement>(
+          `td[data-row-index="${row}"][data-col-index="${colIndex}"]`,
+        );
+        target?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      });
+    },
+    [searchMatches, editingCell, commitEdit],
+  );
+
+  const handleSearchEnter = useCallback(() => {
+    if (!searchMatches.length) return;
+    const nextIndex = searchCursorIndex < 0 ? 0 : searchCursorIndex + 1;
+    jumpToSearchMatch(nextIndex);
+  }, [searchMatches, searchCursorIndex, jumpToSearchMatch]);
 
   const handlePrevPage = () => {
     if (page > 1) {
@@ -810,6 +900,26 @@ export function TableView({
   }, [handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
+    setSearchCursorIndex(-1);
+  }, [normalizedSearchKeyword]);
+
+  useEffect(() => {
+    if (!searchMatches.length) {
+      setSearchCursorIndex(-1);
+      return;
+    }
+    if (searchCursorIndex >= searchMatches.length) {
+      setSearchCursorIndex(0);
+    }
+  }, [searchMatches, searchCursorIndex]);
+
+  useEffect(() => {
+    if (isSearchOpen) {
+      focusSearchInput();
+    }
+  }, [isSearchOpen, focusSearchInput]);
+
+  useEffect(() => {
     const handleTableHotkeys = (e: KeyboardEvent) => {
       const container = containerRef.current;
       if (!container) return;
@@ -827,6 +937,14 @@ export function TableView({
         if (hasPendingChanges && !isSaving) {
           saveButtonRef.current?.click();
         }
+        return;
+      }
+
+      if (isModKey(e) && e.key.toLowerCase() === "f") {
+        if (isEditableTarget(e.target)) return;
+        e.preventDefault();
+        setIsSearchOpen(true);
+        focusSearchInput();
         return;
       }
 
@@ -861,6 +979,7 @@ export function TableView({
     editingCell,
     cancelEdit,
     handleDiscardChanges,
+    focusSearchInput,
   ]);
 
   return (
@@ -926,6 +1045,68 @@ export function TableView({
                   <RotateCw className={["w-4 h-4", isRefreshing ? "animate-spin" : ""].filter(Boolean).join(" ")} />
                 </Button>
               )}
+              <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={isSearchOpen ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    title="Search in current table (Ctrl/Cmd+F)"
+                  >
+                    <Search className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  side="bottom"
+                  sideOffset={6}
+                  className="w-[320px] p-2 space-y-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Search keyword..."
+                      className="h-7 text-xs"
+                      value={searchKeyword}
+                      onChange={(e) => setSearchKeyword(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSearchEnter();
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setIsSearchOpen(false);
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setIsSearchOpen(false)}
+                      title="Close search"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {normalizedSearchKeyword ? (
+                    <div className="text-[11px] text-muted-foreground">
+                      {matchedRows.size} row(s), {searchMatches.length} match(es)
+                      {currentSearchMatch
+                        ? ` • ${searchCursorIndex + 1}/${searchMatches.length}`
+                        : ""}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground">
+                      Enter keyword, press Enter to jump next match
+                    </div>
+                  )}
+                  {normalizedSearchKeyword && searchMatches.length === 0 && (
+                    <div className="text-[11px] text-muted-foreground">No matches in current table view</div>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1189,18 +1370,27 @@ export function TableView({
                       <td className="px-4 py-2 text-xs text-muted-foreground border-r border-border">
                         {startIndex + rowIndex + 1}
                       </td>
-                      {columns.map((column) => {
+                      {columns.map((column, colIndex) => {
                         const modified = isCellModified(rowIndex, column);
                         const displayValue = getCellDisplayValue(rowIndex, column, row[column]);
                         const editing = isEditing(column);
                         const selected = isSelected(column);
+                        const matched = normalizedSearchKeyword.length > 0 && matchedCellKeys.has(`${rowIndex}::${column}`);
+                        const activeSearchMatch =
+                          !!currentSearchMatch &&
+                          currentSearchMatch.row === rowIndex &&
+                          currentSearchMatch.col === column;
 
                         return (
                           <td
                             key={column}
+                            data-row-index={rowIndex}
+                            data-col-index={colIndex}
                             className={[
                               "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative",
                               selected && !editing ? "bg-primary/10 ring-1 ring-inset ring-primary/50" : "",
+                              matched && !editing ? "bg-amber-100/60 dark:bg-amber-900/20" : "",
+                              activeSearchMatch && !editing ? "ring-2 ring-inset ring-amber-500/70" : "",
                               modified && !editing ? "border-l-2 border-l-orange-400" : "",
                               isEditable ? "cursor-pointer" : "",
                             ]
@@ -1407,6 +1597,11 @@ export function TableView({
           Query executed in{" "}
           {executionTimeMs ? (executionTimeMs / 1000).toFixed(3) : "0.000"}s •{" "}
           {sortedData.length} rows returned
+          {normalizedSearchKeyword && (
+            <span className="ml-2">
+              • {matchedRows.size} row(s) matched "{searchKeyword.trim()}"
+            </span>
+          )}
           {isRefreshing && (
             <span className="ml-2">
               • Refreshing…
