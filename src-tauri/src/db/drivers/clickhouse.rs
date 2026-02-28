@@ -166,7 +166,23 @@ fn has_format_clause(sql: &str) -> bool {
 
 fn is_json_format(sql: &str) -> bool {
     let lower = trim_trailing_semicolon(sql).to_ascii_lowercase();
-    lower.contains(" format json")
+    // Split by "format" and check if the part after it starts with whitespace + "json"
+    if let Some(pos) = lower.find("format") {
+        let before = &lower[..pos];
+        // Ensure "format" is a separate word (preceded by whitespace or at start)
+        if !before.is_empty() && !before.ends_with(|c: char| c.is_ascii_whitespace()) {
+            return false;
+        }
+        let after = &lower[pos + 6..];
+        // Must have whitespace after "format", then "json" as a separate word
+        let after_trimmed = after.trim_start();
+        after_trimmed.starts_with("json") && {
+            let after_json = &after_trimmed[4..];
+            after_json.is_empty() || after_json.starts_with(|c: char| c.is_ascii_whitespace())
+        }
+    } else {
+        false
+    }
 }
 
 fn ensure_json_format(sql: &str) -> String {
