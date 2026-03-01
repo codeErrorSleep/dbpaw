@@ -355,7 +355,7 @@ const mockAiProviders: AIProviderConfig[] = [
 const mockAiConversations: AIConversation[] = [
   {
     id: 1,
-    title: "生成：订单列表 SQL",
+    title: "Generate: Order List SQL",
     scenario: "sql_generate",
     connectionId: 1,
     database: "testdb",
@@ -364,7 +364,7 @@ const mockAiConversations: AIConversation[] = [
   },
   {
     id: 2,
-    title: "优化：慢查询日志",
+    title: "Optimize: Slow Query Log",
     scenario: "sql_optimize",
     connectionId: 1,
     database: "testdb",
@@ -373,12 +373,21 @@ const mockAiConversations: AIConversation[] = [
   },
   {
     id: 3,
-    title: "解释：JOIN 语句",
+    title: "Explain: JOIN Statement",
     scenario: "sql_explain",
     connectionId: 1,
     database: "testdb",
     createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+  },
+  {
+    id: 4,
+    title: "Test: Markdown Rendering",
+    scenario: "general_chat",
+    connectionId: 1,
+    database: "testdb",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -388,7 +397,7 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       id: 1,
       conversationId: 1,
       role: "user",
-      content: "列出最近 7 天每个用户的订单数量与总金额，按金额倒序。",
+      content: "List order count and total amount for each user in the last 7 days, ordered by total amount descending.",
       createdAt: new Date(Date.now() - 86400000).toISOString(),
     },
     {
@@ -407,7 +416,7 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 2,
       role: "user",
       content:
-        "优化这个查询：SELECT * FROM audit_logs WHERE created_at > NOW() - INTERVAL '30 days' AND action = 'login'",
+        "Optimize this query: SELECT * FROM audit_logs WHERE created_at > NOW() - INTERVAL '30 days' AND action = 'login'",
       createdAt: new Date().toISOString(),
     },
     {
@@ -426,7 +435,7 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 3,
       role: "user",
       content:
-        "解释这条 SQL 在做什么：SELECT p.id, p.title FROM posts p JOIN users u ON u.id = p.user_id WHERE u.email LIKE '%@example.com' ORDER BY p.id DESC LIMIT 20",
+        "Explain what this SQL does: SELECT p.id, p.title FROM posts p JOIN users u ON u.id = p.user_id WHERE u.email LIKE '%@example.com' ORDER BY p.id DESC LIMIT 20",
       createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
     },
     {
@@ -434,9 +443,27 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
       conversationId: 3,
       role: "assistant",
       content:
-        "这条 SQL 的意图是：\n1) 从 posts 表取文章（p.id, p.title）。\n2) 通过 p.user_id = u.id 关联 users 表，筛选作者邮箱以 @example.com 结尾（LIKE '%@example.com'）。\n3) 结果按文章 id 倒序排列，取最近 20 条。\n\n如果 posts 很大，建议确保 posts(user_id) 有索引，users(email) 也有索引（或使用更合适的模式匹配策略）。",
+        "The intent of this SQL is:\n1) Select posts (p.id, p.title) from posts table.\n2) Join users table via p.user_id = u.id, filtering author emails ending with @example.com.\n3) Sort results by post id descending, taking the latest 20.\n\nIf posts table is large, ensure indexes on posts(user_id) and users(email) (or use appropriate pattern matching strategy).",
       model: "mock-model",
       createdAt: new Date(Date.now() - 3 * 3600 * 1000 + 1000).toISOString(),
+    },
+  ],
+  4: [
+    {
+      id: 7,
+      conversationId: 4,
+      role: "user",
+      content: "Please show various Markdown formats, including code blocks, blockquotes, emphasis, etc.",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 8,
+      conversationId: 4,
+      role: "assistant",
+      content:
+        "Okay, here is a showcase of various Markdown formats:\\n\\n### 1. Code Blocks\\n\\n**SQL Query:**\\n```sql\\nSELECT u.id,\\n       u.username,\\n       COUNT(o.id) AS order_count,\\n       COALESCE(SUM(o.total_amount), 0) AS total_amount\\nFROM public.users u\\nLEFT JOIN public.orders o\\n  ON o.user_id = u.id\\n AND o.created_at >= NOW() - INTERVAL '7 days'\\nGROUP BY u.id, u.username\\nORDER BY total_amount DESC;\\n```\\n\\n**JavaScript:**\\n```javascript\\nfunction hello(name) {\\n  console.log('Hello, World!');\\n}\\n```\\n\\n### 2. Blockquotes\\n\\n> This is a blockquote.\\n> It can contain multiple lines.\\n>\\n> > It can even be nested.\\n\\n### 3. Emphasis\\n\\n*   **Bold Text**\\n*   *Italic Text*\\n*   ***Bold Italic***\\n*   ~~Strikethrough~~\\n\\n### 4. Lists\\n\\n**Unordered List:**\\n- Item A\\n- Item B\\n  - Subitem B.1\\n  - Subitem B.2\\n\\n**Ordered List:**\\n1. Step 1\\n2. Step 2\\n3. Step 3\\n\\n### 5. Tables\\n\\n| Name | Age | Occupation |\\n| :--- | :---: | ---: |\\n| Alice | 25 | Engineer |\\n| Bob | 30 | Designer |\\n| Charlie | 28 | Product Manager |\\n\\n### 6. Links & Inline Code\\n\\nThis is a [link](https://example.com), and this is inline code `const x = 1`.",
+      model: "mock-model",
+      createdAt: new Date(Date.now() + 1000).toISOString(),
     },
   ],
 };
@@ -1175,11 +1202,20 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
           const scenario = String(args.request.scenario || "sql_generate");
           const first = selectedTables[0];
           const from = first ? `${first.schema}.${first.name}` : "public.users";
+
+          // Check for markdown test request
+          if (
+            input.toLowerCase().includes("markdown") ||
+            input.includes("format")
+          ) {
+            return "Okay, here is a showcase of various Markdown formats:\n\n### 1. Code Blocks\n\n**SQL Query:**\n```sql\nSELECT u.id,\n       u.username,\n       COUNT(o.id) AS order_count,\n       COALESCE(SUM(o.total_amount), 0) AS total_amount\nFROM public.users u\nLEFT JOIN public.orders o\n  ON o.user_id = u.id\n AND o.created_at >= NOW() - INTERVAL '7 days'\nGROUP BY u.id, u.username\nORDER BY total_amount DESC;\n```\n\n**JavaScript:**\n```javascript\nfunction hello(name) {\n  console.log('Hello, World!');\n}\n```\n\n### 2. Blockquotes\n\n> This is a blockquote.\n> It can contain multiple lines.\n>\n> > It can even be nested.\n\n### 3. Emphasis\n\n*   **Bold Text**\n*   *Italic Text*\n*   ***Bold Italic***\n*   ~~Strikethrough~~\n\n### 4. Lists\n\n**Unordered List:**\n- Item A\n- Item B\n  - Subitem B.1\n  - Subitem B.2\n\n**Ordered List:**\n1. Step 1\n2. Step 2\n3. Step 3\n\n### 5. Tables\n\n| Name | Age | Occupation |\n| :--- | :---: | ---: |\n| Alice | 25 | Engineer |\n| Bob | 30 | Designer |\n| Charlie | 28 | Product Manager |\n\n### 6. Links & Inline Code\n\nThis is a [link](https://example.com), and this is inline code `const x = 1`.";
+          }
+
           if (scenario === "sql_optimize") {
             return `SELECT *\nFROM ${from}\nWHERE 1=1\nLIMIT 100;`;
           }
           if (scenario === "sql_explain") {
-            return `这是一条 mock 解释：SQL 主要从 ${from} 读取数据。`;
+            return `This is a mock explanation: The SQL mainly reads data from ${from}.`;
           }
           if (selectedTables.length > 0) {
             const names = selectedTables

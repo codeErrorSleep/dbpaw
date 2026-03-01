@@ -39,6 +39,7 @@ export function TableSelector({
   disabled,
 }: TableSelectorProps) {
   const [open, setOpen] = useState(false);
+  const hasSelection = value.length > 0;
   const selected = useMemo(() => new Set(value.map(toKey)), [value]);
   const byKey = useMemo(() => {
     const map = new Map<string, SelectedTableRef>();
@@ -65,21 +66,48 @@ export function TableSelector({
       : `Schema: ${value.length} selected`;
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div className="min-w-0">
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-full min-w-0 justify-between gap-2 border-border/60 bg-muted/20 text-xs"
-            disabled={disabled || tables.length === 0}
-            aria-label="Only schema,no data"
-          >
-            <span className="truncate">{label}</span>
+        <div className="relative min-w-0">
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                "h-8 w-full min-w-0 justify-start border-border/60 bg-muted/20 pr-9 text-xs",
+                hasSelection && "pr-14",
+              )}
+              disabled={disabled || tables.length === 0}
+              aria-label="Only schema,no data"
+            >
+              <span className="truncate">{label}</span>
+            </Button>
+          </PopoverTrigger>
+          <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5">
+            {hasSelection ? (
+              <button
+                type="button"
+                className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={disabled}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                title="Clear table selection"
+                aria-label="Clear table selection"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-60" />
-          </Button>
-        </PopoverTrigger>
+          </div>
+        </div>
         <PopoverContent align="start" className="w-[320px] p-0">
           <Command>
             <CommandInput placeholder="Search tables..." />
@@ -113,19 +141,6 @@ export function TableSelector({
           </Command>
         </PopoverContent>
       </Popover>
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0 rounded-md"
-        disabled={disabled || value.length === 0}
-        onClick={() => onChange([])}
-        title="Clear table selection"
-        aria-label="Clear table selection"
-      >
-        <X className="h-4 w-4 opacity-70" />
-      </Button>
     </div>
   );
 }
