@@ -743,6 +743,106 @@ export function TableView({
     [columns, currentData, getCellDisplayValue],
   );
 
+  const buildRowsCSV = useCallback(
+    (rowIndexes: number[]) => {
+      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
+      return orderedRows
+        .map((rowIndex) => {
+          const row = currentData[rowIndex];
+          if (!row) return "";
+          return columns
+            .map((col) => {
+              const value = getCellDisplayValue(rowIndex, col, row[col]);
+              if (value === null || value === undefined) return "";
+              const str = String(value);
+              if (
+                str.includes(",") ||
+                str.includes('"') ||
+                str.includes("\n")
+              ) {
+                return `"${str.replace(/"/g, '""')}"`;
+              }
+              return str;
+            })
+            .join(",");
+        })
+        .filter((line) => line.length > 0)
+        .join("\n");
+    },
+    [columns, currentData, getCellDisplayValue],
+  );
+
+  const buildRowsInsertSQL = useCallback(
+    (rowIndexes: number[]) => {
+      if (!tableContext) return "";
+      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
+      const { schema, table, driver } = tableContext;
+      const tableName = getQualifiedTableName(driver, schema, table);
+      const cols = columns.map((c) => quoteIdent(driver, c)).join(", ");
+
+      return orderedRows
+        .map((rowIndex) => {
+          const row = currentData[rowIndex];
+          if (!row) return "";
+          const vals = columns
+            .map((col) => {
+              const val = getCellDisplayValue(rowIndex, col, row[col]);
+              return formatSQLValue(
+                val === null || val === undefined ? "" : String(val),
+                row[col],
+                "copy",
+              );
+            })
+            .join(", ");
+          return `INSERT INTO ${tableName} (${cols}) VALUES (${vals});`;
+        })
+        .filter((line) => line.length > 0)
+        .join("\n");
+    },
+    [columns, currentData, getCellDisplayValue, tableContext],
+  );
+
+  const buildRowsUpdateSQL = useCallback(
+    (rowIndexes: number[]) => {
+      if (!tableContext || primaryKeys.length === 0) return "";
+      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
+      const { schema, table, driver } = tableContext;
+      const tableName = getQualifiedTableName(driver, schema, table);
+
+      return orderedRows
+        .map((rowIndex) => {
+          const row = currentData[rowIndex];
+          if (!row) return "";
+
+          const setClauses = columns.map((col) => {
+            const val = getCellDisplayValue(rowIndex, col, row[col]);
+            const formattedValue = formatSQLValue(
+              val === null || val === undefined ? "" : String(val),
+              row[col],
+              "copy",
+            );
+            return `${quoteIdent(driver, col)} = ${formattedValue}`;
+          });
+
+          const whereClauses = primaryKeys.map((pk) => {
+            const pkValue = row[pk];
+            if (pkValue === null || pkValue === undefined) {
+              return `${quoteIdent(driver, pk)} IS NULL`;
+            }
+            if (typeof pkValue === "number") {
+              return `${quoteIdent(driver, pk)} = ${pkValue}`;
+            }
+            return `${quoteIdent(driver, pk)} = '${escapeSQL(String(pkValue))}'`;
+          });
+
+          return `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")};`;
+        })
+        .filter((line) => line.length > 0)
+        .join("\n");
+    },
+    [columns, currentData, getCellDisplayValue, primaryKeys, tableContext],
+  );
+
   const normalizedSearchKeyword = searchKeyword.trim().toLowerCase();
 
   const searchMatches = useMemo(() => {
@@ -1439,6 +1539,9 @@ export function TableView({
               const isRowSelected = selectedRows.has(rowIndex);
               const isMultiRowCopyTarget =
                 isRowSelected && selectedRows.size > 1;
+              const copyTargetRows = isMultiRowCopyTarget
+                ? Array.from(selectedRows)
+                : [rowIndex];
 
               return (
                 <ContextMenu key={rowIndex}>
@@ -1506,9 +1609,12 @@ export function TableView({
                               minWidth: 50,
                             }}
                             onClick={() => handleCellClick(rowIndex, column)}
-                            onContextMenu={() =>
-                              handleCellClick(rowIndex, column)
-                            }
+                            onContextMenu={() => {
+                              if (selectedRows.size > 1 && selectedRows.has(rowIndex)) {
+                                return;
+                              }
+                              handleCellClick(rowIndex, column);
+                            }}
                             onDoubleClick={() =>
                               handleCellDoubleClick(
                                 rowIndex,
@@ -1571,12 +1677,12 @@ export function TableView({
                       }}
                     >
                       <Copy className="w-4 h-4 mr-2" />
-                      Copy
+                      Copy Cell
                     </ContextMenuItem>
                     <ContextMenuItem
                       onClick={() => {
                         if (isMultiRowCopyTarget) {
-                          handleCopy(buildRowsTSV(Array.from(selectedRows)));
+                          handleCopy(buildRowsTSV(copyTargetRows));
                           return;
                         }
                         const values = columns
@@ -1630,109 +1736,33 @@ export function TableView({
                       <ContextMenuSubContent>
                         <ContextMenuItem
                           onClick={() => {
-                            const values = columns.map((col) => {
-                              const val = getCellDisplayValue(
-                                rowIndex,
-                                col,
-                                row[col],
-                              );
-                              if (val === null || val === undefined) return "";
-                              const str = String(val);
-                              if (
-                                str.includes(",") ||
-                                str.includes('"') ||
-                                str.includes("\n")
-                              ) {
-                                return `"${str.replace(/"/g, '""')}"`;
-                              }
-                              return str;
-                            });
-                            handleCopy(values.join(","));
+                            handleCopy(buildRowsCSV(copyTargetRows));
                           }}
                         >
-                          Copy as CSV
+                          {isMultiRowCopyTarget
+                            ? "Copy Selected as CSV"
+                            : "Copy as CSV"}
                         </ContextMenuItem>
                         <ContextMenuItem
                           onClick={() => {
-                            if (!tableContext) return;
-                            const { schema, table, driver } = tableContext;
-                            const tableName = getQualifiedTableName(
-                              driver,
-                              schema,
-                              table,
-                            );
-
-                            const cols = columns
-                              .map((c) => quoteIdent(driver, c))
-                              .join(", ");
-                            const vals = columns
-                              .map((col) => {
-                                const val = getCellDisplayValue(
-                                  rowIndex,
-                                  col,
-                                  row[col],
-                                );
-                                return formatSQLValue(
-                                  val === null || val === undefined
-                                    ? ""
-                                    : String(val),
-                                  row[col],
-                                  "copy",
-                                );
-                              })
-                              .join(", ");
-                            const sql = `INSERT INTO ${tableName} (${cols}) VALUES (${vals});`;
+                            const sql = buildRowsInsertSQL(copyTargetRows);
                             handleCopy(sql);
                           }}
                         >
-                          Copy as Insert SQL
+                          {isMultiRowCopyTarget
+                            ? "Copy Selected as Insert SQL"
+                            : "Copy as Insert SQL"}
                         </ContextMenuItem>
                         {isEditable && (
                           <ContextMenuItem
                             onClick={() => {
-                              if (!tableContext || primaryKeys.length === 0)
-                                return;
-                              const { schema, table, driver } = tableContext;
-                              const tableName = getQualifiedTableName(
-                                driver,
-                                schema,
-                                table,
-                              );
-
-                              const setClauses = columns.map((col) => {
-                                const val = getCellDisplayValue(
-                                  rowIndex,
-                                  col,
-                                  row[col],
-                                );
-                                const formattedValue = formatSQLValue(
-                                  val === null || val === undefined
-                                    ? ""
-                                    : String(val),
-                                  row[col],
-                                  "copy",
-                                );
-                                return `${quoteIdent(driver, col)} = ${formattedValue}`;
-                              });
-
-                              const whereClauses = primaryKeys.map((pk) => {
-                                const pkValue = row[pk];
-                                if (pkValue === null || pkValue === undefined) {
-                                  return `${quoteIdent(driver, pk)} IS NULL`;
-                                }
-                                if (typeof pkValue === "number") {
-                                  return `${quoteIdent(driver, pk)} = ${pkValue}`;
-                                }
-                                return `${quoteIdent(driver, pk)} = '${escapeSQL(String(pkValue))}'`;
-                              });
-
-                              const sql = `UPDATE ${tableName} SET ${setClauses.join(
-                                ", ",
-                              )} WHERE ${whereClauses.join(" AND ")};`;
+                              const sql = buildRowsUpdateSQL(copyTargetRows);
                               handleCopy(sql);
                             }}
                           >
-                            Copy as Update SQL
+                            {isMultiRowCopyTarget
+                              ? "Copy Selected as Update SQL"
+                              : "Copy as Update SQL"}
                           </ContextMenuItem>
                         )}
                       </ContextMenuSubContent>
