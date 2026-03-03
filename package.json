@@ -5,12 +5,17 @@
     "url": "git+https://github.com/codeErrorSleep/dbpaw.git"
   },
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:mock": "VITE_USE_MOCK=true vite",
     "build": "tsc && vite build",
+    "test:unit": "bash ./scripts/test-unit.sh",
+    "test:service": "bash ./scripts/test-service.sh",
+    "test:rust:unit": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
+    "test:integration": "bash ./scripts/test-integration.sh",
+    "test:all": "bun run test:unit && bun run test:service && bun run test:rust:unit && bun run test:integration",
     "preview": "vite preview",
     "tauri": "tauri",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",

@@ -97,3 +97,89 @@ async fn test_mssql_integration_flow() {
         "created_at should be rendered as a non-empty string"
     );
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_metadata_and_ddl_with_special_table_name() {
+    let host = env::var("MSSQL_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port = env::var("MSSQL_PORT")
+        .unwrap_or_else(|_| "1433".to_string())
+        .parse()
+        .expect("MSSQL_PORT should be a number");
+    let username = env::var("MSSQL_USER").unwrap_or_else(|_| "sa".to_string());
+    let password = env::var("MSSQL_PASSWORD").unwrap_or_default();
+    let database = env::var("MSSQL_DB").unwrap_or_else(|_| "master".to_string());
+
+    let form = ConnectionForm {
+        driver: "mssql".to_string(),
+        host: Some(host),
+        port: Some(port),
+        username: Some(username),
+        password: Some(password),
+        database: Some(database),
+        ..Default::default()
+    };
+
+    let driver = MssqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect to MSSQL");
+
+    let schema = "dbo";
+    let table_name = "dbpaw type-probe";
+    let qualified = format!("[{}].[{}]", schema, table_name);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'{}.{}', N'U') IS NOT NULL DROP TABLE {};",
+            schema, table_name, qualified
+        ))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, note NVARCHAR(50));",
+            qualified
+        ))
+        .await
+        .expect("create special-name table failed");
+
+    let tables = driver
+        .list_tables(None)
+        .await
+        .expect("list_tables failed");
+    assert!(
+        tables
+            .iter()
+            .any(|t| t.schema == schema && t.name == table_name),
+        "list_tables should include special-name table"
+    );
+
+    let metadata = driver
+        .get_table_metadata(schema.to_string(), table_name.to_string())
+        .await
+        .expect("get_table_metadata failed");
+    assert!(
+        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        "metadata should include primary key id"
+    );
+    assert!(
+        metadata.columns.iter().any(|c| c.name == "note"),
+        "metadata should include note column"
+    );
+
+    let ddl = driver
+        .get_table_ddl(schema.to_string(), table_name.to_string())
+        .await
+        .expect("get_table_ddl failed");
+    assert!(
+        ddl.to_uppercase().contains("CREATE TABLE"),
+        "DDL should contain CREATE TABLE"
+    );
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'{}.{}', N'U') IS NOT NULL DROP TABLE {};",
+            schema, table_name, qualified
+        ))
+        .await;
+}

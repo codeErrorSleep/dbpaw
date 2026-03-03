@@ -106,3 +106,259 @@ async fn test_mysql_integration_flow() {
         println!("Skipping table operations because MYSQL_DB env var is not set");
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_metadata_and_type_mapping_flow() {
+    let host = env::var("MYSQL_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port = env::var("MYSQL_PORT")
+        .unwrap_or_else(|_| "3306".to_string())
+        .parse()
+        .unwrap();
+    let username = env::var("MYSQL_USER").unwrap_or_else(|_| "root".to_string());
+    let password = env::var("MYSQL_PASSWORD").unwrap_or_else(|_| "123456".to_string());
+    let database = env::var("MYSQL_DB").unwrap_or_else(|_| "test_db".to_string());
+
+    let form = ConnectionForm {
+        driver: "mysql".to_string(),
+        host: Some(host),
+        port: Some(port),
+        username: Some(username),
+        password: Some(password),
+        database: Some(database.clone()),
+        ..Default::default()
+    };
+
+    let driver: MysqlDriver = MysqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect");
+
+    let table_name = "dbpaw_type_probe";
+    let qualified = format!("`{}`.`{}`", database, table_name);
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (\
+                id INT PRIMARY KEY, \
+                flag BOOLEAN, \
+                amount DECIMAL(10,2), \
+                created_at DATETIME, \
+                payload VARBINARY(16), \
+                note VARCHAR(50)\
+            )",
+            qualified
+        ))
+        .await
+        .expect("create table failed");
+
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, flag, amount, created_at, payload, note) \
+             VALUES (1, 1, 12.34, '2026-01-02 03:04:05', UNHEX('DEADBEEF'), 'hello')",
+            qualified
+        ))
+        .await
+        .expect("insert failed");
+
+    let tables = driver
+        .list_tables(Some(database.clone()))
+        .await
+        .expect("list_tables failed");
+    assert!(
+        tables.iter().any(|t| t.name == table_name),
+        "list_tables should include {}",
+        table_name
+    );
+
+    let tables_with_default_db = driver
+        .list_tables(None)
+        .await
+        .expect("list_tables(None) should fallback to current database");
+    assert!(
+        tables_with_default_db.iter().any(|t| t.name == table_name),
+        "list_tables(None) should include {} when MYSQL_DB is selected",
+        table_name
+    );
+
+    let metadata = driver
+        .get_table_metadata(database.clone(), table_name.to_string())
+        .await
+        .expect("get_table_metadata failed");
+    assert!(
+        metadata.columns.iter().any(|c| c.name == "payload"),
+        "metadata should include payload column"
+    );
+    assert!(
+        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        "metadata should mark id as primary key"
+    );
+
+    let ddl = driver
+        .get_table_ddl(database.clone(), table_name.to_string())
+        .await
+        .expect("get_table_ddl failed");
+    assert!(
+        ddl.to_uppercase().contains("CREATE TABLE"),
+        "DDL should contain CREATE TABLE"
+    );
+
+    let result = driver
+        .execute_query(format!(
+            "SELECT flag, amount, created_at, payload, note FROM {} WHERE id = 1",
+            qualified
+        ))
+        .await
+        .expect("select typed row failed");
+
+    assert_eq!(result.row_count, 1);
+    let row = result
+        .data
+        .first()
+        .expect("typed result should include at least one row");
+    assert!(row.get("flag").is_some(), "flag should exist");
+    assert_eq!(
+        row["amount"],
+        serde_json::Value::String("12.34".to_string()),
+        "amount should be rendered as string"
+    );
+    assert!(row.get("created_at").is_some(), "created_at should exist");
+    assert!(
+        row.get("payload").is_some(),
+        "payload(VARBINARY) should be decodable without error"
+    );
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_list_databases_and_tables_with_binary_collation_database() {
+    let host = env::var("MYSQL_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port = env::var("MYSQL_PORT")
+        .unwrap_or_else(|_| "3306".to_string())
+        .parse()
+        .unwrap();
+    let username = env::var("MYSQL_USER").unwrap_or_else(|_| "root".to_string());
+    let password = env::var("MYSQL_PASSWORD").unwrap_or_else(|_| "123456".to_string());
+    let database = env::var("MYSQL_DB").unwrap_or_else(|_| "test_db".to_string());
+
+    let form = ConnectionForm {
+        driver: "mysql".to_string(),
+        host: Some(host),
+        port: Some(port),
+        username: Some(username),
+        password: Some(password),
+        database: Some(database),
+        ..Default::default()
+    };
+
+    let driver: MysqlDriver = MysqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect");
+
+    let probe_db = "dbpaw_bin_probe";
+    let probe_table = "probe_tbl";
+
+    driver
+        .execute_query(format!(
+            "CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET latin1 COLLATE latin1_bin",
+            probe_db
+        ))
+        .await
+        .expect("create binary-collation database failed");
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE IF NOT EXISTS `{}`.`{}` (id INT PRIMARY KEY)",
+            probe_db, probe_table
+        ))
+        .await
+        .expect("create table in probe db failed");
+
+    let dbs = driver
+        .list_databases()
+        .await
+        .expect("list_databases failed on binary-collation db");
+    assert!(
+        dbs.iter().any(|db| db == probe_db),
+        "list_databases should include {}",
+        probe_db
+    );
+
+    let tables = driver
+        .list_tables(Some(probe_db.to_string()))
+        .await
+        .expect("list_tables failed on binary-collation db");
+    assert!(
+        tables.iter().any(|t| t.name == probe_table),
+        "list_tables should include {}.{}",
+        probe_db,
+        probe_table
+    );
+
+    let _ = driver
+        .execute_query(format!("DROP DATABASE IF EXISTS `{}`", probe_db))
+        .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_list_tables_with_unicode_table_name() {
+    let host = env::var("MYSQL_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port = env::var("MYSQL_PORT")
+        .unwrap_or_else(|_| "3306".to_string())
+        .parse()
+        .unwrap();
+    let username = env::var("MYSQL_USER").unwrap_or_else(|_| "root".to_string());
+    let password = env::var("MYSQL_PASSWORD").unwrap_or_else(|_| "123456".to_string());
+    let database = env::var("MYSQL_DB").unwrap_or_else(|_| "test_db".to_string());
+
+    let form = ConnectionForm {
+        driver: "mysql".to_string(),
+        host: Some(host),
+        port: Some(port),
+        username: Some(username),
+        password: Some(password),
+        database: Some(database.clone()),
+        ..Default::default()
+    };
+
+    let driver: MysqlDriver = MysqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect");
+
+    let table_name = "dbpaw_中文_probe";
+    let qualified = format!("`{}`.`{}`", database, table_name);
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name VARCHAR(20))",
+            qualified
+        ))
+        .await
+        .expect("create unicode table failed");
+
+    let tables = driver
+        .list_tables(Some(database.clone()))
+        .await
+        .expect("list_tables failed for unicode table name");
+    assert!(
+        tables.iter().any(|t| t.name == table_name),
+        "list_tables should include {}",
+        table_name
+    );
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+}
