@@ -2,18 +2,21 @@
 import { FAQS } from '@/config/faqs';
 ---
 
-<section id="faq" class="section">
-  <div class="section-head">
-    <p class="kicker">FAQ</p>
-    <h2>Common questions before your first install</h2>
+<section id="faq" class="mt-20 scroll-mt-20">
+  <div>
+    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">Frequently asked questions</h2>
+    <p class="text-lg mt-4 text-slate-600">Answers for setup, compatibility, and release workflow.</p>
   </div>
-  <div class="faq-grid">
+  <div class="mt-10 grid gap-4">
     {
       FAQS.map((item) => (
-        <article class="faq-card">
-          <h3>{item.question}</h3>
-          <p>{item.answer}</p>
-        </article>
+        <details class="rounded-lg border border-slate-200 p-5 bg-white group">
+          <summary class="list-none cursor-pointer font-semibold text-lg flex items-center justify-between gap-4">
+            {item.question}
+            <span class="text-slate-400 group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <p class="text-slate-500 mt-3 leading-relaxed">{item.answer}</p>
+        </details>
       ))
     }
   </div>

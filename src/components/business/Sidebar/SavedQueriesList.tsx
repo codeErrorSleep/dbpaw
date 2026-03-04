@@ -42,6 +42,7 @@ const getConnectionIcon = (driver?: Driver): React.ReactNode => {
     case "sqlite3":
       return renderSimpleIcon(siSqlite);
     case "clickhouse":
+    case "mssql":
       return <Database className="w-4 h-4" />;
     default:
       return <Server className="w-4 h-4" />;

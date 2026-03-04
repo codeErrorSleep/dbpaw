@@ -6,6 +6,7 @@ export interface TreeNodeProps {
   children: ReactNode;
   icon: ReactNode;
   label: string;
+  isSelected?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
   canToggle?: boolean;
@@ -23,6 +24,7 @@ export function TreeNode({
   children,
   icon,
   label,
+  isSelected = false,
   isExpanded,
   onToggle,
   canToggle = true,
@@ -40,7 +42,11 @@ export function TreeNode({
   return (
     <div>
       <div
-        className="flex items-center gap-1 px-2 py-1 hover:bg-accent cursor-pointer group select-none"
+        className={`flex items-center gap-1 px-2 py-1 cursor-pointer group select-none ${
+          isSelected
+            ? "bg-accent text-accent-foreground"
+            : "hover:bg-accent"
+        }`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={toggleOnRowClick ? onToggle : undefined}
         onDoubleClick={onDoubleClick}

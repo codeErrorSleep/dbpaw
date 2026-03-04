@@ -31,7 +31,7 @@ jobs:
         env:
           OUTPUT: CHANGELOG.md
 
-      - name: Create or Update Release Body
+      - name: Create or Update Draft Release
         uses: actions/github-script@v7
         env:
           TAG_NAME: ${{ inputs.tag || github.ref_name }}
@@ -47,20 +47,15 @@ jobs:
             const manualTag = context.payload?.inputs?.tag;
 
             if (context.eventName === "workflow_dispatch" && !manualTag) {
-              throw new Error("workflow_dispatch requires input 'tag' (e.g. v0.1.5).");
+              throw new Error("workflow_dispatch requires input 'tag' (e.g. v0.1.5).")
             }
 
             if (!tag) {
-              throw new Error("Tag is empty. For workflow_dispatch, provide the 'tag' input.");
+              throw new Error("Tag is empty. For workflow_dispatch, provide the 'tag' input.")
             }
 
             try {
-              const { data: existing } = await github.rest.repos.getReleaseByTag({
-                owner,
-                repo,
-                tag,
-              });
-
+              const { data: existing } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
               await github.rest.repos.updateRelease({
                 owner,
                 repo,
@@ -72,10 +67,7 @@ jobs:
                 prerelease: false,
               });
             } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-
+              if (error.status !== 404) throw error;
               await github.rest.repos.createRelease({
                 owner,
                 repo,
@@ -87,14 +79,22 @@ jobs:
               });
             }
 
-  release:
+  build:
     needs: prepare-release
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-22.04, windows-latest]
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -135,17 +135,10 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Validate updater signing secrets
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "Missing secret: TAURI_SIGNING_PRIVATE_KEY"
-            exit 1
-          fi
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
-            echo "Missing secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
-            exit 1
-          fi
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
@@ -153,14 +146,247 @@ jobs:
           workspaces: |
             src-tauri -> target
 
-      - name: Build and Release
-        uses: tauri-apps/tauri-action@v0
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build app (non-Windows)
+        if: matrix.platform != 'windows-latest'
+        run: bun run tauri build --target ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Build app (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          for ($i = 1; $i -le 3; $i++) {
+            bun run tauri build --target ${{ matrix.target }}
+            if ($LASTEXITCODE -eq 0) {
+              exit 0
+            }
+            if ($i -lt 3) {
+              Write-Host "Build failed (attempt $i/3). Retrying in 10 seconds..."
+              Start-Sleep -Seconds 10
+            }
+          }
+          exit $LASTEXITCODE
+
+      - name: Resolve artifact paths
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bundle_dir=""
+          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle" ]; then
+            bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle"
+          elif [ -d "src-tauri/target/release/bundle" ]; then
+            bundle_dir="src-tauri/target/release/bundle"
+          fi
+
+          if [ -z "$bundle_dir" ]; then
+            echo "No bundle directory found for target ${{ matrix.target }}"
+            find src-tauri/target -maxdepth 6 -type d -name bundle -print || true
+            exit 1
+          fi
+
+          echo "bundle_dir=$bundle_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Normalize macOS updater bundle names
+        if: matrix.target == 'aarch64-apple-darwin' || matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bundle_dir="${{ steps.paths.outputs.bundle_dir }}"
+          src="$(find "$bundle_dir/macos" -maxdepth 1 -type f -name '*.app.tar.gz' | head -n 1 || true)"
+          if [ -z "$src" ]; then
+            exit 0
+          fi
+
+          dst="$bundle_dir/macos/DbPaw-${{ matrix.target }}.app.tar.gz"
+          if [ "$src" != "$dst" ] && [ ! -f "$dst" ]; then
+            mv "$src" "$dst"
+          fi
+
+          if [ -f "${src}.sig" ] && [ ! -f "${dst}.sig" ]; then
+            mv "${src}.sig" "${dst}.sig"
+          fi
+
+      - name: Generate updater metadata
+        shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
+          BUNDLE_DIR: ${{ steps.paths.outputs.bundle_dir }}
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import pathlib
+          import sys
+
+          bundle_dir = pathlib.Path(os.environ["BUNDLE_DIR"])
+          target = os.environ["TARGET_TRIPLE"]
+          tag = os.environ["TAG_NAME"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          base_url = f"https://github.com/{repo}/releases/download/{tag}"
+
+          def pick(patterns: list[str]) -> pathlib.Path | None:
+            for pattern in patterns:
+              matches = sorted(bundle_dir.glob(pattern))
+              if matches:
+                return matches[0]
+            return None
+
+          if target in ("aarch64-apple-darwin", "x86_64-apple-darwin"):
+            platform = "darwin-aarch64" if target.startswith("aarch64") else "darwin-x86_64"
+            bundle = pick(["macos/*.app.tar.gz"])
+          elif target == "x86_64-unknown-linux-gnu":
+            platform = "linux-x86_64"
+            bundle = pick(["appimage/*.AppImage"])
+          elif target == "x86_64-pc-windows-msvc":
+            platform = "windows-x86_64"
+            bundle = pick(["nsis/*.exe", "msi/*.msi"])
+          else:
+            raise SystemExit(f"Unsupported target triple: {target}")
+
+          if bundle is None:
+            print(f"No updater bundle found for target {target}", file=sys.stderr)
+            print(f"Searched in: {bundle_dir}", file=sys.stderr)
+            for p in sorted(bundle_dir.rglob("*")):
+              if p.is_file():
+                print(p.relative_to(bundle_dir), file=sys.stderr)
+            raise SystemExit(1)
+
+          sig_path = pathlib.Path(str(bundle) + ".sig")
+          if not sig_path.exists():
+            print(f"Signature file not found: {sig_path}", file=sys.stderr)
+            raise SystemExit(1)
+
+          signature = sig_path.read_text(encoding="utf-8").strip()
+          pub_date = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+          url = f"{base_url}/{bundle.name}"
+
+          data = {
+            "version": tag,
+            "notes": "See the assets to download this version and install.",
+            "pub_date": pub_date,
+            "platforms": {platform: {"url": url, "signature": signature}},
+          }
+
+          out_dir = pathlib.Path("updater-json")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          out_path = out_dir / f"latest-{target}.json"
+          out_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(f"Wrote {out_path}")
+          PY
+
+      - name: Upload bundle artifacts (macOS)
+        if: matrix.target == 'aarch64-apple-darwin' || matrix.target == 'x86_64-apple-darwin'
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ inputs.tag || github.ref_name }}
-          releaseName: 'DbPaw ${{ inputs.tag || github.ref_name }}'
-          releaseDraft: true
+          name: bundle-${{ matrix.target }}
+          path: |
+            ${{ steps.paths.outputs.bundle_dir }}/dmg/**/*.dmg
+            ${{ steps.paths.outputs.bundle_dir }}/macos/**/*.app.tar.gz*
+          if-no-files-found: error
+
+      - name: Upload bundle artifacts (Linux)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.target }}
+          path: |
+            ${{ steps.paths.outputs.bundle_dir }}/appimage/**/*.AppImage*
+            ${{ steps.paths.outputs.bundle_dir }}/deb/**/*.deb
+            ${{ steps.paths.outputs.bundle_dir }}/rpm/**/*.rpm
+          if-no-files-found: error
+
+      - name: Upload bundle artifacts (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.target }}
+          path: |
+            ${{ steps.paths.outputs.bundle_dir }}/msi/**/*.msi*
+            ${{ steps.paths.outputs.bundle_dir }}/nsis/**/*.exe*
+          if-no-files-found: error
+
+      - name: Upload updater metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-json-${{ matrix.target }}
+          path: updater-json/latest-${{ matrix.target }}.json
+          if-no-files-found: error
+
+  release:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Download updater metadata artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-json-*
+          path: updater-json
+
+      - name: Merge latest.json platforms
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t files < <(find updater-json -type f -name '*.json')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No updater json files found in artifacts."
+            exit 1
+          fi
+
+          mkdir -p merged
+          jq -s '
+            reduce .[] as $item (
+              {version: null, notes: null, pub_date: null, platforms: {}};
+              .version = (.version // $item.version) |
+              .notes = (.notes // $item.notes) |
+              .pub_date = (.pub_date // $item.pub_date) |
+              .platforms += ($item.platforms // {})
+            )
+          ' "${files[@]}" > merged/latest.json
+
+          echo "Merged platform keys:"
+          jq '.platforms | keys' merged/latest.json
+
+      - name: Remove per-platform latest json assets
+        shell: bash
+        run: find artifacts -type f -name 'latest*.json' -delete
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          draft: true
           prerelease: false
+          overwrite_files: true
+          files: |
+            artifacts/**/*
+            merged/latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,23 +2,24 @@
 
 ![DbPaw Logo](public/product-icon.png)
 
-[English](README.md) | 简体中文
+[English](README.md) | 简体中文 | [日本語](README_JA.md)
 
-> **一个快速、现代的数据库客户端，并提供可选的 AI 助手。**
+> **一个聚焦高效查询与数据探索的现代数据库客户端，并提供可选 AI 助手。**
 
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** 帮助你连接 PostgreSQL、MySQL、SQLite（以及 ClickHouse 预览版），更舒适地编写与执行 SQL，并用清爽的现代 UI 进行数据探索。
+**DbPaw** 帮助你连接 PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版），高效编写和执行 SQL，并在清爽的桌面 UI 中查看与探索数据。
 
 ## ✅ 你可以用它做什么
 
-- 连接多种数据库：PostgreSQL、MySQL、SQLite、ClickHouse（预览版，只读）
+- 连接 PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版，当前只读）
 - 编写与执行 SQL：语法高亮、自动补全、一键格式化
-- 浏览查询结果：在数据网格中快速过滤、排序与查看
+- 在数据网格中浏览结果，支持过滤、排序、分页与导出
+- 使用 Saved Queries 保存并复用常用 SQL 脚本
 - 使用 AI 侧边栏辅助写 SQL、解释查询（可选）
-- 通过 SSH 隧道安全访问远程数据库
+- 通过 SSH 隧道访问远程数据库
 
 ## 🖼️ 界面预览
 
@@ -26,7 +27,6 @@
 
 ![DbPaw 主工作区（深色模式）](docs/screenshots/01-overview-black.png)
 
-_截图放在 `docs/screenshots/` 目录。_
 
 | 连接管理 | SQL 编辑器 |
 | --- | --- |
@@ -38,18 +38,13 @@ _截图放在 `docs/screenshots/` 目录。_
 
 ## ✨ 特性
 
-- **多数据库支持**：PostgreSQL、MySQL、SQLite、ClickHouse（预览版，只读）。
-- **AI 智能辅助（可选）**：辅助编写 SQL、解释查询并优化性能。
+- **多数据库支持**：PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）、ClickHouse（预览版，只读）。
+- **AI 智能辅助（可选）**：辅助编写 SQL、解释查询逻辑。
 - **安全连接**：支持 SSH 隧道，安全访问远程数据库。
-- **高级 SQL 编辑器**：
-  - 语法高亮和自动补全。
-  - 已保存查询库，用于组织你常用的脚本。
-  - 一键格式化 SQL。
-- **交互式数据网格**：
-  - 高效查看、过滤和排序表数据。
-  - 可视化数据关系。
-- **现代化 UI**：TailwindCSS + Shadcn/UI，内置深色模式。
-- **高性能**：基于 Rust 构建，低内存占用与快速启动。
+- **SQL 编辑器**：语法高亮、自动补全、格式化、Saved Queries。
+- **数据网格**：支持过滤、排序、分页与结果导出。
+- **现代桌面 UI**：React + TailwindCSS + Shadcn/UI，内置深色模式。
+- **高性能运行时**：基于 Tauri（Rust 后端 + Web 前端）。
 
 ## 📥 安装
 

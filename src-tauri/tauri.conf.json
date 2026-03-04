@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DbPaw",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "identifier": "com.father.dbpaw",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -46,6 +46,9 @@
       "nsis": {
         "installMode": "both"
       }
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }

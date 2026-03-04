@@ -12,6 +12,7 @@ import {
 import { cn } from "@/components/ui/utils";
 import type { AIProviderConfig } from "@/services/api";
 import { TableSelector, type SelectedTableRef } from "./TableSelector";
+import { useTranslation } from "react-i18next";
 
 export interface ChatComposerProps {
   input: string;
@@ -40,13 +41,14 @@ export function ChatComposer({
   selectedTables,
   onSelectedTablesChange,
 }: ChatComposerProps) {
+  const { t } = useTranslation();
   const isSendDisabled = !input.trim() || isLoading || !selectedProviderId;
 
   return (
     <div className="shrink-0 min-w-0 border-t border-border/60 px-3 py-2.5">
       <div className="min-w-0 rounded-xl border border-border/70 bg-background/95 px-2 py-1.5 transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-primary/45 focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_55%,transparent),0_0_20px_color-mix(in_srgb,var(--color-primary)_20%,transparent)]">
         <Textarea
-          placeholder="Describe SQL to generate or optimize..."
+          placeholder={t("chatComposer.inputPlaceholder")}
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={onKeyDown}
@@ -57,7 +59,7 @@ export function ChatComposer({
           <div className="order-1 min-w-[150px] flex-1 basis-[180px] sm:min-w-0 sm:basis-0">
             <Select value={selectedProviderId} onValueChange={onProviderChange}>
               <SelectTrigger className="h-8 w-full min-w-0 border-border/60 bg-muted/30 text-xs">
-                <SelectValue placeholder="Select AI provider" />
+                <SelectValue placeholder={t("chatComposer.selectProvider")} />
               </SelectTrigger>
               <SelectContent align="start">
                 {providers.map((p) => (
@@ -92,8 +94,8 @@ export function ChatComposer({
                 "bg-gradient-to-br from-primary to-primary/75 text-primary-foreground shadow-sm hover:brightness-110",
               isSendDisabled && "bg-muted text-muted-foreground opacity-70",
             )}
-            title="Send"
-            aria-label="Send message"
+            title={t("chatComposer.send")}
+            aria-label={t("chatComposer.sendMessage")}
           >
             <Send className={cn("h-4 w-4", isLoading && "animate-pulse")} />
           </Button>

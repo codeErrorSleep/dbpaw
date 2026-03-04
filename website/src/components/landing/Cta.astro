@@ -10,18 +10,27 @@ interface Props {
 const { downloads, releaseNotesUrl, version } = Astro.props;
 ---
 
-<section id="download" class="section cta">
-  <div>
-    <p class="kicker">Download</p>
-    <h2>Install DbPaw {version} on your platform</h2>
-    <p>Pick your installer or open the release notes for checksums and full change details.</p>
-  </div>
-  <div class="download-grid">
-    <a class="download-card" href={downloads.mac ?? releaseNotesUrl}>macOS</a>
-    <a class="download-card" href={downloads.windows ?? releaseNotesUrl}>Windows</a>
-    <a class="download-card" href={downloads.linux ?? releaseNotesUrl}>Linux</a>
-    <a class="download-card notes" href={releaseNotesUrl} target="_blank" rel="noreferrer">
-      Release Notes
-    </a>
+<section id="download" class="scroll-mt-20">
+  <div class="bg-black p-8 md:px-20 md:py-20 mt-20 mx-auto rounded-lg flex flex-col items-center text-center">
+    <h2 class="text-white text-4xl md:text-6xl tracking-tight">Install DbPaw {version}</h2>
+    <p class="text-slate-300 mt-4 text-lg md:text-xl">
+      Pick your installer or open release notes for checksums and changelog details.
+    </p>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 mt-6 gap-3 w-full">
+      <a class="rounded-sm px-5 py-2.5 bg-white text-black border-2 border-transparent hover:bg-gray-100 transition" href={downloads.mac ?? releaseNotesUrl}>macOS</a>
+      <a class="rounded-sm px-5 py-2.5 bg-white text-black border-2 border-transparent hover:bg-gray-100 transition" href={downloads.windows ?? releaseNotesUrl}>Windows</a>
+      <a class="rounded-sm px-5 py-2.5 bg-white text-black border-2 border-transparent hover:bg-gray-100 transition" href={downloads.linux ?? releaseNotesUrl}>Linux</a>
+      <a
+        class="rounded-sm px-5 py-2.5 bg-black text-white border-2 border-white hover:bg-slate-900 transition"
+        href={releaseNotesUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Release Notes
+      </a>
+    </div>
+    <p class="text-slate-400 mt-3 text-sm">
+      Download links are generated from the latest GitHub release automatically.
+    </p>
   </div>
 </section>

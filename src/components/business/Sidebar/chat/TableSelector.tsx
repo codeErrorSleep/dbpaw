@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/components/ui/utils";
+import { useTranslation } from "react-i18next";
 
 export interface SelectedTableRef {
   schema: string;
@@ -38,6 +39,7 @@ export function TableSelector({
   onChange,
   disabled,
 }: TableSelectorProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const hasSelection = value.length > 0;
   const selected = useMemo(() => new Set(value.map(toKey)), [value]);
@@ -62,8 +64,8 @@ export function TableSelector({
 
   const label =
     value.length === 0
-      ? "Select table schema (no data)"
-      : `Schema: ${value.length} selected`;
+      ? t("tableSelector.emptyLabel")
+      : t("tableSelector.selectedLabel", { count: value.length });
 
   return (
     <div className="min-w-0">
@@ -79,7 +81,7 @@ export function TableSelector({
                 hasSelection && "pr-14",
               )}
               disabled={disabled || tables.length === 0}
-              aria-label="Only schema,no data"
+              aria-label={t("tableSelector.triggerAria")}
             >
               <span className="truncate">{label}</span>
             </Button>
@@ -99,8 +101,8 @@ export function TableSelector({
                   e.stopPropagation();
                   onChange([]);
                 }}
-                title="Clear table selection"
-                aria-label="Clear table selection"
+                title={t("tableSelector.clearSelection")}
+                aria-label={t("tableSelector.clearSelection")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -110,10 +112,10 @@ export function TableSelector({
         </div>
         <PopoverContent align="start" className="w-[320px] p-0">
           <Command>
-            <CommandInput placeholder="Search tables..." />
+            <CommandInput placeholder={t("tableSelector.searchTables")} />
             <CommandList>
-              <CommandEmpty>No tables found</CommandEmpty>
-              <CommandGroup heading="Tables">
+              <CommandEmpty>{t("tableSelector.noTablesFound")}</CommandEmpty>
+              <CommandGroup heading={t("tableSelector.tablesHeading")}>
                 {tables.map((t) => {
                   const key = toKey(t);
                   const checked = selected.has(key);

@@ -449,6 +449,8 @@ fn sql_value(value: &Value) -> String {
 fn quote_ident(name: &str, driver: &str) -> String {
     if driver.eq_ignore_ascii_case("mysql") || driver.eq_ignore_ascii_case("clickhouse") {
         format!("`{}`", name.replace('`', "``"))
+    } else if driver.eq_ignore_ascii_case("mssql") {
+        format!("[{}]", name.replace(']', "]]"))
     } else {
         format!("\"{}\"", name.replace('"', "\"\""))
     }
@@ -468,6 +470,9 @@ fn quote_target(schema: Option<&str>, table: &str, driver: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn csv_escape_works() {
@@ -500,11 +505,64 @@ mod tests {
             quote_target(Some("analytics"), "events", "clickhouse"),
             "`analytics`.`events`"
         );
+        assert_eq!(
+            quote_target(Some("dbo"), "events", "mssql"),
+            "[dbo].[events]"
+        );
     }
 
     #[test]
     fn quote_target_ignores_empty_schema() {
         assert_eq!(quote_target(Some("  "), "users", "postgres"), "\"users\"");
         assert_eq!(quote_target(None, "users", "mysql"), "`users`");
+    }
+
+    #[test]
+    fn validate_output_path_rejects_empty_path() {
+        assert_eq!(
+            validate_output_path(&PathBuf::new()).unwrap_err(),
+            "[EXPORT_ERROR] Invalid output path"
+        );
+    }
+
+    #[test]
+    fn validate_output_path_rejects_directory_path() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("dbpaw-transfer-test-dir-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let err = validate_output_path(&dir).unwrap_err();
+        assert_eq!(err, "[EXPORT_ERROR] Output path points to a directory");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validate_output_path_rejects_path_without_filename() {
+        let err = validate_output_path(&PathBuf::from("/")).unwrap_err();
+        assert_eq!(err, "[EXPORT_ERROR] Output path must include a file name");
+    }
+
+    #[test]
+    fn write_rows_rejects_non_object_rows() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("dbpaw-transfer-test-{unique}.json"));
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::Json, vec!["a".to_string()])
+            .unwrap();
+        let err = writer
+            .write_rows(
+                &[Value::String("not-object".to_string())],
+                &["a".to_string()],
+                None,
+                "t",
+                "postgres",
+            )
+            .unwrap_err();
+        assert_eq!(err, "[EXPORT_ERROR] row is not a JSON object");
+        let _ = fs::remove_file(path);
     }
 }

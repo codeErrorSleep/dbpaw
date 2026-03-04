@@ -14,7 +14,6 @@ const baseThemeSpec: Parameters<typeof EditorView.theme>[0] = {
     backgroundColor: "var(--background) !important",
   },
   ".cm-content": {
-    backgroundColor: "var(--background) !important",
     caretColor: "var(--foreground)",
   },
   ".cm-cursor, .cm-dropCursor": {
@@ -31,9 +30,21 @@ const baseThemeSpec: Parameters<typeof EditorView.theme>[0] = {
   ".cm-activeLineGutter": {
     backgroundColor: "color-mix(in oklab, var(--accent) 70%, transparent)",
   },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection":
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+    backgroundColor: "var(--editor-selection-bg) !important",
+  },
+  ".cm-selectionLayer .cm-selectionBackground, &.cm-focused .cm-selectionLayer .cm-selectionBackground":
     {
-      backgroundColor: "color-mix(in oklab, var(--accent) 85%, transparent)",
+      backgroundColor: "var(--editor-selection-bg) !important",
+    },
+  ".cm-line::selection, .cm-line > span::selection, .cm-content ::selection": {
+    backgroundColor: "var(--editor-selection-bg) !important",
+    color: "var(--editor-selection-fg) !important",
+  },
+  "&.cm-focused .cm-line::selection, &.cm-focused .cm-line > span::selection, &.cm-focused .cm-content ::selection":
+    {
+      backgroundColor: "var(--editor-selection-bg) !important",
+      color: "var(--editor-selection-fg) !important",
     },
   ".cm-tooltip": {
     backgroundColor: "var(--popover)",

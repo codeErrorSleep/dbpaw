@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { sqlEditorThemeDark, sqlEditorThemeLight } from "./codemirrorTheme";
+import { getThemePreset } from "@/theme/themeRegistry";
 
 const editorFontSizeExtension = EditorView.theme({
   ".cm-scroller": {
@@ -99,7 +100,7 @@ export function SqlEditor({
   onSaveSuccess,
 }: SqlEditorProps) {
   const [internalSql, setInternalSql] = useState("");
-  const { resolvedTheme } = useTheme();
+  const { theme } = useTheme();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const resultStatus = useMemo(() => {
@@ -194,6 +195,7 @@ export function SqlEditor({
         mysql: "mysql",
         sqlite: "sqlite",
         clickhouse: "sql",
+        mssql: "transactsql",
       };
       const language = ((driver && dialectMap[driver]) || "sql") as any;
       const formatted = format(code, {
@@ -326,6 +328,8 @@ export function SqlEditor({
         return SQLite;
       case "clickhouse":
         return StandardSQL;
+      case "mssql":
+        return StandardSQL;
       default:
         return StandardSQL;
     }
@@ -452,10 +456,13 @@ export function SqlEditor({
 
   // Theme
   const editorTheme = useMemo(() => {
-    return resolvedTheme === "dark"
-      ? [oneDark, sqlEditorThemeDark]
-      : [sqlEditorThemeLight];
-  }, [resolvedTheme]);
+    const preset = getThemePreset(theme);
+    const syntaxTheme =
+      preset.editorTheme === "one-dark" ? [oneDark] : [];
+    return preset.appearance === "dark"
+      ? [...syntaxTheme, sqlEditorThemeDark]
+      : [...syntaxTheme, sqlEditorThemeLight];
+  }, [theme]);
 
   return (
     <div className="h-full flex flex-col bg-background">

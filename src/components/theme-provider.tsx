@@ -1,15 +1,19 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { getSetting, saveSetting } from "@/services/store";
+import {
+  ThemeId,
+  getThemeAppearance,
+  normalizeThemeId,
+} from "@/theme/themeRegistry";
 
-export type Theme = "dark" | "light" | "system";
+export type Theme = ThemeId;
 export const MIN_FONT_SIZE_PX = 10;
 export const MAX_FONT_SIZE_PX = 24;
 export const DEFAULT_FONT_SIZE_PX = 14;
 
 interface ThemeProviderState {
-  theme: Theme;
-  resolvedTheme: "dark" | "light";
-  setTheme: (theme: Theme) => void;
+  theme: ThemeId;
+  setTheme: (theme: ThemeId) => void;
   accentColor: string;
   setAccentColor: (color: string) => void;
   fontSizePx: number;
@@ -17,8 +21,7 @@ interface ThemeProviderState {
 }
 
 const initialState: ThemeProviderState = {
-  theme: "system",
-  resolvedTheme: "light",
+  theme: "default",
   setTheme: () => null,
   accentColor: "Zinc",
   setAccentColor: () => null,
@@ -28,7 +31,6 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
-// Define theme colors mapping for accent colors
 const THEME_COLORS_MAP: Record<string, { light: string; dark: string }> = {
   Zinc: { light: "#09090b", dark: "#fafafa" },
   Blue: { light: "#2563eb", dark: "#3b82f6" },
@@ -39,14 +41,13 @@ const THEME_COLORS_MAP: Record<string, { light: string; dark: string }> = {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "default",
   ...props
 }: {
   children: React.ReactNode;
-  defaultTheme?: Theme;
+  defaultTheme?: ThemeId;
 }) {
-  const [theme, setThemeState] = useState<Theme>(defaultTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light");
+  const [theme, setThemeState] = useState<ThemeId>(defaultTheme);
   const [accentColor, setAccentColorState] = useState<string>("Zinc");
   const [fontSizePx, setFontSizePxState] =
     useState<number>(DEFAULT_FONT_SIZE_PX);
@@ -61,35 +62,23 @@ export function ThemeProvider({
     return Math.min(MAX_FONT_SIZE_PX, Math.max(MIN_FONT_SIZE_PX, rounded));
   };
 
-  const resolveTheme = (t: Theme): "dark" | "light" => {
-    if (t === "system") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    return t;
-  };
-
-  // Helper to apply theme to DOM
-  const applyTheme = (t: Theme) => {
+  const applyTheme = (themeId: ThemeId) => {
     const root = document.documentElement;
+    const appearance = getThemeAppearance(themeId);
+
+    root.setAttribute("data-theme", themeId);
     root.classList.remove("light", "dark");
-
-    const resolvedTheme = resolveTheme(t);
-
-    root.classList.add(resolvedTheme);
-    root.style.colorScheme = resolvedTheme;
-    setResolvedTheme(resolvedTheme);
+    root.classList.add(appearance);
+    root.style.colorScheme = appearance;
   };
 
-  // Helper to apply accent color
-  const applyAccentColor = (colorName: string, currentTheme: Theme) => {
+  const applyAccentColor = (colorName: string, currentTheme: ThemeId) => {
     const color = THEME_COLORS_MAP[colorName];
     if (!color) return;
 
     const root = document.documentElement;
-    const colorValue =
-      resolveTheme(currentTheme) === "dark" ? color.dark : color.light;
+    const appearance = getThemeAppearance(currentTheme);
+    const colorValue = appearance === "dark" ? color.dark : color.light;
     root.style.setProperty("--primary", colorValue);
     root.style.setProperty("--ring", colorValue);
   };
@@ -99,10 +88,10 @@ export function ThemeProvider({
     root.style.setProperty("--font-size", `${size}px`);
   };
 
-  // 1. Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
-      const savedTheme = await getSetting<Theme>("theme", defaultTheme);
+      const rawTheme = await getSetting<string>("theme", defaultTheme);
+      const savedTheme = normalizeThemeId(rawTheme);
       const savedAccent = await getSetting<string>("accentColor", "Zinc");
       const savedFontSize = await getSetting<number>(
         "fontSizePx",
@@ -114,53 +103,41 @@ export function ThemeProvider({
       setAccentColorState(savedAccent);
       setFontSizePxState(normalizedFontSize);
 
-      // Initial application
       applyTheme(savedTheme);
       applyAccentColor(savedAccent, savedTheme);
       applyFontSizePx(normalizedFontSize);
 
+      if (savedTheme !== rawTheme) {
+        void saveSetting("theme", savedTheme);
+      }
+
       setIsLoaded(true);
     };
 
-    loadSettings();
+    void loadSettings();
   }, [defaultTheme]);
 
-  // 2. Listen for system theme changes
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      if (theme === "system") {
-        applyTheme("system");
-        applyAccentColor(accentColor, "system");
-      }
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [theme, accentColor]);
-
-  const setTheme = (t: Theme) => {
-    setThemeState(t);
-    applyTheme(t);
-    applyAccentColor(accentColor, t); // Re-apply accent because it depends on light/dark
-    saveSetting("theme", t);
+  const setTheme = (themeId: ThemeId) => {
+    setThemeState(themeId);
+    applyTheme(themeId);
+    applyAccentColor(accentColor, themeId);
+    void saveSetting("theme", themeId);
   };
 
   const setAccentColor = (color: string) => {
     setAccentColorState(color);
     applyAccentColor(color, theme);
-    saveSetting("accentColor", color);
+    void saveSetting("accentColor", color);
   };
 
   const setFontSizePx = (size: number) => {
     const normalizedSize = clampFontSize(size);
     setFontSizePxState(normalizedSize);
     applyFontSizePx(normalizedSize);
-    saveSetting("fontSizePx", normalizedSize);
+    void saveSetting("fontSizePx", normalizedSize);
   };
 
   if (!isLoaded) {
-    // Show a minimal loader instead of a blank screen
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-muted-foreground text-sm">Loading...</div>
@@ -170,7 +147,6 @@ export function ThemeProvider({
 
   const value = {
     theme,
-    resolvedTheme,
     setTheme,
     accentColor,
     setAccentColor,

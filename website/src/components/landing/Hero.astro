@@ -12,43 +12,46 @@ interface Props {
 const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.props;
 ---
 
-<section class="hero section">
-  <div class="hero-copy">
-    <p class="kicker">Database workflow, rebuilt for speed</p>
-    <h1>DbPaw gives your SQL team a faster path from query to insight.</h1>
-    <p class="lead">
-      A modern desktop database client powered by Rust and AI. Build better SQL, inspect data quickly,
-      and ship safely across macOS, Windows, and Linux.
+<section class="grid lg:grid-cols-2 place-items-center pt-16 pb-8 md:pt-12 md:pb-24">
+  <div class="py-6 md:order-1 hidden md:block">
+    <img
+      src="/screenshots/app-overview.png"
+      alt="DbPaw main workspace preview"
+      loading="eager"
+      decoding="async"
+      class="rounded-xl border border-slate-200"
+    />
+  </div>
+  <div>
+    <h1 class="text-5xl lg:text-6xl xl:text-7xl font-bold lg:tracking-tight xl:tracking-tighter">
+      AI-native database client for modern SQL teams
+    </h1>
+    <p class="text-lg mt-4 text-slate-600 max-w-xl">
+      DbPaw combines a native Rust engine, fast SQL tooling, and built-in AI assistance so your team can
+      write, validate, and ship queries faster on macOS, Windows, and Linux.
     </p>
-    <div class="actions">
-      <a class="button button-primary" id="smart-download" href={downloads.mac ?? releaseNotesUrl}>
+    <div class="mt-6 flex flex-col sm:flex-row gap-3">
+      <a
+        class="rounded-sm px-5 py-2.5 bg-black text-white hover:bg-slate-800 border-2 border-transparent transition text-center"
+        id="smart-download"
+        href={downloads.mac ?? releaseNotesUrl}
+      >
         Download for your platform
       </a>
-      <a class="button button-ghost" href={releaseNotesUrl} target="_blank" rel="noreferrer">
+      <a
+        class="rounded-sm px-5 py-2.5 bg-white border-2 border-black hover:bg-gray-100 text-black transition text-center"
+        href={releaseNotesUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
         View release notes
       </a>
     </div>
-    <p class="meta">
+    <p class="mt-4 text-sm text-slate-500">
       Latest release <strong>{version}</strong>, published {releasedDate} ({source === 'github'
         ? 'live from GitHub'
         : 'fallback mode'}).
     </p>
-  </div>
-  <div class="hero-card">
-    <p class="card-label">Product preview</p>
-    <div class="hero-media">
-      <img
-        src="/screenshots/app-overview.png"
-        alt="DbPaw main workspace preview"
-        loading="eager"
-        decoding="async"
-      />
-    </div>
-    <ul>
-      <li>AI SQL assistance inside your editor</li>
-      <li>SSH tunneling for secure remote access</li>
-      <li>Native-speed startup on all major desktops</li>
-    </ul>
   </div>
 </section>
 

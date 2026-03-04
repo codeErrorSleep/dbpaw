@@ -884,3 +884,159 @@ impl LocalDb {
         .map_err(|e| format!("[LIST_AI_MESSAGES_ERROR] {e}"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::LocalDb;
+    use crate::models::AiProviderForm;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn make_test_db() -> LocalDb {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite memory db");
+
+        for migration in [
+            include_str!("../../migrations/001_initial.sql"),
+            include_str!("../../migrations/002_saved_queries.sql"),
+            include_str!("../../migrations/003_add_database_to_saved_queries.sql"),
+            include_str!("../../migrations/004_add_ssh_fields.sql"),
+            include_str!("../../migrations/005_ai_providers.sql"),
+            include_str!("../../migrations/006_ai_conversations.sql"),
+            include_str!("../../migrations/007_ai_messages.sql"),
+            include_str!("../../migrations/008_ai_provider_vendor_unique.sql"),
+            include_str!("../../migrations/009_ai_provider_type_relaxed.sql"),
+            include_str!("../../migrations/010_sql_execution_logs.sql"),
+        ] {
+            sqlx::query(migration)
+                .execute(&pool)
+                .await
+                .expect("apply migration");
+        }
+
+        LocalDb {
+            pool,
+            ai_master_key: [7u8; 32],
+        }
+    }
+
+    fn provider_form(
+        name: &str,
+        provider_type: &str,
+        api_key: &str,
+        is_default: Option<bool>,
+        enabled: Option<bool>,
+    ) -> AiProviderForm {
+        AiProviderForm {
+            name: name.to_string(),
+            provider_type: Some(provider_type.to_string()),
+            base_url: "https://api.example.com/v1".to_string(),
+            model: "gpt-test".to_string(),
+            api_key: Some(api_key.to_string()),
+            is_default,
+            enabled,
+            extra_json: None,
+        }
+    }
+
+    #[test]
+    fn api_key_encrypt_decrypt_round_trip_and_format_validation() {
+        let key = [3u8; 32];
+        let encrypted = LocalDb::encrypt_ai_api_key_raw(&key, "secret-123").unwrap();
+        assert!(LocalDb::has_encrypted_ai_api_key(&encrypted));
+        let decrypted = LocalDb::decrypt_ai_api_key_raw(&key, &encrypted).unwrap();
+        assert_eq!(decrypted, "secret-123");
+
+        let err = LocalDb::decrypt_ai_api_key_raw(&key, "plaintext").unwrap_err();
+        assert!(err.contains("[AI_KEY_FORMAT]"));
+    }
+
+    #[tokio::test]
+    async fn create_ai_provider_supports_upsert_and_switches_default() {
+        let db = make_test_db().await;
+
+        let openai = db
+            .create_ai_provider(provider_form("OpenAI-A", "openai", "k1", None, Some(true)))
+            .await
+            .unwrap();
+        assert!(openai.is_default);
+
+        let kimi = db
+            .create_ai_provider(provider_form("Kimi-A", "kimi", "k2", Some(true), Some(true)))
+            .await
+            .unwrap();
+        assert!(kimi.is_default);
+
+        let providers = db.list_ai_providers().await.unwrap();
+        assert_eq!(providers.len(), 2);
+        let openai_after_switch = providers
+            .iter()
+            .find(|p| p.provider_type == "openai")
+            .expect("openai provider exists");
+        assert!(!openai_after_switch.is_default);
+
+        let openai_upserted = db
+            .create_ai_provider(provider_form("OpenAI-B", "openai", "k3", Some(true), Some(true)))
+            .await
+            .unwrap();
+        assert_eq!(openai_upserted.id, openai.id);
+        assert!(openai_upserted.is_default);
+        assert_eq!(openai_upserted.name, "OpenAI-B");
+
+        let providers_after_upsert = db.list_ai_providers().await.unwrap();
+        let default_count = providers_after_upsert.iter().filter(|p| p.is_default).count();
+        assert_eq!(default_count, 1);
+        let kimi_after_upsert = providers_after_upsert
+            .iter()
+            .find(|p| p.provider_type == "kimi")
+            .expect("kimi provider exists");
+        assert!(!kimi_after_upsert.is_default);
+    }
+
+    #[tokio::test]
+    async fn set_default_ai_provider_rejects_not_found_and_disabled() {
+        let db = make_test_db().await;
+        let disabled = db
+            .create_ai_provider(provider_form(
+                "Disabled-Provider",
+                "openai",
+                "k1",
+                Some(false),
+                Some(false),
+            ))
+            .await
+            .unwrap();
+
+        let not_found_err = db.set_default_ai_provider(999_999).await.unwrap_err();
+        assert!(not_found_err.contains("[SET_DEFAULT_AI_PROVIDER_NOT_FOUND]"));
+
+        let disabled_err = db.set_default_ai_provider(disabled.id).await.unwrap_err();
+        assert!(disabled_err.contains("[SET_DEFAULT_AI_PROVIDER_DISABLED]"));
+    }
+
+    #[tokio::test]
+    async fn sql_execution_logs_prune_to_latest_100_rows() {
+        let db = make_test_db().await;
+        for i in 0..105 {
+            db.insert_sql_execution_log(
+                format!("SELECT {}", i),
+                Some("test".to_string()),
+                None,
+                None,
+                true,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+
+        let logs = db.list_sql_execution_logs(200).await.unwrap();
+        assert_eq!(logs.len(), 100);
+        assert_eq!(logs.first().unwrap().sql, "SELECT 104");
+        assert_eq!(logs.last().unwrap().sql, "SELECT 5");
+        assert!(!logs.iter().any(|l| l.sql == "SELECT 0"));
+        assert!(!logs.iter().any(|l| l.sql == "SELECT 4"));
+    }
+}

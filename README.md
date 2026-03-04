@@ -2,23 +2,24 @@
 
 ![DbPaw Logo](public/product-icon.png)
 
-English | [简体中文](README_CN.md)
+English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
-> **A fast, modern database client with optional AI assistance.**
+> **A modern database client focused on efficient querying and exploration, with optional AI assistance.**
 
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** helps you connect to PostgreSQL, MySQL, SQLite (and ClickHouse in preview), write and run SQL comfortably, and explore data with a clean, modern UI.
+**DbPaw** helps you connect to PostgreSQL, MySQL, SQLite, SQL Server (MSSQL), and ClickHouse (preview), write and run SQL efficiently, and inspect data in a clean desktop UI.
 
 ## ✅ What You Can Do
 
-- Connect to multiple databases: PostgreSQL, MySQL, SQLite, ClickHouse (preview, read-only)
-- Write and run SQL with syntax highlighting, auto-completion, and formatting
-- Browse, filter, and sort results in an interactive data grid
-- Use the AI sidebar to help draft SQL and explain queries (optional)
-- Access remote databases securely via SSH tunneling
+- Connect to PostgreSQL, MySQL, SQLite, SQL Server (MSSQL), and ClickHouse (preview, currently read-only)
+- Write and run SQL with syntax highlighting, auto-completion, and one-click formatting
+- Browse query results in a data grid with filtering, sorting, pagination, and export
+- Save and reuse frequently used SQL scripts with Saved Queries
+- Use the AI sidebar to draft SQL and explain queries (optional)
+- Access remote databases through SSH tunneling
 
 ## 🖼️ Screenshots
 
@@ -26,7 +27,6 @@ English | [简体中文](README_CN.md)
 
 ![DbPaw Main Workspace (Dark)](docs/screenshots/01-overview-black.png)
 
-_Place screenshots under `docs/screenshots/`._
 
 | Connection | SQL Editor |
 | --- | --- |
@@ -38,18 +38,13 @@ _Place screenshots under `docs/screenshots/`._
 
 ## ✨ Features
 
-- **Multi-database support**: PostgreSQL, MySQL, SQLite, ClickHouse (preview, read-only).
-- **AI assistance (optional)**: draft SQL, explain queries, and optimize performance.
+- **Multi-database support**: PostgreSQL, MySQL, SQLite, SQL Server (MSSQL), ClickHouse (preview, read-only).
+- **AI assistance (optional)**: draft SQL and explain query logic.
 - **Secure connectivity**: SSH tunneling support.
-- **Advanced SQL editor**:
-  - Syntax highlighting and auto-completion.
-  - Saved Queries library to organize your frequently used scripts.
-  - Format SQL with a single click.
-- **Interactive data grid**:
-  - View, filter, and sort table data efficiently.
-  - Visualize data relationships.
-- **Modern UI**: TailwindCSS + Shadcn/UI, with built-in dark mode.
-- **High performance**: built on Rust for low memory usage and fast startup.
+- **SQL editor**: syntax highlighting, auto-completion, formatting, and Saved Queries.
+- **Data grid**: filtering, sorting, pagination, and export for result sets.
+- **Modern desktop UI**: React + TailwindCSS + Shadcn/UI, with built-in dark mode.
+- **Fast runtime**: powered by Tauri (Rust backend + web frontend).
 
 ## 📥 Installation
 

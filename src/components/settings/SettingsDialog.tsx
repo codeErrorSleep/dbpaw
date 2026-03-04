@@ -1,10 +1,17 @@
-import { Bot, Info, Palette, RefreshCw, Settings2 } from "lucide-react";
+import {
+  Bot,
+  Command,
+  Info,
+  Palette,
+  RefreshCw,
+  Settings2,
+} from "lucide-react";
 import {
   useTheme,
-  Theme,
   MIN_FONT_SIZE_PX,
   MAX_FONT_SIZE_PX,
 } from "@/components/theme-provider";
+import { ThemeId, THEME_PRESETS } from "@/theme/themeRegistry";
 import { useState, useEffect } from "react";
 import { getSetting, saveSetting } from "@/services/store";
 import {
@@ -35,18 +42,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import packageJson from "../../../package.json";
+import { LanguageSelector } from "./LanguageSelector";
+import { useTranslation } from "react-i18next";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsSection = "general" | "ai" | "about";
+type SettingsSection = "general" | "ai" | "shortcuts" | "about";
 type AIProviderPreset = {
   type: AIProviderType;
   label: string;
   baseUrl: string;
   model: string;
+};
+type ShortcutItem = {
+  action: string;
+  keys: string;
+  scope: string;
+  note?: string;
+};
+type ShortcutGroup = {
+  title: string;
+  items: ShortcutItem[];
 };
 
 const THEME_COLORS = [
@@ -127,8 +146,82 @@ const AI_PROVIDER_OPTIONS_BY_TYPE = AI_PROVIDER_OPTIONS.reduce(
 
 const GITHUB_URL = "https://github.com/codeErrorSleep/dbpaw";
 const APP_VERSION = packageJson.version;
+const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    title: "Global",
+    items: [
+      { action: "Open settings", keys: "Cmd/Ctrl + ,", scope: "App / Menu" },
+      { action: "Toggle AI sidebar", keys: "Cmd/Ctrl + \\", scope: "App" },
+      { action: "Toggle main sidebar", keys: "Cmd/Ctrl + B", scope: "Sidebar" },
+      { action: "Create new query tab", keys: "Cmd/Ctrl + N", scope: "App" },
+      { action: "Close current tab", keys: "Cmd/Ctrl + W", scope: "App" },
+      {
+        action: "Next tab",
+        keys: "Cmd/Ctrl + Shift + ]",
+        scope: "App",
+      },
+      {
+        action: "Previous tab",
+        keys: "Cmd/Ctrl + Shift + [",
+        scope: "App",
+      },
+    ],
+  },
+  {
+    title: "SQL Editor",
+    items: [
+      { action: "Execute SQL", keys: "Cmd/Ctrl + Enter", scope: "Editor" },
+      { action: "Save query", keys: "Cmd/Ctrl + S", scope: "Editor" },
+      { action: "Format SQL", keys: "Shift + Alt + F", scope: "Editor" },
+      {
+        action: "Accept completion / insert tab",
+        keys: "Tab",
+        scope: "Editor",
+      },
+    ],
+  },
+  {
+    title: "Table View",
+    items: [
+      {
+        action: "Save pending changes",
+        keys: "Cmd/Ctrl + S",
+        scope: "Table",
+      },
+      { action: "Open table search", keys: "Cmd/Ctrl + F", scope: "Table" },
+      {
+        action: "Copy selected rows",
+        keys: "Cmd/Ctrl + C",
+        scope: "Table",
+      },
+      {
+        action: "Cancel edit / discard pending changes",
+        keys: "Esc",
+        scope: "Table",
+      },
+    ],
+  },
+  {
+    title: "Input Panels",
+    items: [
+      {
+        action: "Send AI message",
+        keys: "Enter",
+        scope: "AI input",
+        note: "Shift + Enter inserts a newline",
+      },
+      {
+        action: "Save query from description input",
+        keys: "Enter",
+        scope: "Save Query dialog",
+        note: "Shift + Enter inserts a newline",
+      },
+    ],
+  },
+];
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+  const { t } = useTranslation();
   const {
     theme,
     setTheme,
@@ -179,10 +272,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         })
         .catch((e) => {
           console.error(e);
-          toast.error("Failed to load AI providers");
+          toast.error(t("settings.aiProviders.loadFailed"));
         });
     }
-  }, [open]);
+  }, [open, t]);
 
   useEffect(() => {
     setFontSizeInput(String(fontSizePx));
@@ -219,23 +312,23 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       const result = await checkForUpdates();
       if (result.state === "available" && result.update) {
-        toast.info(`New version ${result.update.version} available!`, {
+        toast.info(t("settings.updates.available", { version: result.update.version }), {
           action: {
-            label: "Update",
+            label: t("settings.updates.updateAction"),
             onClick: async () => {
               if (updating) return;
               try {
                 setUpdating(true);
-                toast.info("Downloading update...");
+                toast.info(t("settings.updates.downloading"));
                 const installResult = await installAvailableUpdate(result.update);
                 if (installResult.state === "ready_to_restart") {
-                  toast.success("Update installed, restarting...");
+                  toast.success(t("settings.updates.installed"));
                   await relaunchAfterUpdate();
                 } else {
-                  toast.info(installResult.message ?? "No update available.");
+                  toast.info(installResult.message ?? t("settings.updates.noUpdate"));
                 }
               } catch (e) {
-                toast.error("Failed to update");
+                toast.error(t("settings.updates.failedUpdate"));
               } finally {
                 setUpdating(false);
               }
@@ -243,11 +336,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           },
         });
       } else {
-        toast.success(result.message ?? "You are on the latest version.");
+        toast.success(result.message ?? t("settings.updates.latest"));
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to check for updates");
+      toast.error(t("settings.updates.failedCheck"));
     } finally {
       setChecking(false);
     }
@@ -269,7 +362,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       const apiKey = providerApiKeyInput.trim();
       const requireApiKey = !existing || !existing.hasApiKey;
       if (!providerBaseUrl.trim() || !providerModel.trim() || (requireApiKey && !apiKey)) {
-        toast.error("Please fill all provider fields");
+        toast.error(t("settings.aiProviders.fillRequired"));
         return;
       }
 
@@ -292,9 +385,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       }
       const updated = await reloadProviders();
       applyProviderToForm(selectedProviderType, updated);
-      toast.success("AI provider saved");
+      toast.success(t("settings.aiProviders.saveSuccess"));
     } catch (e) {
-      toast.error("Failed to save AI provider", {
+      toast.error(t("settings.aiProviders.saveFailed"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -306,9 +399,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       await api.ai.providers.clearApiKey(selectedProviderType);
       const updated = await reloadProviders();
       applyProviderToForm(selectedProviderType, updated);
-      toast.success("API key cleared");
+      toast.success(t("settings.aiProviders.clearSuccess"));
     } catch (e) {
-      toast.error("Failed to clear API key", {
+      toast.error(t("settings.aiProviders.clearFailed"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -336,9 +429,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[860px] w-[92vw] h-[80vh] max-h-[80vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
+          <DialogTitle>{t("settings.title")}</DialogTitle>
           <DialogDescription>
-            Manage your app appearance and preferences.
+            {t("settings.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -354,7 +447,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 onClick={() => setActiveSection("general")}
               >
                 <Settings2 className="w-4 h-4" />
-                General
+                {t("settings.sections.general")}
               </button>
               <button
                 className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
@@ -365,7 +458,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 onClick={() => setActiveSection("ai")}
               >
                 <Bot className="w-4 h-4" />
-                AI
+                {t("settings.sections.ai")}
+              </button>
+              <button
+                className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
+                  activeSection === "shortcuts"
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60"
+                }`}
+                onClick={() => setActiveSection("shortcuts")}
+              >
+                <Command className="w-4 h-4" />
+                {t("settings.sections.shortcuts")}
               </button>
               <button
                 className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
@@ -376,7 +480,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 onClick={() => setActiveSection("about")}
               >
                 <Info className="w-4 h-4" />
-                About
+                {t("settings.sections.about")}
               </button>
             </div>
           </div>
@@ -385,37 +489,54 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             {activeSection === "general" && (
               <div className="space-y-6">
                 <div className="space-y-4">
+                  <LanguageSelector />
                   <h3 className="text-lg font-medium flex items-center gap-2">
-                    <Palette className="w-5 h-5" /> Appearance
+                    <Palette className="w-5 h-5" /> {t("settings.appearance.title")}
                   </h3>
 
                   <div className="grid grid-cols-2 gap-4 items-center">
                     <div className="space-y-1">
-                      <Label className="text-base">Theme Mode</Label>
+                      <Label className="text-base">{t("settings.appearance.themeTitle")}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Choose your interface style
+                        {t("settings.appearance.themeDescription")}
                       </p>
                     </div>
                     <Select
                       value={theme}
-                      onValueChange={(v) => setTheme(v as Theme)}
+                      onValueChange={(v) => setTheme(v as ThemeId)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select theme" />
+                        <SelectValue placeholder={t("settings.appearance.selectTheme")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="light">☀️ Light Mode</SelectItem>
-                        <SelectItem value="dark">🌙 Dark Mode</SelectItem>
-                        <SelectItem value="system">🖥️ System</SelectItem>
+                        {/* Light themes */}
+                        {Object.values(THEME_PRESETS)
+                          .filter((preset) => preset.appearance === "light")
+                          .map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </SelectItem>
+                          ))}
+                        {/* Dark themes */}
+                        {Object.values(THEME_PRESETS)
+                          .filter((preset) => preset.appearance === "dark")
+                          .map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 items-center">
                     <div className="space-y-1">
-                      <Label className="text-base">Font Size</Label>
+                      <Label className="text-base">{t("settings.appearance.fontSizeTitle")}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Adjust global text size across the app (Range: 10-24px)
+                        {t("settings.appearance.fontSizeDescription", {
+                          min: MIN_FONT_SIZE_PX,
+                          max: MAX_FONT_SIZE_PX,
+                        })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -440,7 +561,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                   <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-base">Accent Color</Label>
+                      <Label className="text-base">{t("settings.appearance.accentColor")}</Label>
                     </div>
                     <div className="flex flex-wrap gap-3">
                       {THEME_COLORS.map((color) => (
@@ -468,13 +589,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium flex items-center gap-2">
-                    <RefreshCw className="w-5 h-5" /> Updates
+                    <RefreshCw className="w-5 h-5" /> {t("settings.updates.title")}
                   </h3>
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <Label className="text-base">Auto Update</Label>
+                      <Label className="text-base">{t("settings.updates.autoUpdate")}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Check for updates automatically
+                        {t("settings.updates.autoUpdateDescription")}
                       </p>
                     </div>
                     <Switch
@@ -489,10 +610,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={checking || updating}
                   >
                     {checking
-                      ? "Checking..."
+                      ? t("settings.updates.checking")
                       : updating
-                        ? "Updating..."
-                        : "Check for updates now"}
+                        ? t("settings.updates.updating")
+                        : t("settings.updates.checkNow")}
                   </Button>
                 </div>
               </div>
@@ -501,7 +622,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             {activeSection === "ai" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-medium flex items-center gap-2">
-                  <Bot className="w-5 h-5" /> AI Providers
+                  <Bot className="w-5 h-5" /> {t("settings.aiProviders.title")}
                 </h3>
 
                 <div className="space-y-2 border rounded-md p-3">
@@ -511,7 +632,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       onValueChange={handleProviderTypeChange}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select provider" />
+                        <SelectValue placeholder={t("settings.aiProviders.selectProvider")} />
                       </SelectTrigger>
                       <SelectContent>
                         {AI_PROVIDER_OPTIONS.map((item) => (
@@ -522,18 +643,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder="Base URL (OpenAI-compatible)"
+                      placeholder={t("settings.aiProviders.baseUrl")}
                       value={providerBaseUrl}
                       onChange={(e) => setProviderBaseUrl(e.target.value)}
                     />
                     <Input
-                      placeholder="Model"
+                      placeholder={t("settings.aiProviders.model")}
                       value={providerModel}
                       onChange={(e) => setProviderModel(e.target.value)}
                     />
                     <div className="flex gap-2">
                       <Input
-                        placeholder="API Key"
+                        placeholder={t("settings.aiProviders.apiKey")}
                         type={showProviderApiKey ? "text" : "password"}
                         value={providerApiKeyInput}
                         onChange={(e) => setProviderApiKeyInput(e.target.value)}
@@ -544,12 +665,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         size="sm"
                         onClick={() => setShowProviderApiKey((v) => !v)}
                       >
-                        {showProviderApiKey ? "Hide" : "Show"}
+                        {showProviderApiKey
+                          ? t("settings.aiProviders.hide")
+                          : t("settings.aiProviders.show")}
                       </Button>
                     </div>
                     {providerHasApiKey && !providerApiKeyInput.trim() && (
                       <div className="text-xs text-muted-foreground">
-                        API key saved. Leave blank to keep unchanged.
+                        {t("settings.aiProviders.keySavedHint")}
                       </div>
                     )}
                   </div>
@@ -560,19 +683,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       onClick={handleClearProviderApiKey}
                       disabled={!providerHasApiKey}
                     >
-                      Clear Key
+                      {t("settings.aiProviders.clearKey")}
                     </Button>
                     <Button onClick={handleSaveProvider} className="flex-1">
-                      Save Provider
+                      {t("settings.aiProviders.saveProvider")}
                     </Button>
                   </div>
                 </div>
 
                 <div className="rounded-md border p-3 text-xs text-muted-foreground">
-                  <div>Configured providers: {providers.length}</div>
+                  <div>{t("settings.aiProviders.configured", { count: providers.length })}</div>
                   <div className="mt-2 border-t border-border/60 pt-2">
                     <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/90">
-                      Configured details
+                      {t("settings.aiProviders.configuredDetails")}
                     </div>
                     {providers.length > 0 ? (
                       <div className="space-y-1">
@@ -592,7 +715,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               </span>
                               {provider.isDefault && (
                                 <span className="shrink-0 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                  Default
+                                  {t("settings.aiProviders.default")}
                                 </span>
                               )}
                             </div>
@@ -600,9 +723,50 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         })}
                       </div>
                     ) : (
-                      <div>No providers configured yet</div>
+                      <div>{t("settings.aiProviders.empty")}</div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeSection === "shortcuts" && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                  <Command className="w-5 h-5" /> {t("settings.shortcuts.title")}
+                </h3>
+                <div className="rounded-md border p-3 text-xs text-muted-foreground">
+                  {t("settings.shortcuts.readonlyHint")}
+                </div>
+                <div className="space-y-4">
+                  {SHORTCUT_GROUPS.map((group) => (
+                    <div key={group.title} className="rounded-md border">
+                      <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+                        {group.title}
+                      </div>
+                      <div className="divide-y">
+                        {group.items.map((item) => (
+                          <div
+                            key={`${group.title}-${item.action}`}
+                            className="grid grid-cols-1 gap-2 px-3 py-2 sm:grid-cols-[1.2fr_220px_140px]"
+                          >
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-foreground">{item.action}</div>
+                              {item.note && (
+                                <div className="text-xs text-muted-foreground">{item.note}</div>
+                              )}
+                            </div>
+                            <div className="text-sm font-mono text-foreground">
+                              {item.keys}
+                            </div>
+                            <div className="text-xs text-muted-foreground sm:text-right">
+                              {item.scope}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -610,7 +774,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             {activeSection === "about" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-medium flex items-center gap-2">
-                  <Info className="w-5 h-5" /> About
+                  <Info className="w-5 h-5" /> {t("settings.about.title")}
                 </h3>
                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
@@ -620,12 +784,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    A modern database management tool providing a smooth
-                    development experience.
+                    {t("settings.about.description")}
                   </p>
                   <div className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1 text-xs text-muted-foreground pt-1">
                     <span className="font-medium text-foreground/90">
-                      GitHub
+                      {t("settings.about.github")}
                     </span>
                     <a
                       href={GITHUB_URL}
@@ -635,14 +798,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     >
                       {GITHUB_URL}
                     </a>
-                    <span className="font-medium text-foreground/90">Tech</span>
+                    <span className="font-medium text-foreground/90">{t("settings.about.tech")}</span>
                     <span>Tauri + React + TypeScript</span>
                     <span className="font-medium text-foreground/90">
-                      License
+                      {t("settings.about.license")}
                     </span>
                     <span>MIT</span>
                     <span className="font-medium text-foreground/90">
-                      Platforms
+                      {t("settings.about.platforms")}
                     </span>
                     <span>macOS / Windows / Linux</span>
                   </div>

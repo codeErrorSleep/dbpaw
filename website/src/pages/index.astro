@@ -4,6 +4,7 @@ import Cta from '@/components/landing/Cta.astro';
 import Faq from '@/components/landing/Faq.astro';
 import Features from '@/components/landing/Features.astro';
 import Hero from '@/components/landing/Hero.astro';
+import Logos from '@/components/landing/Logos.astro';
 import Screenshots from '@/components/landing/Screenshots.astro';
 import { SITE } from '@/config/site';
 import { getReleaseSnapshot } from '@/lib/release';
@@ -25,6 +26,7 @@ const releasedDate = new Date(snapshot.release.publishedAt).toLocaleDateString('
     downloads={snapshot.downloads}
   />
   <Features />
+  <Logos />
   <Screenshots />
   <Cta
     version={snapshot.release.version}

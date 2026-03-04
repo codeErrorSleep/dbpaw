@@ -1,7 +1,15 @@
+import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionList } from "./ConnectionList";
 import { SavedQueriesList } from "./SavedQueriesList";
 import { ConnectionForm, SavedQuery } from "@/services/api";
+
+interface ActiveTableTarget {
+  connectionId: number;
+  database: string;
+  table: string;
+  schema?: string;
+}
 
 interface SidebarProps {
   onTableSelect?: (
@@ -30,6 +38,7 @@ interface SidebarProps {
   ) => void;
   onSelectSavedQuery: (query: SavedQuery) => void;
   lastUpdated?: number;
+  activeTableTarget?: ActiveTableTarget;
 }
 
 export function Sidebar({
@@ -39,10 +48,26 @@ export function Sidebar({
   onExportTable,
   onSelectSavedQuery,
   lastUpdated,
+  activeTableTarget,
 }: SidebarProps) {
+  const [sidebarTab, setSidebarTab] = useState<"connections" | "queries">(
+    "connections",
+  );
+
+  useEffect(() => {
+    if (!activeTableTarget) return;
+    setSidebarTab("connections");
+  }, [activeTableTarget]);
+
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
-      <Tabs defaultValue="connections" className="h-full flex flex-col">
+      <Tabs
+        value={sidebarTab}
+        onValueChange={(value) =>
+          setSidebarTab(value as "connections" | "queries")
+        }
+        className="h-full flex flex-col"
+      >
         <TabsList className="w-full grid grid-cols-2 overflow-hidden">
           <TabsTrigger value="connections" className="min-w-0 truncate">
             Connections
@@ -58,6 +83,7 @@ export function Sidebar({
               onConnect={onConnect}
               onCreateQuery={onCreateQuery}
               onExportTable={onExportTable}
+              activeTableTarget={activeTableTarget}
             />
           </TabsContent>
           <TabsContent value="queries" className="h-full m-0 border-0">

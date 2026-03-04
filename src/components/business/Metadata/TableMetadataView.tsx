@@ -292,7 +292,7 @@ export function TableMetadataView({
               {ddlError}
             </div>
           ) : ddl ? (
-            <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words overflow-auto max-h-80">
+            <pre className="p-3 text-sm font-mono whitespace-pre-wrap break-words overflow-auto max-h-80">
               <code>{ddl}</code>
             </pre>
           ) : (

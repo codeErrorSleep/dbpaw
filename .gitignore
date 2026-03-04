@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+website/.astro/
 
 # Editor directories and files
 .vscode/*
@@ -27,6 +28,7 @@ dist-ssr
 # doc 
 plan/
 tasks
+reference
 
 # plan
 .trae/documents/

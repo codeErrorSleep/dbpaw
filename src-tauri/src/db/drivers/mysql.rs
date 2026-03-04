@@ -71,6 +71,39 @@ impl MysqlDriver {
     }
 }
 
+fn decode_mysql_text_cell(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, String> {
+    if let Ok(v) = row.try_get::<String, _>(idx) {
+        return Ok(v);
+    }
+    if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+        return Ok(String::from_utf8_lossy(&v).to_string());
+    }
+    Err(format!(
+        "[QUERY_ERROR] Failed to decode MySQL text column at index {idx}"
+    ))
+}
+
+fn decode_mysql_optional_text_cell(
+    row: &sqlx::mysql::MySqlRow,
+    idx: usize,
+) -> Result<Option<String>, String> {
+    if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
+        return Ok(v);
+    }
+    if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(idx) {
+        return Ok(v.map(|b| String::from_utf8_lossy(&b).to_string()));
+    }
+    if let Ok(v) = row.try_get::<String, _>(idx) {
+        return Ok(Some(v));
+    }
+    if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+        return Ok(Some(String::from_utf8_lossy(&v).to_string()));
+    }
+    Err(format!(
+        "[QUERY_ERROR] Failed to decode MySQL optional text column at index {idx}"
+    ))
+}
+
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
     async fn close(&self) {
@@ -86,11 +119,13 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
-        let rows: Vec<(String,)> = sqlx::query_as("SHOW DATABASES")
+        let rows = sqlx::query("SHOW DATABASES")
             .fetch_all(&self.pool)
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-        Ok(rows.into_iter().map(|r| r.0).collect())
+        rows.into_iter()
+            .map(|row| decode_mysql_text_cell(&row, 0))
+            .collect()
     }
 
     async fn list_tables(&self, schema: Option<String>) -> Result<Vec<TableInfo>, String> {
@@ -106,15 +141,15 @@ impl DatabaseDriver for MysqlDriver {
             s
         } else {
             // Fallback: try to get current database
-            let row: (Option<String>,) = sqlx::query_as("SELECT DATABASE()")
+            let row = sqlx::query("SELECT DATABASE()")
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?;
-            row.0
+            decode_mysql_optional_text_cell(&row, 0)?
                 .ok_or("[QUERY_ERROR] No database selected and no schema provided")?
         };
 
-        let rows: Vec<(String, String, String)> = sqlx::query_as(
+        let rows = sqlx::query(
             "SELECT table_schema, table_name, table_type \
              FROM information_schema.tables \
              WHERE table_schema = ? AND table_type IN ('BASE TABLE','VIEW') \
@@ -126,7 +161,10 @@ impl DatabaseDriver for MysqlDriver {
         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
         let mut res = Vec::new();
-        for (table_schema, table_name, table_type) in rows {
+        for row in rows {
+            let table_schema = decode_mysql_text_cell(&row, 0)?;
+            let table_name = decode_mysql_text_cell(&row, 1)?;
+            let table_type = decode_mysql_text_cell(&row, 2)?;
             res.push(TableInfo {
                 schema: table_schema,
                 name: table_name,
@@ -176,7 +214,7 @@ impl DatabaseDriver for MysqlDriver {
         schema: String,
         table: String,
     ) -> Result<TableMetadata, String> {
-        let pk_rows: Vec<(String,)> = sqlx::query_as(
+        let pk_rows = sqlx::query(
             "SELECT kcu.column_name \
              FROM information_schema.table_constraints tc \
              JOIN information_schema.key_column_usage kcu \
@@ -194,7 +232,10 @@ impl DatabaseDriver for MysqlDriver {
         .await
         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
-        let pk_set: HashSet<String> = pk_rows.into_iter().map(|r| r.0).collect();
+        let mut pk_set: HashSet<String> = HashSet::new();
+        for row in pk_rows {
+            pk_set.insert(decode_mysql_text_cell(&row, 0)?);
+        }
 
         let column_rows = sqlx::query(
             "SELECT column_name, column_type, is_nullable, column_default, column_comment \
@@ -335,11 +376,11 @@ impl DatabaseDriver for MysqlDriver {
             format!("`{}`.`{}`", schema, table)
         };
         let query = format!("SHOW CREATE TABLE {}", qualified);
-        let row: (String, String) = sqlx::query_as(&query)
+        let row = sqlx::query(&query)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-        Ok(row.1)
+        decode_mysql_text_cell(&row, 1)
     }
 
     async fn get_table_data(
@@ -713,11 +754,13 @@ impl DatabaseDriver for MysqlDriver {
             // If connected to a specific DB, `SHOW TABLES` works for that DB. But we query `information_schema`.
 
             // We can query SELECT DATABASE() first.
-            let db_row: Result<(Option<String>,), _> = sqlx::query_as("SELECT DATABASE()")
+            let db_row = sqlx::query("SELECT DATABASE()")
                 .fetch_one(&self.pool)
                 .await;
 
-            if let Ok((Some(db),)) = db_row {
+            if let Ok(row) = db_row {
+                let current_db = decode_mysql_optional_text_cell(&row, 0).ok().flatten();
+                if let Some(db) = current_db {
                 sqlx::query(&format!(
                     "{} WHERE table_schema = ? ORDER BY table_schema, table_name, ordinal_position",
                     sql
@@ -725,6 +768,11 @@ impl DatabaseDriver for MysqlDriver {
                 .bind(db)
                 .fetch_all(&self.pool)
                 .await
+                } else {
+                    sqlx::query(&format!("{} WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY table_schema, table_name, ordinal_position", sql))
+                        .fetch_all(&self.pool)
+                        .await
+                }
             } else {
                 sqlx::query(&format!("{} WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY table_schema, table_name, ordinal_position", sql))
                 .fetch_all(&self.pool)

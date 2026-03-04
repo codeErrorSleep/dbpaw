@@ -4,6 +4,20 @@ export interface SearchMatch {
   colIndex: number;
 }
 
+export interface InsertColumnMeta {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue?: string | null;
+  primaryKey?: boolean;
+}
+
+export function isInsertColumnRequired(
+  column: Pick<InsertColumnMeta, "nullable" | "defaultValue">,
+): boolean {
+  return !column.nullable && !(column.defaultValue || "").trim();
+}
+
 interface AutoColumnWidthParams {
   data: any[];
   columns: string[];
@@ -122,6 +136,9 @@ export function quoteIdent(driver: string | undefined, name: string): string {
   if (driver === "mysql" || driver === "clickhouse") {
     return `\`${name}\``;
   }
+  if (driver === "mssql") {
+    return `[${name.replace(/]/g, "]]")}]`;
+  }
   return `"${name}"`;
 }
 
@@ -129,6 +146,7 @@ export function formatSQLValue(
   value: string,
   originalValue: any,
   context: "execution" | "copy" = "execution",
+  driver?: string,
 ): string {
   if (value === "" && (originalValue === null || originalValue === undefined)) {
     return "NULL";
@@ -152,12 +170,63 @@ export function formatSQLValue(
 
   if (typeof originalValue === "boolean") {
     const lower = value.toLowerCase();
-    if (["true", "t", "1"].includes(lower)) return "TRUE";
-    if (["false", "f", "0"].includes(lower)) return "FALSE";
+    if (["true", "t", "1"].includes(lower)) {
+      return driver === "mssql" ? "1" : "TRUE";
+    }
+    if (["false", "f", "0"].includes(lower)) {
+      return driver === "mssql" ? "0" : "FALSE";
+    }
 
     if (context === "execution") {
       throw new Error(`Invalid boolean value: "${value}"`);
     }
+  }
+
+  return `'${escapeSQL(value)}'`;
+}
+
+function isBooleanType(type: string): boolean {
+  return /\b(bool|boolean|bit)\b/.test(type.toLowerCase());
+}
+
+function isNumericType(type: string): boolean {
+  return /\b(tinyint|smallint|mediumint|int|integer|bigint|serial|bigserial|decimal|numeric|real|double|float|money|number)\b/.test(
+    type.toLowerCase(),
+  );
+}
+
+export function formatInsertSQLValue(
+  raw: string,
+  column: Pick<InsertColumnMeta, "name" | "type">,
+  driver?: string,
+): string {
+  const value = String(raw);
+  const trimmed = value.trim();
+  if (trimmed.toUpperCase() === "NULL") {
+    return "NULL";
+  }
+
+  if (isBooleanType(column.type)) {
+    const lower = trimmed.toLowerCase();
+    if (["true", "t", "1"].includes(lower)) {
+      return driver === "mssql" ? "1" : "TRUE";
+    }
+    if (["false", "f", "0"].includes(lower)) {
+      return driver === "mssql" ? "0" : "FALSE";
+    }
+    throw new Error(
+      `Invalid boolean value for column "${column.name}": "${value}"`,
+    );
+  }
+
+  if (isNumericType(column.type)) {
+    const numericRegex = /^-?\d+(\.\d+)?$/;
+    if (numericRegex.test(trimmed)) {
+      return trimmed;
+    }
+    throw new Error(
+      `Invalid numeric value for column "${column.name}": "${value}"`,
+    );
   }
 
   return `'${escapeSQL(value)}'`;
@@ -168,7 +237,20 @@ export function getQualifiedTableName(
   schema: string,
   table: string,
 ): string {
-  return driver === "mysql"
-    ? `${quoteIdent(driver, table)}`
-    : `${quoteIdent(driver, schema)}.${quoteIdent(driver, table)}`;
+  if (driver === "mysql") {
+    return quoteIdent(driver, table);
+  }
+
+  if (driver === "sqlite") {
+    const normalizedSchema = schema.trim().toLowerCase();
+    if (
+      normalizedSchema === "" ||
+      normalizedSchema === "main" ||
+      normalizedSchema === "public"
+    ) {
+      return quoteIdent(driver, table);
+    }
+  }
+
+  return `${quoteIdent(driver, schema)}.${quoteIdent(driver, table)}`;
 }

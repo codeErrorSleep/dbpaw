@@ -29,10 +29,12 @@ serde_json = { version = "1", features = ["preserve_order"] }
 chrono = { version = "0.4", features = ["serde"] }
 rust_decimal = "1.33"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "postgres", "mysql", "sqlite", "macros", "chrono", "json", "rust_decimal"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "macros", "chrono", "json", "rust_decimal"] }
+tiberius = { version = "0.12", features = ["chrono", "rust_decimal"] }
 async-trait = "0.1"
-ssh2 = "0.9"
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 rand = "0.8"
 tauri-plugin-updater = "2.10.0"
 tauri-plugin-process = "2.3.1"

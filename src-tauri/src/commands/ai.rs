@@ -51,6 +51,50 @@ fn normalize_provider_form(
     Ok(())
 }
 
+fn map_provider_lookup_error(e: &str) -> String {
+    if e.contains("[GET_AI_PROVIDER_ERROR]") {
+        "Selected AI provider does not exist".to_string()
+    } else {
+        e.to_string()
+    }
+}
+
+fn map_default_provider_error(e: &str) -> String {
+    if e.contains("[NO_ENABLED_AI_PROVIDER]") {
+        "No enabled AI provider is configured. Please enable one in AI Provider settings."
+            .to_string()
+    } else {
+        e.to_string()
+    }
+}
+
+fn ensure_provider_enabled(enabled: bool) -> Result<(), String> {
+    if enabled {
+        Ok(())
+    } else {
+        Err("Selected AI provider is disabled".to_string())
+    }
+}
+
+fn validate_conversation_requirement(
+    conversation_id: Option<i64>,
+    create_if_missing: bool,
+) -> Result<(), String> {
+    if conversation_id.is_none() && !create_if_missing {
+        Err("conversationId is required".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn map_history_load_error(conversation_id: i64, e: &str) -> String {
+    eprintln!(
+        "[AI_HISTORY_LOAD_ERROR] Failed to load messages for conversation {}: {}",
+        conversation_id, e
+    );
+    "Failed to load conversation history".to_string()
+}
+
 async fn get_db(state: &State<'_, AppState>) -> Result<Arc<crate::db::local::LocalDb>, String> {
     let local_db = {
         let lock = state.local_db.lock().await;
@@ -170,11 +214,7 @@ async fn run_chat(
         match db.get_ai_provider_by_id(provider_id).await {
             Ok(provider) => provider,
             Err(e) => {
-                let msg = if e.contains("[GET_AI_PROVIDER_ERROR]") {
-                    "Selected AI provider does not exist".to_string()
-                } else {
-                    e
-                };
+                let msg = map_provider_lookup_error(&e);
                 emit_ai_error(
                     &app,
                     request.request_id,
@@ -188,11 +228,7 @@ async fn run_chat(
         match db.get_default_ai_provider().await {
             Ok(provider) => provider,
             Err(e) => {
-                let msg = if e.contains("[NO_ENABLED_AI_PROVIDER]") {
-                    "No enabled AI provider is configured. Please enable one in AI Provider settings.".to_string()
-                } else {
-                    e
-                };
+                let msg = map_default_provider_error(&e);
                 emit_ai_error(
                     &app,
                     request.request_id,
@@ -204,8 +240,7 @@ async fn run_chat(
         }
     };
 
-    if !provider_record.enabled {
-        let msg = "Selected AI provider is disabled".to_string();
+    if let Err(msg) = ensure_provider_enabled(provider_record.enabled) {
         emit_ai_error(
             &app,
             request.request_id,
@@ -214,6 +249,8 @@ async fn run_chat(
         );
         return Err(msg);
     }
+
+    validate_conversation_requirement(request.conversation_id, create_if_missing)?;
 
     let api_key = db
         .decrypt_ai_api_key(&provider_record.api_key)
@@ -242,7 +279,7 @@ async fn run_chat(
             )
             .await?
         }
-        None => return Err("conversationId is required".to_string()),
+        None => unreachable!("conversation requirement should be validated before this branch"),
     };
 
     let user_message = db
@@ -313,11 +350,7 @@ async fn run_chat(
     let mut existing = match db.list_ai_messages(conversation.id).await {
         Ok(messages) => messages,
         Err(e) => {
-            eprintln!(
-                "[AI_HISTORY_LOAD_ERROR] Failed to load messages for conversation {}: {}",
-                conversation.id, e
-            );
-            let client_error = "Failed to load conversation history".to_string();
+            let client_error = map_history_load_error(conversation.id, &e);
             emit_ai_error(
                 &app,
                 request.request_id.clone(),
@@ -438,4 +471,84 @@ pub async fn ai_delete_conversation(
 ) -> Result<(), String> {
     let db = get_db(&state).await?;
     db.delete_ai_conversation(conversation_id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ensure_provider_enabled, map_default_provider_error, map_history_load_error,
+        map_provider_lookup_error, normalize_provider_type, validate_conversation_requirement,
+    };
+
+    #[test]
+    fn normalize_provider_type_rejects_empty_value() {
+        assert_eq!(
+            normalize_provider_type("   ").unwrap_err(),
+            "providerType is required"
+        );
+    }
+
+    #[test]
+    fn normalize_provider_type_maps_openai_compat_to_openai() {
+        assert_eq!(
+            normalize_provider_type("OpenAI_Compat").unwrap(),
+            "openai".to_string()
+        );
+    }
+
+    #[test]
+    fn normalize_provider_type_rejects_invalid_chars() {
+        assert_eq!(
+            normalize_provider_type("bad type!").unwrap_err(),
+            "providerType has invalid format"
+        );
+    }
+
+    #[test]
+    fn normalize_provider_type_accepts_supported_chars() {
+        assert_eq!(
+            normalize_provider_type("x.y-z_1").unwrap(),
+            "x.y-z_1".to_string()
+        );
+    }
+
+    #[test]
+    fn provider_lookup_error_maps_not_found_to_user_friendly_message() {
+        assert_eq!(
+            map_provider_lookup_error("[GET_AI_PROVIDER_ERROR] row not found"),
+            "Selected AI provider does not exist"
+        );
+    }
+
+    #[test]
+    fn default_provider_error_maps_no_enabled_provider_to_user_friendly_message() {
+        assert_eq!(
+            map_default_provider_error("[NO_ENABLED_AI_PROVIDER] nothing configured"),
+            "No enabled AI provider is configured. Please enable one in AI Provider settings."
+        );
+    }
+
+    #[test]
+    fn ensure_provider_enabled_rejects_disabled_provider() {
+        assert_eq!(
+            ensure_provider_enabled(false).unwrap_err(),
+            "Selected AI provider is disabled"
+        );
+    }
+
+    #[test]
+    fn continue_requires_conversation_id() {
+        assert_eq!(
+            validate_conversation_requirement(None, false).unwrap_err(),
+            "conversationId is required"
+        );
+    }
+
+    #[test]
+    fn history_load_error_maps_to_client_message() {
+        assert_eq!(
+            map_history_load_error(42, "[DB_ERROR] broken"),
+            "Failed to load conversation history"
+        );
+    }
 }

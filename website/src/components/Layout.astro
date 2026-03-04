@@ -29,32 +29,55 @@ const canonical = new URL(path, SITE.url).toString();
     <title>{title}</title>
   </head>
   <body>
-    <header class="site-header">
-      <div class="container nav-shell">
-        <a class="logo" href="/">
-          <img class="logo-icon" src="/product-icon.png" alt="DbPaw logo" />
-          <span>DbPaw</span>
-        </a>
-        <nav class="nav-links" aria-label="Primary">
-          <a href="#features">Features</a>
-          <a href="#download">Download</a>
-          <a href="#faq">FAQ</a>
-          <a class="button button-ghost" href={SITE.repo} target="_blank" rel="noreferrer">GitHub</a>
+    <header class="max-w-6xl mx-auto px-5">
+      <div class="flex flex-col lg:flex-row justify-between items-center my-5 gap-3">
+        <div class="flex w-full lg:w-auto items-center justify-between">
+          <a href="/" class="inline-flex items-center gap-2 text-lg">
+            <img src="/product-icon.png" alt="DbPaw logo" class="w-6 h-6 rounded-sm" />
+            <span class="font-bold text-slate-800">Db</span><span class="text-slate-500">Paw</span>
+          </a>
+        </div>
+
+        <nav class="w-full lg:w-auto" aria-label="Primary">
+          <ul class="flex flex-wrap items-center justify-start lg:justify-center gap-x-1 gap-y-2 text-slate-600">
+            <li><a class="flex lg:px-3 py-2 items-center hover:text-slate-900 transition-colors" href="#features">Features</a></li>
+            <li><a class="flex lg:px-3 py-2 items-center hover:text-slate-900 transition-colors" href="#screenshots">Preview</a></li>
+            <li><a class="flex lg:px-3 py-2 items-center hover:text-slate-900 transition-colors" href="#download">Download</a></li>
+            <li><a class="flex lg:px-3 py-2 items-center hover:text-slate-900 transition-colors" href="#faq">FAQ</a></li>
+          </ul>
         </nav>
+
+        <div class="w-full lg:w-auto flex items-center gap-3">
+          <a
+            href={SITE.repo}
+            target="_blank"
+            rel="noreferrer"
+            class="w-full lg:w-auto text-center rounded-sm px-4 py-2 border-2 border-black text-black hover:bg-black hover:text-white transition"
+          >
+            GitHub
+          </a>
+          <a
+            href="#download"
+            class="w-full lg:w-auto text-center rounded-sm px-4 py-2 bg-black text-white border-2 border-transparent hover:bg-slate-800 transition"
+          >
+            Get App
+          </a>
+        </div>
       </div>
     </header>
 
-    <main class="container page-shell">
+    <main class="max-w-6xl mx-auto px-5">
       <slot />
     </main>
 
-    <footer class="site-footer">
-      <div class="container footer-shell">
-        <div>DbPaw is open-source under the MIT license.</div>
-        <a href={SITE.repo} target="_blank" rel="noreferrer">
-          github.com/codeErrorSleep/dbpaw
-        </a>
-      </div>
+    <footer class="my-20 max-w-6xl mx-auto px-5">
+      <p class="text-center text-sm text-slate-500">
+        Copyright © {new Date().getFullYear()} DbPaw. Open-source under MIT license.
+      </p>
+      <p class="text-center text-xs text-slate-500 mt-1">
+        Source code on
+        <a href={SITE.repo} target="_blank" rel="noreferrer" class="hover:underline">GitHub</a>
+      </p>
     </footer>
   </body>
 </html>

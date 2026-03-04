@@ -21,6 +21,7 @@ import { AIHistoryPopover } from "./AIHistoryPopover";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatMessageList } from "./chat/ChatMessageList";
 import { type SelectedTableRef } from "./chat/TableSelector";
+import { useTranslation } from "react-i18next";
 
 interface AISidebarProps {
   connectionId?: number;
@@ -62,6 +63,7 @@ export function AISidebar({
   database,
   schemaOverview,
 }: AISidebarProps) {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<AIProviderConfig[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
   const [conversations, setConversations] = useState<AIConversation[]>([]);
@@ -142,7 +144,7 @@ export function AISidebar({
         streamQueueRef.current = "";
       }
     } catch (e) {
-      toast.error("Failed to load conversation", {
+      toast.error(t("aiSidebar.errors.loadConversation"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -234,19 +236,19 @@ export function AISidebar({
     registerListener<AiStartedPayload>("ai/started", (evt) => {
       if (evt.payload.requestId !== requestIdRef.current) return;
       setStreamStatus(
-        `Request sent (${evt.payload.model}), waiting for first token...`,
+        t("aiSidebar.status.requestSent", { model: evt.payload.model }),
       );
     });
 
     registerListener<AiChunkPayload>("ai/chunk", (evt) => {
       if (evt.payload.requestId !== requestIdRef.current) return;
-      setStreamStatus("Receiving response...");
+      setStreamStatus(t("aiSidebar.status.receiving"));
       streamQueueRef.current += evt.payload.chunk;
     });
 
     registerListener<AiDonePayload>("ai/done", (evt) => {
       if (evt.payload.requestId !== requestIdRef.current) return;
-      setStreamStatus("Finalizing response...");
+      setStreamStatus(t("aiSidebar.status.finalizing"));
       setActiveConversationId(evt.payload.conversationId);
       void reloadConversationsRef.current();
       void loadConversationRef.current(evt.payload.conversationId);
@@ -278,7 +280,7 @@ export function AISidebar({
         streamFinalizeTimerRef.current = null;
       }
       errorNotifiedRef.current = true;
-      toast.error("AI request failed", {
+      toast.error(t("aiSidebar.errors.requestFailed"), {
         id: "ai-request-error",
         description: evt.payload.error,
       });
@@ -294,7 +296,7 @@ export function AISidebar({
         streamFinalizeTimerRef.current = null;
       }
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -328,7 +330,7 @@ export function AISidebar({
     if (!text || isLoading) return;
 
     if (!selectedProviderId) {
-      toast.error("Please configure and select an AI provider in Settings.");
+      toast.error(t("aiSidebar.errors.providerMissing"));
       return;
     }
 
@@ -348,7 +350,7 @@ export function AISidebar({
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
-    setStreamStatus("Sending request...");
+    setStreamStatus(t("aiSidebar.status.sending"));
     streamQueueRef.current = "";
     if (streamFinalizeTimerRef.current) {
       clearTimeout(streamFinalizeTimerRef.current);
@@ -404,7 +406,7 @@ export function AISidebar({
         streamFinalizeTimerRef.current = null;
       }
       if (!errorNotifiedRef.current) {
-        toast.error("Failed to send AI message", {
+        toast.error(t("aiSidebar.errors.sendFailed"), {
           id: "ai-request-error",
           description: e instanceof Error ? e.message : String(e),
         });
@@ -421,7 +423,7 @@ export function AISidebar({
       }
       await reloadConversations();
     } catch (e) {
-      toast.error("Failed to delete conversation", {
+      toast.error(t("aiSidebar.errors.deleteConversation"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -449,7 +451,7 @@ export function AISidebar({
         <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <h2 className="truncate text-sm font-semibold text-foreground">
-            AI Assistant
+            {t("aiSidebar.title")}
           </h2>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -469,8 +471,8 @@ export function AISidebar({
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-md"
-            title="New chat"
-            aria-label="Start new chat"
+            title={t("aiSidebar.newChat")}
+            aria-label={t("aiSidebar.startNewChat")}
             onClick={handleNewConversation}
             disabled={isLoading}
           >

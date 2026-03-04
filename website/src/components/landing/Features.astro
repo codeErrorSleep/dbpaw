@@ -2,18 +2,24 @@
 import { FEATURES } from '@/config/features';
 ---
 
-<section id="features" class="section">
-  <div class="section-head">
-    <p class="kicker">Core capabilities</p>
-    <h2>Everything needed for modern database operations</h2>
+<section id="features" class="mt-16 md:mt-0 scroll-mt-20">
+  <div>
+    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">Everything you need to run database work</h2>
+    <p class="text-lg mt-4 text-slate-600">
+      Built for daily query workflows: secure connections, fast editor ergonomics, and AI-assisted SQL.
+    </p>
   </div>
-  <div class="feature-grid">
+  <div class="grid sm:grid-cols-2 md:grid-cols-3 mt-16 gap-10">
     {
       FEATURES.map((feature) => (
-        <article class="feature-card">
-          <span class="feature-tag">{feature.tag}</span>
-          <h3>{feature.title}</h3>
-          <p>{feature.summary}</p>
+        <article class="flex gap-4 items-start">
+          <div class="mt-1 bg-black rounded-full p-2 w-8 h-8 shrink-0 text-white text-xs font-bold grid place-items-center">
+            {feature.tag.slice(0, 1)}
+          </div>
+          <div>
+            <h3 class="font-semibold text-lg">{feature.title}</h3>
+            <p class="text-slate-500 mt-2 leading-relaxed">{feature.summary}</p>
+          </div>
         </article>
       ))
     }
