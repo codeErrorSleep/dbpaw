@@ -1,10 +1,10 @@
 import { Bot, Info, Palette, RefreshCw, Settings2 } from "lucide-react";
 import {
   useTheme,
-  Theme,
   MIN_FONT_SIZE_PX,
   MAX_FONT_SIZE_PX,
 } from "@/components/theme-provider";
+import { ThemeId, THEME_PRESETS } from "@/theme/themeRegistry";
 import { useState, useEffect } from "react";
 import { getSetting, saveSetting } from "@/services/store";
 import {
@@ -391,22 +391,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                   <div className="grid grid-cols-2 gap-4 items-center">
                     <div className="space-y-1">
-                      <Label className="text-base">Theme Mode</Label>
+                      <Label className="text-base">Theme</Label>
                       <p className="text-xs text-muted-foreground">
-                        Choose your interface style
+                        Choose your interface theme
                       </p>
                     </div>
                     <Select
                       value={theme}
-                      onValueChange={(v) => setTheme(v as Theme)}
+                      onValueChange={(v) => setTheme(v as ThemeId)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select theme" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="light">☀️ Light Mode</SelectItem>
-                        <SelectItem value="dark">🌙 Dark Mode</SelectItem>
-                        <SelectItem value="system">🖥️ System</SelectItem>
+                        {Object.values(THEME_PRESETS).map((preset) => (
+                          <SelectItem key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

@@ -28,6 +28,7 @@ website/.astro/
 # doc 
 plan/
 tasks
+reference
 
 # plan
 .trae/documents/

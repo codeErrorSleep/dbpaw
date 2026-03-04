@@ -5,7 +5,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 
 createRoot(document.getElementById("root")!).render(
-  <ThemeProvider defaultTheme="system">
+  <ThemeProvider defaultTheme="default">
     <App />
     <Toaster />
   </ThemeProvider>,
