@@ -17,6 +17,7 @@ describe("formatSQLValue", () => {
   test("keeps TRUE/FALSE for non-mssql drivers", () => {
     expect(formatSQLValue("true", true, "execution", "postgres")).toBe("TRUE");
     expect(formatSQLValue("false", true, "execution", "mysql")).toBe("FALSE");
+    expect(formatSQLValue("true", true, "execution", "tidb")).toBe("TRUE");
   });
 
   test("throws for invalid boolean in execution mode", () => {
@@ -98,6 +99,10 @@ describe("isInsertColumnRequired", () => {
 });
 
 describe("getQualifiedTableName", () => {
+  test("uses unqualified table with backticks for tidb", () => {
+    expect(getQualifiedTableName("tidb", "analytics", "events")).toBe("`events`");
+  });
+
   test("does not qualify sqlite main/public schema", () => {
     expect(getQualifiedTableName("sqlite", "main", "users")).toBe("\"users\"");
     expect(getQualifiedTableName("sqlite", "public", "users")).toBe("\"users\"");

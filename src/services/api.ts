@@ -61,7 +61,13 @@ export interface SqlExecutionLog {
   executedAt: string;
 }
 
-export type Driver = "postgres" | "sqlite" | "mysql" | "clickhouse" | "mssql";
+export type Driver =
+  | "postgres"
+  | "sqlite"
+  | "mysql"
+  | "tidb"
+  | "clickhouse"
+  | "mssql";
 export interface ConnectionForm {
   driver: Driver;
   name?: string;

@@ -10,11 +10,11 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** は PostgreSQL / MySQL / SQLite / SQL Server（MSSQL）/ ClickHouse（プレビュー）に接続し、SQL の作成・実行とデータ確認を、クリーンなデスクトップ UI で快適に行えます。
+**DbPaw** は PostgreSQL / MySQL / TiDB（MySQL 互換）/ SQLite / SQL Server（MSSQL）/ ClickHouse（プレビュー）に接続し、SQL の作成・実行とデータ確認を、クリーンなデスクトップ UI で快適に行えます。
 
 ## ✅ できること
 
-- PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、現状は読み取り専用）に接続
+- PostgreSQL、MySQL、TiDB（MySQL 互換）、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、現状は読み取り専用）に接続
 - SQL の作成・実行（シンタックスハイライト、補完、ワンクリック整形）
 - データグリッドで結果を閲覧（フィルタ、ソート、ページネーション、エクスポート）
 - `Saved Queries` でよく使う SQL を保存・再利用
@@ -37,7 +37,7 @@
 
 ## ✨ 主な機能
 
-- **マルチ DB 対応**: PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、読み取り専用）
+- **マルチ DB 対応**: PostgreSQL、MySQL、TiDB（MySQL 互換）、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、読み取り専用）
 - **AI 支援（任意）**: SQL の下書き作成、クエリロジックの説明
 - **セキュア接続**: SSH トンネル対応
 - **SQL エディタ**: ハイライト、補完、整形、Saved Queries

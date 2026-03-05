@@ -10,11 +10,11 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** 帮助你连接 PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版），高效编写和执行 SQL，并在清爽的桌面 UI 中查看与探索数据。
+**DbPaw** 帮助你连接 PostgreSQL、MySQL、TiDB（MySQL 兼容）、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版），高效编写和执行 SQL，并在清爽的桌面 UI 中查看与探索数据。
 
 ## ✅ 你可以用它做什么
 
-- 连接 PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版，当前只读）
+- 连接 PostgreSQL、MySQL、TiDB（MySQL 兼容）、SQLite、SQL Server（MSSQL）与 ClickHouse（预览版，当前只读）
 - 编写与执行 SQL：语法高亮、自动补全、一键格式化
 - 在数据网格中浏览结果，支持过滤、排序、分页与导出
 - 使用 Saved Queries 保存并复用常用 SQL 脚本
@@ -38,7 +38,7 @@
 
 ## ✨ 特性
 
-- **多数据库支持**：PostgreSQL、MySQL、SQLite、SQL Server（MSSQL）、ClickHouse（预览版，只读）。
+- **多数据库支持**：PostgreSQL、MySQL、TiDB（MySQL 兼容）、SQLite、SQL Server（MSSQL）、ClickHouse（预览版，只读）。
 - **AI 智能辅助（可选）**：辅助编写 SQL、解释查询逻辑。
 - **安全连接**：支持 SSH 隧道，安全访问远程数据库。
 - **SQL 编辑器**：语法高亮、自动补全、格式化、Saved Queries。

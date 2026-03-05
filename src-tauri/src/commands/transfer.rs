@@ -447,7 +447,10 @@ fn sql_value(value: &Value) -> String {
 }
 
 fn quote_ident(name: &str, driver: &str) -> String {
-    if driver.eq_ignore_ascii_case("mysql") || driver.eq_ignore_ascii_case("clickhouse") {
+    if driver.eq_ignore_ascii_case("mysql")
+        || driver.eq_ignore_ascii_case("tidb")
+        || driver.eq_ignore_ascii_case("clickhouse")
+    {
         format!("`{}`", name.replace('`', "``"))
     } else if driver.eq_ignore_ascii_case("mssql") {
         format!("[{}]", name.replace(']', "]]"))
@@ -502,6 +505,10 @@ mod tests {
             "`analytics`.`events`"
         );
         assert_eq!(
+            quote_target(Some("analytics"), "events", "tidb"),
+            "`analytics`.`events`"
+        );
+        assert_eq!(
             quote_target(Some("analytics"), "events", "clickhouse"),
             "`analytics`.`events`"
         );
@@ -515,6 +522,7 @@ mod tests {
     fn quote_target_ignores_empty_schema() {
         assert_eq!(quote_target(Some("  "), "users", "postgres"), "\"users\"");
         assert_eq!(quote_target(None, "users", "mysql"), "`users`");
+        assert_eq!(quote_target(None, "users", "tidb"), "`users`");
     }
 
     #[test]

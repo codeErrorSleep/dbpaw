@@ -74,7 +74,7 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
             let driver = PostgresDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
-        "mysql" => {
+        "mysql" | "tidb" => {
             let driver = MysqlDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }

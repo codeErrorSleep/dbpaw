@@ -109,7 +109,8 @@ const TAB_TRIGGER_CLASS =
 export default function App() {
   const { t } = useTranslation();
   const resolveTableScope = (driver: string, database?: string) => {
-    const isDatabaseScoped = driver === "mysql" || driver === "clickhouse";
+    const isDatabaseScoped =
+      driver === "mysql" || driver === "tidb" || driver === "clickhouse";
     return {
       schema: isDatabaseScoped
         ? database || ""
@@ -1353,6 +1354,7 @@ export default function App() {
                                   database: tab.database,
                                   schema:
                                     tab.driver === "mysql" ||
+                                    tab.driver === "tidb" ||
                                     tab.driver === "clickhouse"
                                       ? tab.database
                                       : tab.driver === "mssql"

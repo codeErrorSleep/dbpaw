@@ -36,6 +36,7 @@ const getConnectionIcon = (driver?: Driver): React.ReactNode => {
     case "pgsql":
       return renderSimpleIcon(siPostgresql);
     case "mysql":
+    case "tidb":
     case "mariadb":
       return renderSimpleIcon(siMysql);
     case "sqlite":

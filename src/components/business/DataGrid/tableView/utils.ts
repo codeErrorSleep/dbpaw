@@ -133,7 +133,7 @@ export function escapeSQL(value: string): string {
 }
 
 export function quoteIdent(driver: string | undefined, name: string): string {
-  if (driver === "mysql" || driver === "clickhouse") {
+  if (driver === "mysql" || driver === "tidb" || driver === "clickhouse") {
     return `\`${name}\``;
   }
   if (driver === "mssql") {
@@ -237,7 +237,7 @@ export function getQualifiedTableName(
   schema: string,
   table: string,
 ): string {
-  if (driver === "mysql") {
+  if (driver === "mysql" || driver === "tidb") {
     return quoteIdent(driver, table);
   }
 

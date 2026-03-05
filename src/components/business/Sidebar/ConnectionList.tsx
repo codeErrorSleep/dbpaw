@@ -962,6 +962,8 @@ export function ConnectionList({
                               ? 5432
                               : v === "mysql"
                                 ? 3306
+                                : v === "tidb"
+                                  ? 4000
                                 : v === "clickhouse"
                                   ? 8123
                                   : v === "mssql"
@@ -976,6 +978,7 @@ export function ConnectionList({
                       <SelectContent>
                         <SelectItem value="postgres">PostgreSQL</SelectItem>
                         <SelectItem value="mysql">MySQL</SelectItem>
+                        <SelectItem value="tidb">TiDB</SelectItem>
                         <SelectItem value="sqlite">SQLite</SelectItem>
                         <SelectItem value="clickhouse">ClickHouse</SelectItem>
                         <SelectItem value="mssql">MSSQL</SelectItem>
@@ -1020,6 +1023,8 @@ export function ConnectionList({
                                 ? "5432"
                                 : form.driver === "mysql"
                                   ? "3306"
+                                  : form.driver === "tidb"
+                                    ? "4000"
                                   : form.driver === "mssql"
                                     ? "1433"
                                   : "8123"
