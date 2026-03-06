@@ -82,6 +82,7 @@ interface TabItem {
     executionTime: string;
     error?: string;
   } | null;
+  activeQueryId?: string;
   schemaOverview?: SchemaOverview;
   savedQueryId?: number;
   savedQueryDescription?: string;
@@ -384,12 +385,19 @@ export default function App() {
     }
 
     const start = performance.now();
+    const queryId = `q-${tab.connectionId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, activeQueryId: queryId } : t)),
+    );
     try {
       const result = await api.query.execute(
         tab.connectionId,
         sql,
         tab.database,
         "sql_editor",
+        queryId,
       );
       const columns = (result.columns || []).map((c) => c.name);
       const execMs = Math.round(
@@ -406,6 +414,7 @@ export default function App() {
               columns,
               executionTime: `${execMs}ms`,
             },
+            activeQueryId: undefined,
           };
         }),
       );
@@ -423,6 +432,7 @@ export default function App() {
               executionTime: "0ms",
               error: errorMessage,
             },
+            activeQueryId: undefined,
           };
         }),
       );
@@ -1284,7 +1294,12 @@ export default function App() {
                           databaseName={tab.database}
                           onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
                           onCancel={() =>
-                            api.query.cancel(tab.id, `q-${tab.connectionId}`)
+                            tab.connectionId && tab.activeQueryId
+                              ? api.query.cancel(
+                                  String(tab.connectionId),
+                                  tab.activeQueryId,
+                                )
+                              : Promise.resolve(false)
                           }
                           queryResults={tab.queryResults}
                           value={tab.sqlContent}

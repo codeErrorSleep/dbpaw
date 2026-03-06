@@ -1,7 +1,7 @@
 use super::DatabaseDriver;
 use crate::models::{
-    ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
-    TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+    ClickHouseTableExtra, ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult,
+    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -260,6 +260,35 @@ fn raw_text_to_query_result(body: String, time_taken_ms: i64) -> QueryResult {
     }
 }
 
+fn normalize_optional_sql_expr(v: Option<&Value>) -> Option<String> {
+    v.and_then(Value::as_str).and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn extract_ttl_expr(create_table_query: &str) -> Option<String> {
+    let lower = create_table_query.to_ascii_lowercase();
+    let ttl_idx = lower.find(" ttl ")?;
+    let after = &create_table_query[ttl_idx + 5..];
+    let mut end = after.len();
+    for marker in [" SETTINGS ", " COMMENT ", " PRIMARY KEY ", " ORDER BY "] {
+        if let Some(pos) = after.to_ascii_uppercase().find(marker) {
+            end = end.min(pos);
+        }
+    }
+    let ttl = after[..end].trim().trim_end_matches(';').trim();
+    if ttl.is_empty() {
+        None
+    } else {
+        Some(ttl.to_string())
+    }
+}
+
 impl ClickHouseDriver {
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
         let mut dsn_form = form.clone();
@@ -288,11 +317,19 @@ impl ClickHouseDriver {
         })
     }
 
-    async fn execute_raw(&self, sql: &str) -> Result<ClickHouseRawResponse, String> {
-        let response = self
+    async fn execute_raw(
+        &self,
+        sql: &str,
+        query_id: Option<&str>,
+    ) -> Result<ClickHouseRawResponse, String> {
+        let mut request = self
             .client
             .post(&self.base_url)
-            .query(&[("database", self.database.as_str())])
+            .query(&[("database", self.database.as_str())]);
+        if let Some(qid) = query_id.filter(|v| !v.trim().is_empty()) {
+            request = request.query(&[("query_id", qid)]);
+        }
+        let response = request
             .basic_auth(&self.username, Some(&self.password))
             .body(sql.to_string())
             .send()
@@ -314,8 +351,12 @@ impl ClickHouseDriver {
         Ok(ClickHouseRawResponse { body, summary })
     }
 
-    async fn execute_json(&self, sql: &str) -> Result<ClickHouseJsonResponse, String> {
-        let raw = self.execute_raw(sql).await?;
+    async fn execute_json(
+        &self,
+        sql: &str,
+        query_id: Option<&str>,
+    ) -> Result<ClickHouseJsonResponse, String> {
+        let raw = self.execute_raw(sql, query_id).await?;
         let body = raw.body;
         serde_json::from_str::<ClickHouseJsonResponse>(&body).map_err(|e| {
             let snippet = if body.len() > 240 {
@@ -336,13 +377,62 @@ impl ClickHouseDriver {
             quote_literal(schema),
             quote_literal(table)
         );
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
         let total = resp
             .data
             .first()
             .and_then(|v| v.get("total_rows"))
             .and_then(value_to_i64);
         Ok(total.filter(|v| *v >= 0))
+    }
+
+    async fn query_table_extra(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<ClickHouseTableExtra>, String> {
+        let sql = format!(
+            "SELECT engine, partition_key, sorting_key, primary_key, sampling_key, create_table_query \
+             FROM system.tables WHERE database = {} AND name = {} FORMAT JSON",
+            quote_literal(schema),
+            quote_literal(table)
+        );
+        let resp = self.execute_json(&sql, None).await?;
+        let Some(first) = resp.data.first() else {
+            return Ok(None);
+        };
+
+        let engine = first
+            .get("engine")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if engine.is_empty() {
+            return Ok(None);
+        }
+
+        let create_table_query = normalize_optional_sql_expr(first.get("create_table_query"));
+        let ttl_expr = create_table_query.as_deref().and_then(extract_ttl_expr);
+
+        Ok(Some(ClickHouseTableExtra {
+            engine,
+            partition_key: normalize_optional_sql_expr(first.get("partition_key")),
+            sorting_key: normalize_optional_sql_expr(first.get("sorting_key")),
+            primary_key_expr: normalize_optional_sql_expr(first.get("primary_key")),
+            sampling_key: normalize_optional_sql_expr(first.get("sampling_key")),
+            ttl_expr,
+            create_table_query,
+        }))
+    }
+
+    pub async fn kill_query(&self, query_id: &str) -> Result<(), String> {
+        let qid = query_id.trim();
+        if qid.is_empty() {
+            return Err("[VALIDATION_ERROR] query_id cannot be empty".to_string());
+        }
+        let sql = format!("KILL QUERY WHERE query_id = {} ASYNC", quote_literal(qid));
+        self.execute_raw(&sql, None).await.map(|_| ())
     }
 }
 
@@ -353,12 +443,15 @@ impl DatabaseDriver for ClickHouseDriver {
     }
 
     async fn test_connection(&self) -> Result<(), String> {
-        self.execute_raw("SELECT 1").await.map(|_| ())
+        self.execute_raw("SELECT 1", None).await.map(|_| ())
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
         let resp = self
-            .execute_json("SELECT name FROM system.databases ORDER BY name FORMAT JSON")
+            .execute_json(
+                "SELECT name FROM system.databases ORDER BY name FORMAT JSON",
+                None,
+            )
             .await?;
 
         let mut out = Vec::new();
@@ -379,7 +472,7 @@ impl DatabaseDriver for ClickHouseDriver {
             "SELECT database, name, engine FROM system.tables WHERE database = {} ORDER BY name FORMAT JSON",
             quote_literal(&target_schema)
         );
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
 
         let mut out = Vec::new();
         for row in resp.data {
@@ -440,7 +533,7 @@ impl DatabaseDriver for ClickHouseDriver {
             quote_literal(&table)
         );
 
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
 
         let mut columns = Vec::new();
         for row in resp.data {
@@ -494,10 +587,13 @@ impl DatabaseDriver for ClickHouseDriver {
             });
         }
 
+        let clickhouse_extra = self.query_table_extra(&target_schema, &table).await?;
+
         Ok(TableMetadata {
             columns,
             indexes: vec![],
             foreign_keys: vec![],
+            clickhouse_extra,
         })
     }
 
@@ -511,7 +607,7 @@ impl DatabaseDriver for ClickHouseDriver {
             "SHOW CREATE TABLE {} FORMAT JSON",
             table_ref(&target_schema, &table)
         );
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
 
         if let Some(first) = resp.data.first() {
             for key in ["statement", "create_table_query", "result"] {
@@ -571,7 +667,7 @@ impl DatabaseDriver for ClickHouseDriver {
                         "SELECT count() AS total FROM {}{} FORMAT JSON",
                         qualified, where_clause
                     );
-                    let count_resp = self.execute_json(&count_sql).await?;
+                    let count_resp = self.execute_json(&count_sql, None).await?;
                     count_resp
                         .data
                         .first()
@@ -585,7 +681,7 @@ impl DatabaseDriver for ClickHouseDriver {
                 "SELECT count() AS total FROM {}{} FORMAT JSON",
                 qualified, where_clause
             );
-            let count_resp = self.execute_json(&count_sql).await?;
+            let count_resp = self.execute_json(&count_sql, None).await?;
             count_resp
                 .data
                 .first()
@@ -617,7 +713,7 @@ impl DatabaseDriver for ClickHouseDriver {
             "SELECT * FROM {}{}{} LIMIT {} OFFSET {} FORMAT JSON",
             qualified, where_clause, order_clause, safe_limit, offset
         );
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
 
         let mut rows = Vec::new();
         for row in resp.data {
@@ -666,6 +762,14 @@ impl DatabaseDriver for ClickHouseDriver {
     }
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
+        self.execute_query_with_id(sql, None).await
+    }
+
+    async fn execute_query_with_id(
+        &self,
+        sql: String,
+        query_id: Option<&str>,
+    ) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let keyword = first_sql_keyword(&sql);
         let should_fetch_rows = matches!(
@@ -680,7 +784,7 @@ impl DatabaseDriver for ClickHouseDriver {
 
         if should_fetch_rows {
             if has_format_clause(&sql) && !is_json_format(&sql) {
-                let raw = self.execute_raw(&sql).await?;
+                let raw = self.execute_raw(&sql, query_id).await?;
                 let duration = start.elapsed();
                 return Ok(raw_text_to_query_result(
                     raw.body,
@@ -689,7 +793,7 @@ impl DatabaseDriver for ClickHouseDriver {
             }
 
             let query_sql = ensure_json_format(&sql);
-            let resp = self.execute_json(&query_sql).await?;
+            let resp = self.execute_json(&query_sql, query_id).await?;
 
             let columns = resp
                 .meta
@@ -712,7 +816,7 @@ impl DatabaseDriver for ClickHouseDriver {
             });
         }
 
-        let raw = self.execute_raw(&sql).await?;
+        let raw = self.execute_raw(&sql, query_id).await?;
         let summary = raw.summary.unwrap_or_default();
         let affected = summary
             .written_rows
@@ -743,7 +847,7 @@ impl DatabaseDriver for ClickHouseDriver {
             format!("{} ORDER BY database, table, position FORMAT JSON", base)
         };
 
-        let resp = self.execute_json(&sql).await?;
+        let resp = self.execute_json(&sql, None).await?;
         let mut grouped: HashMap<(String, String), Vec<ColumnSchema>> = HashMap::new();
 
         for row in resp.data {

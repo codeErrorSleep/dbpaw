@@ -559,8 +559,8 @@ mod tests {
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!("dbpaw-transfer-test-{unique}.json"));
-        let mut writer = ExportWriter::new(path.clone(), ExportFormat::Json, vec!["a".to_string()])
-            .unwrap();
+        let mut writer =
+            ExportWriter::new(path.clone(), ExportFormat::Json, vec!["a".to_string()]).unwrap();
         let err = writer
             .write_rows(
                 &[Value::String("not-object".to_string())],

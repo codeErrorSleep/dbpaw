@@ -141,7 +141,11 @@ impl MssqlDriver {
             self.config.password.clone(),
         ));
         config.encryption(encryption);
-        if trust_cert && !matches!(encryption, EncryptionLevel::Off | EncryptionLevel::NotSupported)
+        if trust_cert
+            && !matches!(
+                encryption,
+                EncryptionLevel::Off | EncryptionLevel::NotSupported
+            )
         {
             config.trust_cert();
         }
@@ -536,6 +540,7 @@ impl DatabaseDriver for MssqlDriver {
             columns,
             indexes,
             foreign_keys,
+            clickhouse_extra: None,
         })
     }
 
@@ -600,7 +605,10 @@ impl DatabaseDriver for MssqlDriver {
             _ => String::new(),
         };
 
-        let count_sql = format!("SELECT COUNT_BIG(1) AS total FROM {}{}", qualified, where_clause);
+        let count_sql = format!(
+            "SELECT COUNT_BIG(1) AS total FROM {}{}",
+            qualified, where_clause
+        );
         let count_rows = self.fetch_rows(&count_sql).await?;
         let total = count_rows
             .first()

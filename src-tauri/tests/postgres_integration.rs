@@ -96,7 +96,10 @@ async fn test_postgres_integration_flow() {
         .await
         .expect("get_table_metadata failed");
     assert!(
-        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        metadata
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.primary_key),
         "metadata should include primary key id"
     );
     assert!(

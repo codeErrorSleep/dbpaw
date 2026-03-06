@@ -175,8 +175,7 @@ impl DatabaseDriver for PostgresDriver {
             res.push(TableInfo {
                 schema: decode_postgres_text_cell(&row, 0).unwrap_or_else(|_| schema.clone()),
                 name: decode_postgres_text_cell(&row, 1).unwrap_or_default(),
-                r#type: decode_postgres_text_cell(&row, 2)
-                    .unwrap_or_else(|_| "table".to_string()),
+                r#type: decode_postgres_text_cell(&row, 2).unwrap_or_else(|_| "table".to_string()),
             });
         }
         Ok(res)
@@ -401,6 +400,7 @@ impl DatabaseDriver for PostgresDriver {
             columns,
             indexes,
             foreign_keys,
+            clickhouse_extra: None,
         })
     }
 

@@ -985,7 +985,13 @@ mod tests {
         assert!(openai.is_default);
 
         let kimi = db
-            .create_ai_provider(provider_form("Kimi-A", "kimi", "k2", Some(true), Some(true)))
+            .create_ai_provider(provider_form(
+                "Kimi-A",
+                "kimi",
+                "k2",
+                Some(true),
+                Some(true),
+            ))
             .await
             .unwrap();
         assert!(kimi.is_default);
@@ -999,7 +1005,13 @@ mod tests {
         assert!(!openai_after_switch.is_default);
 
         let openai_upserted = db
-            .create_ai_provider(provider_form("OpenAI-B", "openai", "k3", Some(true), Some(true)))
+            .create_ai_provider(provider_form(
+                "OpenAI-B",
+                "openai",
+                "k3",
+                Some(true),
+                Some(true),
+            ))
             .await
             .unwrap();
         assert_eq!(openai_upserted.id, openai.id);
@@ -1007,7 +1019,10 @@ mod tests {
         assert_eq!(openai_upserted.name, "OpenAI-B");
 
         let providers_after_upsert = db.list_ai_providers().await.unwrap();
-        let default_count = providers_after_upsert.iter().filter(|p| p.is_default).count();
+        let default_count = providers_after_upsert
+            .iter()
+            .filter(|p| p.is_default)
+            .count();
         assert_eq!(default_count, 1);
         let kimi_after_upsert = providers_after_upsert
             .iter()
@@ -1074,7 +1089,9 @@ mod tests {
             password: Some("pwd".to_string()),
             ssl: Some(true),
             ssl_mode: Some("verify_ca".to_string()),
-            ssl_ca_cert: Some("-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----".to_string()),
+            ssl_ca_cert: Some(
+                "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----".to_string(),
+            ),
             file_path: None,
             ssh_enabled: Some(false),
             ssh_host: None,

@@ -193,7 +193,10 @@ async fn test_mysql_metadata_and_type_mapping_flow() {
         "metadata should include payload column"
     );
     assert!(
-        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        metadata
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.primary_key),
         "metadata should mark id as primary key"
     );
 

@@ -11,7 +11,11 @@ import {
 } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap, EditorView } from "@codemirror/view";
-import { CompletionContext, acceptCompletion } from "@codemirror/autocomplete";
+import {
+  CompletionContext,
+  CompletionResult,
+  acceptCompletion,
+} from "@codemirror/autocomplete";
 import { Prec } from "@codemirror/state";
 import { insertTab } from "@codemirror/commands";
 import { Button } from "@/components/ui/button";
@@ -56,6 +60,7 @@ import {
 import { toast } from "sonner";
 import { sqlEditorThemeDark, sqlEditorThemeLight } from "./codemirrorTheme";
 import { getThemePreset } from "@/theme/themeRegistry";
+import { CLICKHOUSE_COMPLETIONS } from "./clickhouseKeywords";
 import { useTranslation } from "react-i18next";
 
 const editorFontSizeExtension = EditorView.theme({
@@ -400,6 +405,44 @@ export function SqlEditor({
     };
   }, [schemaOverview]);
 
+  const clickhouseCompletion = useMemo(() => {
+    if (driver !== "clickhouse") return null;
+
+    return (context: CompletionContext): CompletionResult | null => {
+      const word = context.matchBefore(/[\w\s]*/);
+      if (!word || (word.from === word.to && !context.explicit)) return null;
+
+      return {
+        from: word.from,
+        options: CLICKHOUSE_COMPLETIONS,
+      };
+    };
+  }, [driver]);
+
+  const mergedCompletion = useMemo(() => {
+    if (!globalCompletion && !clickhouseCompletion) return null;
+
+    return (context: CompletionContext): CompletionResult | null => {
+      const results = [globalCompletion, clickhouseCompletion]
+        .map((provider) => provider?.(context))
+        .filter((item): item is CompletionResult => !!item);
+      if (!results.length) return null;
+
+      const from = results.reduce((min, curr) => Math.min(min, curr.from), results[0].from);
+      const options: NonNullable<CompletionResult["options"]>[number][] = [];
+      const seen = new Set<string>();
+      for (const result of results) {
+        for (const option of result.options) {
+          const key = `${option.label}::${option.type ?? ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          options.push(option);
+        }
+      }
+      return { from, options };
+    };
+  }, [globalCompletion, clickhouseCompletion]);
+
   // Extensions
   const extensions = useMemo(() => {
     const exts: Extension[] = [
@@ -442,10 +485,10 @@ export function SqlEditor({
     ];
 
     // Inject global completion if available
-    if (globalCompletion) {
+    if (mergedCompletion) {
       exts.push(
         dialect.language.data.of({
-          autocomplete: globalCompletion,
+          autocomplete: mergedCompletion,
         }),
       );
     }
@@ -456,7 +499,7 @@ export function SqlEditor({
     sqlSchema,
     executeFromEditorSelection,
     handleFormat,
-    globalCompletion,
+    mergedCompletion,
     triggerSave,
   ]);
 

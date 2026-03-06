@@ -129,6 +129,7 @@ export function TableMetadataView({
     }
     return set;
   }, [metadata]);
+  const clickhouseExtra = metadata?.clickhouseExtra ?? null;
 
   return (
     <div className="h-full overflow-auto bg-background p-4 space-y-6">
@@ -191,6 +192,64 @@ export function TableMetadataView({
             </TableBody>
           </Table>
         </div>
+      </section>
+
+      <section className="space-y-2">
+        {clickhouseExtra && (
+          <>
+            <div className="text-sm font-semibold">ClickHouse</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="border border-border rounded-md p-2">
+                <div className="text-xs text-muted-foreground">Engine</div>
+                <div className="font-mono text-sm break-words">
+                  {clickhouseExtra.engine}
+                </div>
+              </div>
+              {clickhouseExtra.partitionKey && (
+                <div className="border border-border rounded-md p-2">
+                  <div className="text-xs text-muted-foreground">Partition Key</div>
+                  <div className="font-mono text-sm break-words">
+                    {clickhouseExtra.partitionKey}
+                  </div>
+                </div>
+              )}
+              {clickhouseExtra.sortingKey && (
+                <div className="border border-border rounded-md p-2">
+                  <div className="text-xs text-muted-foreground">Sorting Key</div>
+                  <div className="font-mono text-sm break-words">
+                    {clickhouseExtra.sortingKey}
+                  </div>
+                </div>
+              )}
+              {clickhouseExtra.primaryKeyExpr && (
+                <div className="border border-border rounded-md p-2">
+                  <div className="text-xs text-muted-foreground">
+                    Primary Key Expr
+                  </div>
+                  <div className="font-mono text-sm break-words">
+                    {clickhouseExtra.primaryKeyExpr}
+                  </div>
+                </div>
+              )}
+              {clickhouseExtra.samplingKey && (
+                <div className="border border-border rounded-md p-2">
+                  <div className="text-xs text-muted-foreground">Sampling Key</div>
+                  <div className="font-mono text-sm break-words">
+                    {clickhouseExtra.samplingKey}
+                  </div>
+                </div>
+              )}
+              {clickhouseExtra.ttlExpr && (
+                <div className="border border-border rounded-md p-2 md:col-span-2">
+                  <div className="text-xs text-muted-foreground">TTL</div>
+                  <div className="font-mono text-sm break-words">
+                    {clickhouseExtra.ttlExpr}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="space-y-2">

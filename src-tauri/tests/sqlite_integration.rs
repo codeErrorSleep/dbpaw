@@ -73,10 +73,7 @@ async fn test_sqlite_integration_flow() {
         .await
         .expect("insert failed");
 
-    let tables = driver
-        .list_tables(None)
-        .await
-        .expect("list_tables failed");
+    let tables = driver.list_tables(None).await.expect("list_tables failed");
     assert!(
         tables.iter().any(|t| t.name == "sqlite_type_probe"),
         "list_tables should include sqlite_type_probe"
@@ -91,7 +88,10 @@ async fn test_sqlite_integration_flow() {
         .await
         .expect("get_table_metadata failed");
     assert!(
-        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        metadata
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.primary_key),
         "metadata should include primary key id"
     );
     assert!(

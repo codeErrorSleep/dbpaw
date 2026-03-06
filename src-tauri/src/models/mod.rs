@@ -171,10 +171,23 @@ pub struct ForeignKeyInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClickHouseTableExtra {
+    pub engine: String,
+    pub partition_key: Option<String>,
+    pub sorting_key: Option<String>,
+    pub primary_key_expr: Option<String>,
+    pub sampling_key: Option<String>,
+    pub ttl_expr: Option<String>,
+    pub create_table_query: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TableMetadata {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<IndexInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
+    pub clickhouse_extra: Option<ClickHouseTableExtra>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
