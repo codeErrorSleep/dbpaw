@@ -7,6 +7,7 @@
     "core:default",
     "core:window:allow-start-dragging",
     "dialog:default",
+    "fs:allow-read-text-file",
     "opener:default",
     "store:default",
     "updater:default",
