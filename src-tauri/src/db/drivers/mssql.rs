@@ -224,24 +224,43 @@ impl MssqlDriver {
     }
 
     async fn fetch_rows(&self, sql: &str) -> Result<Vec<Row>, String> {
+        Ok(self.fetch_rows_with_columns(sql).await?.0)
+    }
+
+    async fn fetch_rows_with_columns(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<Row>, Vec<QueryColumn>), String> {
         let mut client = self.connect_client().await?;
         let mut stream = client
             .simple_query(sql)
             .await
             .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
         let mut rows = Vec::new();
+        let mut columns = Vec::new();
 
         while let Some(item) = stream
             .try_next()
             .await
             .map_err(|e| format!("[QUERY_ERROR] {}", e))?
         {
-            if let QueryItem::Row(row) = item {
-                rows.push(row);
+            match item {
+                QueryItem::Metadata(meta) if columns.is_empty() => {
+                    columns = meta
+                        .columns()
+                        .iter()
+                        .map(|col| QueryColumn {
+                            name: col.name().to_string(),
+                            r#type: format!("{:?}", col.column_type()),
+                        })
+                        .collect();
+                }
+                QueryItem::Row(row) => rows.push(row),
+                _ => {}
             }
         }
 
-        Ok(rows)
+        Ok((rows, columns))
     }
 
     fn row_to_json(row: &Row) -> serde_json::Value {
@@ -681,19 +700,7 @@ impl DatabaseDriver for MssqlDriver {
         );
 
         if is_read_query {
-            let rows = self.fetch_rows(&sql).await?;
-            let columns = rows
-                .first()
-                .map(|row| {
-                    row.columns()
-                        .iter()
-                        .map(|c| QueryColumn {
-                            name: c.name().to_string(),
-                            r#type: format!("{:?}", c.column_type()),
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
+            let (rows, columns) = self.fetch_rows_with_columns(&sql).await?;
             let data = rows.iter().map(Self::row_to_json).collect::<Vec<_>>();
 
             return Ok(QueryResult {

@@ -4,7 +4,7 @@ use crate::models::{
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use sqlx::{sqlite::SqlitePoolOptions, Column, Row};
+use sqlx::{sqlite::SqlitePoolOptions, Column, Executor, Row, TypeInfo};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -32,6 +32,23 @@ impl SqliteDriver {
             .map_err(|e| format!("[CONN_FAILED] {e}"))?;
 
         Ok(Self { pool })
+    }
+
+    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+        let describe = self
+            .pool
+            .describe(sql)
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        Ok(describe
+            .columns()
+            .iter()
+            .map(|col| QueryColumn {
+                name: col.name().to_string(),
+                r#type: col.type_info().name().to_string(),
+            })
+            .collect())
     }
 }
 
@@ -473,16 +490,18 @@ impl DatabaseDriver for SqliteDriver {
                 .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
             let mut data = Vec::new();
-            let mut columns = Vec::new();
-
-            if let Some(first_row) = rows.first() {
-                for col in first_row.columns() {
-                    columns.push(QueryColumn {
+            let columns = if let Some(first_row) = rows.first() {
+                first_row
+                    .columns()
+                    .iter()
+                    .map(|col| QueryColumn {
                         name: col.name().to_string(),
                         r#type: col.type_info().to_string(),
-                    });
-                }
-            }
+                    })
+                    .collect()
+            } else {
+                self.describe_query_columns(&sql).await?
+            };
 
             for row in &rows {
                 let mut obj = serde_json::Map::new();
@@ -748,6 +767,40 @@ mod tests {
             result.data[0]["name"],
             serde_json::Value::String("bob".to_string())
         );
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_empty_result_keeps_columns() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);".to_string())
+            .await
+            .unwrap();
+        driver
+            .execute_query("INSERT INTO users (name) VALUES ('alice'), ('bob');".to_string())
+            .await
+            .unwrap();
+
+        let result = driver
+            .execute_query("SELECT id, name FROM users WHERE id < 0;".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 0);
+        assert_eq!(result.data.len(), 0);
+        assert_eq!(result.columns.len(), 2);
+        assert_eq!(result.columns[0].name, "id");
+        assert_eq!(result.columns[1].name, "name");
 
         driver.close().await;
         let _ = std::fs::remove_file(path);

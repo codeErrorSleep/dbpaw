@@ -6,7 +6,7 @@ use crate::models::{
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::{postgres::PgPoolOptions, Column, Row, TypeInfo};
+use sqlx::{postgres::PgPoolOptions, Column, Executor, Row, TypeInfo};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -133,9 +133,7 @@ impl PostgresDriver {
     fn cleanup_ca_file(&self) {
         cleanup_ca_file_opt(self.ca_cert_path.as_ref());
     }
-}
 
-impl PostgresDriver {
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
         let mut dsn_form = form.clone();
         let mut ssh_tunnel = None;
@@ -160,6 +158,23 @@ impl PostgresDriver {
             ssh_tunnel,
             ca_cert_path,
         })
+    }
+
+    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+        let describe = self
+            .pool
+            .describe(sql)
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        Ok(describe
+            .columns()
+            .iter()
+            .map(|col| QueryColumn {
+                name: col.name().to_string(),
+                r#type: col.type_info().name().to_string(),
+            })
+            .collect())
     }
 }
 
@@ -717,16 +732,18 @@ impl DatabaseDriver for PostgresDriver {
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
         let mut data = Vec::new();
-        let mut columns = Vec::new();
-
-        if let Some(first_row) = rows.first() {
-            for col in first_row.columns() {
-                columns.push(QueryColumn {
+        let columns = if let Some(first_row) = rows.first() {
+            first_row
+                .columns()
+                .iter()
+                .map(|col| QueryColumn {
                     name: col.name().to_string(),
                     r#type: col.type_info().to_string(),
-                });
-            }
-        }
+                })
+                .collect()
+        } else {
+            self.describe_query_columns(&sql).await?
+        };
 
         for row in &rows {
             let mut obj = serde_json::Map::new();
