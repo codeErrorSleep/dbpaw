@@ -218,7 +218,7 @@ impl MssqlDriver {
         }
 
         Err(format!(
-            "[CONN_FAILED] MSSQL handshake failed after retries: {}",
+            "[CONN_FAILED] SQL Server handshake failed after retries: {}",
             errors.join(" | ")
         ))
     }

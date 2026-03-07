@@ -223,6 +223,7 @@ export const zh: Translations = {
     },
     toast: {
       loadDatabasesFailed: "加载数据库失败",
+      newQueryNoDatabase: "无法新建查询：当前连接没有可用数据库。",
       duplicateSuccess: "连接复制成功",
       duplicateFailed: "连接复制失败",
       exportDesktopOnly: "导出对话框仅在 Tauri 桌面模式可用。",

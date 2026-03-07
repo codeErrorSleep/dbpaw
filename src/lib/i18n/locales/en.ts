@@ -225,6 +225,7 @@ export const en = {
     },
     toast: {
       loadDatabasesFailed: "Failed to load databases",
+      newQueryNoDatabase: "Cannot create query: no available database for this connection.",
       duplicateSuccess: "Connection duplicated successfully",
       duplicateFailed: "Failed to duplicate connection",
       exportDesktopOnly: "Export dialog is only available in Tauri desktop mode.",

@@ -228,6 +228,8 @@ export const ja: Translations = {
     },
     toast: {
       loadDatabasesFailed: "データベースの読み込みに失敗しました",
+      newQueryNoDatabase:
+        "クエリを作成できません: この接続で利用可能なデータベースがありません。",
       duplicateSuccess: "接続を複製しました",
       duplicateFailed: "接続の複製に失敗しました",
       exportDesktopOnly:

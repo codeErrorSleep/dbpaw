@@ -27,7 +27,7 @@ async fn test_mssql_integration_flow() {
 
     let driver = MssqlDriver::connect(&form)
         .await
-        .expect("Failed to connect to MSSQL");
+        .expect("Failed to connect to SQL Server");
 
     driver
         .test_connection()
@@ -122,7 +122,7 @@ async fn test_mssql_metadata_and_ddl_with_special_table_name() {
 
     let driver = MssqlDriver::connect(&form)
         .await
-        .expect("Failed to connect to MSSQL");
+        .expect("Failed to connect to SQL Server");
 
     let schema = "dbo";
     let table_name = "dbpaw type-probe";
