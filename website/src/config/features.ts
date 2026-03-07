@@ -1,32 +1,43 @@
 export const FEATURES = [
   {
-    title: 'Lightweight by Design',
+    title: 'Tiny footprint',
     summary:
-      'Around 10MB installer and ~80MB installed size. Built with Rust + Tauri for fast startup and ultra-low memory usage.',
+      'Installer ≈10 MB and ~80 MB on disk. Built with Rust + Tauri for fast startup and ultra‑low idle memory.',
     tag: 'Lightweight'
   },
   {
-    title: 'Modern and Easy to Use',
+    title: 'Truly modern',
     summary:
-      'No cockpit-level complexity. A clean, focused workflow built around the features you actually use every day.',
+      'No cockpit‑style complexity. We cut the 99% you never use and focus on everyday workflows for smoother, more intuitive operations.',
     tag: 'Modern'
   },
   {
-    title: 'Beautiful Theme System',
+    title: 'Cross‑platform',
+    summary: 'Runs on macOS, Windows, and Linux — use the same tool everywhere.',
+    tag: 'Cross‑platform'
+  },
+  {
+    title: 'Database compatibility',
     summary:
-      'Choose from a wide range of themes and dark/light modes for a setup that looks great and stays comfortable for long sessions.',
+      'Supports MySQL, PostgreSQL, ClickHouse, TiDB, SQL Server, and SQLite (actively expanding).',
+    tag: 'DBs'
+  },
+  {
+    title: 'Looks great',
+    summary:
+      'Rich theme system with dark/light and high/low saturation styles for all‑day comfort.',
     tag: 'Themes'
   },
   {
-    title: 'AI-Assisted Insights',
+    title: 'AI assistance (experimental)',
     summary:
-      'Use AI for quick summaries and basic insight extraction to speed up analysis, with security capabilities continuously improving.',
+      'Summarize SQL, explain schemas, and analyze slow queries. Security is under active refinement; local and optional cloud modes planned.',
     tag: 'AI'
   },
   {
-    title: 'Free, No Login Required',
+    title: 'Completely free',
     summary:
-      'No account, no paywall, no feature gating. Download and use the full core experience right away.',
+      'No login, no payments, no memberships, no ads. Download and go.',
     tag: 'Free'
   }
 ] as const;

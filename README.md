@@ -4,17 +4,17 @@
 
 English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
-> **A modern database client focused on efficient querying and exploration, with optional AI assistance.**
+> **Faster SQL editing and data exploration — cross‑platform, ultra‑lightweight, with optional AI assistance.**
 
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** helps you connect to PostgreSQL, MySQL, TiDB (MySQL-compatible), SQLite, SQL Server (MSSQL), and ClickHouse (preview), write and run SQL efficiently, and inspect data in a clean desktop UI.
+**DbPaw** helps you connect to PostgreSQL, MySQL, TiDB (MySQL-compatible), SQLite, SQL Server, and ClickHouse (preview), write and run SQL efficiently, and inspect data in a clean desktop UI.
 
 ## ✅ What You Can Do
 
-- Connect to PostgreSQL, MySQL, TiDB (MySQL-compatible), SQLite, SQL Server (MSSQL), and ClickHouse (preview, currently read-only)
+- Connect to PostgreSQL, MySQL, TiDB (MySQL-compatible), SQLite, SQL Server, and ClickHouse (preview, currently read-only)
 - Write and run SQL with syntax highlighting, auto-completion, and one-click formatting
 - Browse query results in a data grid with filtering, sorting, pagination, and export
 - Save and reuse frequently used SQL scripts with Saved Queries
@@ -38,13 +38,13 @@ English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
 ## ✨ Features
 
-- **Multi-database support**: PostgreSQL, MySQL, TiDB (MySQL-compatible), SQLite, SQL Server (MSSQL), ClickHouse (preview, read-only).
-- **AI assistance (optional)**: draft SQL and explain query logic.
-- **Secure connectivity**: SSH tunneling support.
-- **SQL editor**: syntax highlighting, auto-completion, formatting, and Saved Queries.
-- **Data grid**: filtering, sorting, pagination, and export for result sets.
-- **Modern desktop UI**: React + TailwindCSS + Shadcn/UI, with built-in dark mode.
-- **Fast runtime**: powered by Tauri (Rust backend + web frontend).
+- **Tiny footprint**: installer ≈10 MB, on-disk ≈80 MB, and very low idle memory (much lighter than Electron-based tools).
+- **Truly modern**: goodbye to DBeaver-style “cockpit” UIs—we cut the 99% you’ll never use, focus on common workflows, and make every action smoother and more intuitive.
+- **Cross-platform**: runs on macOS, Windows, and Linux (no more one app at work and another at home).
+- **Database compatibility**: currently supports MySQL, PostgreSQL, ClickHouse, TiDB, SQL Server, and SQLite (actively expanding).
+- **Looks great**: lots of themes (dark/light and a range of high/low saturation styles).
+- **Built-in AI assistance (experimental)**: summarize SQL, explain schemas, and analyze slow queries with AI (security under active refinement; local/optional cloud modes planned).
+- **Completely free**: no login, no payments, no memberships, no ads.
 
 ## 📥 Installation
 

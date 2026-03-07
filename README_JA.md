@@ -4,17 +4,17 @@
 
 [English](README.md) | [简体中文](README_CN.md) | 日本語
 
-> **効率的なクエリ実行とデータ探索にフォーカスした、モダンなデータベースクライアント。必要に応じて AI アシスタントも利用できます。**
+> **より速い SQL 編集とデータ探索体験 ― クロスプラットフォーム、超軽量、AI アシスタントはオプション。**
 
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
 
-**DbPaw** は PostgreSQL / MySQL / TiDB（MySQL 互換）/ SQLite / SQL Server（MSSQL）/ ClickHouse（プレビュー）に接続し、SQL の作成・実行とデータ確認を、クリーンなデスクトップ UI で快適に行えます。
+**DbPaw** は PostgreSQL / MySQL / TiDB（MySQL 互換）/ SQLite / SQL Server / ClickHouse（プレビュー）に接続し、SQL の作成・実行とデータ確認を、クリーンなデスクトップ UI で快適に行えます。
 
 ## ✅ できること
 
-- PostgreSQL、MySQL、TiDB（MySQL 互換）、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、現状は読み取り専用）に接続
+- PostgreSQL、MySQL、TiDB（MySQL 互換）、SQLite、SQL Server、ClickHouse（プレビュー、現状は読み取り専用）に接続
 - SQL の作成・実行（シンタックスハイライト、補完、ワンクリック整形）
 - データグリッドで結果を閲覧（フィルタ、ソート、ページネーション、エクスポート）
 - `Saved Queries` でよく使う SQL を保存・再利用
@@ -37,13 +37,13 @@
 
 ## ✨ 主な機能
 
-- **マルチ DB 対応**: PostgreSQL、MySQL、TiDB（MySQL 互換）、SQLite、SQL Server（MSSQL）、ClickHouse（プレビュー、読み取り専用）
-- **AI 支援（任意）**: SQL の下書き作成、クエリロジックの説明
-- **セキュア接続**: SSH トンネル対応
-- **SQL エディタ**: ハイライト、補完、整形、Saved Queries
-- **データグリッド**: フィルタ、ソート、ページネーション、結果エクスポート
-- **モダンなデスクトップ UI**: React + TailwindCSS + Shadcn/UI（ダークモード対応）
-- **高速ランタイム**: Tauri（Rust バックエンド + Web フロントエンド）
+- **超軽量**: インストーラは約 10MB、インストール後は約 80MB。常駐メモリも極小（Electron 系ツールを大きく下回ります）。
+- **真にモダン**: DBeaver の「コックピット」的な複雑 UI から卒業。開発者が一生使わない 99% をそぎ落とし、よく使うシナリオに集中。より直感的でスムーズな操作感。
+- **クロスプラットフォーム**: macOS / Windows / Linux をサポート（職場と自宅で別アプリを使い分ける必要なし）。
+- **DB 互換**: 現在は MySQL、PostgreSQL、ClickHouse、TiDB、SQL Server、SQLite に対応（対応拡大中）。
+- **ルックス良し**: 多数のテーマ（ダーク/ライト、高彩度/低彩度など）を同梱。
+- **組み込み AI 支援（実験的）**: SQL 要約、スキーマ説明、遅いクエリ分析などに対応（セキュリティは継続改善中。今後はローカル/選択式クラウドモードを追加予定）。
+- **完全無料**: ログイン不要、課金なし、会員機能なし、広告なし。
 
 ## 📥 インストール
 
