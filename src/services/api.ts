@@ -61,7 +61,13 @@ export interface SqlExecutionLog {
   executedAt: string;
 }
 
-export type Driver = "postgres" | "sqlite" | "mysql" | "clickhouse" | "mssql";
+export type Driver =
+  | "postgres"
+  | "sqlite"
+  | "mysql"
+  | "tidb"
+  | "clickhouse"
+  | "mssql";
 export interface ConnectionForm {
   driver: Driver;
   name?: string;
@@ -72,6 +78,8 @@ export interface ConnectionForm {
   username?: string;
   password?: string;
   ssl?: boolean;
+  sslMode?: "require" | "verify_ca";
+  sslCaCert?: string;
   filePath?: string;
   sshEnabled?: boolean;
   sshHost?: string;
@@ -117,10 +125,21 @@ export interface ForeignKeyInfo {
   onDelete?: string | null;
 }
 
+export interface ClickHouseTableExtra {
+  engine: string;
+  partitionKey?: string | null;
+  sortingKey?: string | null;
+  primaryKeyExpr?: string | null;
+  samplingKey?: string | null;
+  ttlExpr?: string | null;
+  createTableQuery?: string | null;
+}
+
 export interface TableMetadata {
   columns: ColumnInfo[];
   indexes: IndexInfo[];
   foreignKeys: ForeignKeyInfo[];
+  clickhouseExtra?: ClickHouseTableExtra | null;
 }
 
 export interface TableSchema {
@@ -274,7 +293,15 @@ export const api = {
       query: string,
       database?: string,
       source?: SqlExecutionSource,
-    ) => invoke<QueryResult>("execute_query", { id, query, database, source }),
+      queryId?: string,
+    ) =>
+      invoke<QueryResult>("execute_query", {
+        id,
+        query,
+        database,
+        source,
+        queryId,
+      }),
     cancel: (uuid: string, queryId: string) =>
       invoke<boolean>("cancel_query", { uuid, queryId }),
     executeByConn: (form: ConnectionForm, sql: string) =>

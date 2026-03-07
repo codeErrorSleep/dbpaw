@@ -1,4 +1,13 @@
-import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  MouseEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -6,12 +15,10 @@ import {
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sidebar } from "@/components/business/Sidebar/Sidebar";
-import { SqlEditor } from "@/components/business/Editor/SqlEditor";
 import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
 import { TableView } from "@/components/business/DataGrid/TableView";
 import { TableMetadataView } from "@/components/business/Metadata/TableMetadataView";
 import { SqlExecutionLogsDropdown } from "@/components/business/SqlLogs/SqlExecutionLogsDialog";
-import { AISidebar } from "@/components/business/Sidebar/AISidebar";
 import { FileCode, Table, X, Settings, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +41,6 @@ import { api, isTauri, SchemaOverview, SavedQuery } from "@/services/api";
 import { toast } from "sonner";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { UpdaterChecker } from "@/components/updater-checker";
 import { isModKey, shouldIgnoreGlobalShortcut } from "@/lib/keyboard";
 import {
@@ -82,6 +88,7 @@ interface TabItem {
     executionTime: string;
     error?: string;
   } | null;
+  activeQueryId?: string;
   schemaOverview?: SchemaOverview;
   savedQueryId?: number;
   savedQueryDescription?: string;
@@ -106,10 +113,40 @@ const DEFAULT_SQL = "";
 const TAB_TRIGGER_CLASS =
   "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0 shrink-0";
 
+const SqlEditor = lazy(async () => {
+  const mod = await import("@/components/business/Editor/SqlEditor");
+  return { default: mod.SqlEditor };
+});
+
+const AISidebar = lazy(async () => {
+  const mod = await import("@/components/business/Sidebar/AISidebar");
+  return { default: mod.AISidebar };
+});
+
+const SettingsDialog = lazy(async () => {
+  const mod = await import("@/components/settings/SettingsDialog");
+  return { default: mod.SettingsDialog };
+});
+
+function LazyPanelFallback({
+  label,
+  className = "h-full",
+}: {
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div className={`${className} flex items-center justify-center text-sm text-muted-foreground`}>
+      {label}
+    </div>
+  );
+}
+
 export default function App() {
   const { t } = useTranslation();
   const resolveTableScope = (driver: string, database?: string) => {
-    const isDatabaseScoped = driver === "mysql" || driver === "clickhouse";
+    const isDatabaseScoped =
+      driver === "mysql" || driver === "tidb" || driver === "clickhouse";
     return {
       schema: isDatabaseScoped
         ? database || ""
@@ -383,12 +420,19 @@ export default function App() {
     }
 
     const start = performance.now();
+    const queryId = `q-${tab.connectionId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, activeQueryId: queryId } : t)),
+    );
     try {
       const result = await api.query.execute(
         tab.connectionId,
         sql,
         tab.database,
         "sql_editor",
+        queryId,
       );
       const columns = (result.columns || []).map((c) => c.name);
       const execMs = Math.round(
@@ -405,6 +449,7 @@ export default function App() {
               columns,
               executionTime: `${execMs}ms`,
             },
+            activeQueryId: undefined,
           };
         }),
       );
@@ -422,6 +467,7 @@ export default function App() {
               executionTime: "0ms",
               error: errorMessage,
             },
+            activeQueryId: undefined,
           };
         }),
       );
@@ -1279,44 +1325,57 @@ export default function App() {
                       className="h-full m-0"
                     >
                       {tab.type === "editor" ? (
-                        <SqlEditor
-                          databaseName={tab.database}
-                          onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
-                          onCancel={() =>
-                            api.query.cancel(tab.id, `q-${tab.connectionId}`)
+                        <Suspense
+                          fallback={
+                            <LazyPanelFallback
+                              label={t("common.loading")}
+                            />
                           }
-                          queryResults={tab.queryResults}
-                          value={tab.sqlContent}
-                          onChange={(sql) => handleSqlChange(tab.id, sql)}
-                          connectionId={tab.connectionId}
-                          driver={tab.driver}
-                          schemaOverview={tab.schemaOverview}
-                          savedQueryId={tab.savedQueryId}
-                          initialName={
-                            isDefaultQueryTitle(tab.title) ? "" : tab.title
-                          }
-                          initialDescription={tab.savedQueryDescription}
-                          onSaveSuccess={(savedQuery) => {
-                            setQueriesLastUpdated(Date.now());
-                            setTabs((prev) =>
-                              prev.map((t) => {
-                                if (t.id === tab.id) {
-                                  return {
-                                    ...t,
-                                    savedQueryId: savedQuery.id,
-                                    title: savedQuery.name,
-                                    savedQueryDescription:
-                                      savedQuery.description || undefined,
-                                    sqlContent: savedQuery.query,
-                                    lastSavedSql: savedQuery.query,
-                                    isDirty: false,
-                                  };
-                                }
-                                return t;
-                              }),
-                            );
-                          }}
-                        />
+                        >
+                          <SqlEditor
+                            databaseName={tab.database}
+                            onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
+                            onCancel={() =>
+                              tab.connectionId && tab.activeQueryId
+                                ? api.query.cancel(
+                                    String(tab.connectionId),
+                                    tab.activeQueryId,
+                                  )
+                                : Promise.resolve(false)
+                            }
+                            queryResults={tab.queryResults}
+                            value={tab.sqlContent}
+                            onChange={(sql) => handleSqlChange(tab.id, sql)}
+                            connectionId={tab.connectionId}
+                            driver={tab.driver}
+                            schemaOverview={tab.schemaOverview}
+                            savedQueryId={tab.savedQueryId}
+                            initialName={
+                              isDefaultQueryTitle(tab.title) ? "" : tab.title
+                            }
+                            initialDescription={tab.savedQueryDescription}
+                            onSaveSuccess={(savedQuery) => {
+                              setQueriesLastUpdated(Date.now());
+                              setTabs((prev) =>
+                                prev.map((t) => {
+                                  if (t.id === tab.id) {
+                                    return {
+                                      ...t,
+                                      savedQueryId: savedQuery.id,
+                                      title: savedQuery.name,
+                                      savedQueryDescription:
+                                        savedQuery.description || undefined,
+                                      sqlContent: savedQuery.query,
+                                      lastSavedSql: savedQuery.query,
+                                      isDirty: false,
+                                    };
+                                  }
+                                  return t;
+                                }),
+                              );
+                            }}
+                          />
+                        </Suspense>
                       ) : tab.type === "table" ? (
                         <TableView
                           data={tab.data}
@@ -1353,6 +1412,7 @@ export default function App() {
                                   database: tab.database,
                                   schema:
                                     tab.driver === "mysql" ||
+                                    tab.driver === "tidb" ||
                                     tab.driver === "clickhouse"
                                       ? tab.database
                                       : tab.driver === "mssql"
@@ -1393,11 +1453,19 @@ export default function App() {
               minSize={20}
               maxSize={40}
             >
-              <AISidebar
-                connectionId={activeTabItem?.connectionId}
-                database={activeTabItem?.database}
-                schemaOverview={activeTabItem?.schemaOverview}
-              />
+              <Suspense
+                fallback={
+                  <LazyPanelFallback
+                    label={t("common.loading")}
+                  />
+                }
+              >
+                <AISidebar
+                  connectionId={activeTabItem?.connectionId}
+                  database={activeTabItem?.database}
+                  schemaOverview={activeTabItem?.schemaOverview}
+                />
+              </Suspense>
             </ResizablePanel>
           )}
         </ResizablePanelGroup>
@@ -1446,7 +1514,11 @@ export default function App() {
         }
         initialDescription={currentCloseTab?.savedQueryDescription}
       />
-      <SettingsDialog open={openSettings} onOpenChange={setOpenSettings} />
+      {openSettings && (
+        <Suspense fallback={null}>
+          <SettingsDialog open={openSettings} onOpenChange={setOpenSettings} />
+        </Suspense>
+      )}
       <UpdaterChecker />
     </div>
   );

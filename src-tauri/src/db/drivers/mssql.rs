@@ -141,7 +141,12 @@ impl MssqlDriver {
             self.config.password.clone(),
         ));
         config.encryption(encryption);
-        if trust_cert {
+        if trust_cert
+            && !matches!(
+                encryption,
+                EncryptionLevel::Off | EncryptionLevel::NotSupported
+            )
+        {
             config.trust_cert();
         }
         config
@@ -179,19 +184,12 @@ impl MssqlDriver {
     async fn connect_client(&self) -> Result<Client<Compat<TcpStream>>, String> {
         let attempts = if self.config.ssl {
             vec![
-                (EncryptionLevel::On, true, "encrypt=on,trust_cert=true"),
                 (
                     EncryptionLevel::Required,
-                    true,
-                    "encrypt=required,trust_cert=true",
+                    false,
+                    "encrypt=required,trust_cert=false",
                 ),
                 (EncryptionLevel::On, false, "encrypt=on,trust_cert=false"),
-                (
-                    EncryptionLevel::NotSupported,
-                    false,
-                    "encrypt=not_supported",
-                ),
-                (EncryptionLevel::Off, false, "encrypt=off"),
             ]
         } else {
             vec![
@@ -316,6 +314,9 @@ impl MssqlDriver {
     fn parse_string(row: &Row, idx: usize) -> String {
         if let Ok(Some(v)) = row.try_get::<&str, _>(idx) {
             return v.to_string();
+        }
+        if let Ok(Some(v)) = row.try_get::<&[u8], _>(idx) {
+            return String::from_utf8_lossy(v).to_string();
         }
         String::new()
     }
@@ -539,6 +540,7 @@ impl DatabaseDriver for MssqlDriver {
             columns,
             indexes,
             foreign_keys,
+            clickhouse_extra: None,
         })
     }
 
@@ -603,7 +605,10 @@ impl DatabaseDriver for MssqlDriver {
             _ => String::new(),
         };
 
-        let count_sql = format!("SELECT COUNT_BIG(1) AS total FROM {}{}", qualified, where_clause);
+        let count_sql = format!(
+            "SELECT COUNT_BIG(1) AS total FROM {}{}",
+            qualified, where_clause
+        );
         let count_rows = self.fetch_rows(&count_sql).await?;
         let total = count_rows
             .first()

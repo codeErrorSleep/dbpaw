@@ -12,6 +12,8 @@ pub struct Connection {
     pub database: String,
     pub username: String,
     pub ssl: bool,
+    pub ssl_mode: Option<String>,
+    pub ssl_ca_cert: Option<String>,
     pub file_path: Option<String>,
     pub ssh_enabled: bool,
     pub ssh_host: Option<String>,
@@ -169,10 +171,23 @@ pub struct ForeignKeyInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClickHouseTableExtra {
+    pub engine: String,
+    pub partition_key: Option<String>,
+    pub sorting_key: Option<String>,
+    pub primary_key_expr: Option<String>,
+    pub sampling_key: Option<String>,
+    pub ttl_expr: Option<String>,
+    pub create_table_query: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TableMetadata {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<IndexInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
+    pub clickhouse_extra: Option<ClickHouseTableExtra>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,7 +221,7 @@ pub struct TableDataResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionForm {
-    pub driver: String, // "postgres" | "mysql" | "sqlite" | "clickhouse" | "mssql"
+    pub driver: String, // "postgres" | "mysql" | "tidb" | "sqlite" | "clickhouse" | "mssql"
     pub name: Option<String>,
     pub host: Option<String>,
     pub port: Option<i64>,
@@ -215,6 +230,8 @@ pub struct ConnectionForm {
     pub username: Option<String>,
     pub password: Option<String>,
     pub ssl: Option<bool>,
+    pub ssl_mode: Option<String>,
+    pub ssl_ca_cert: Option<String>,
     pub file_path: Option<String>,
     pub ssh_enabled: Option<bool>,
     pub ssh_host: Option<String>,

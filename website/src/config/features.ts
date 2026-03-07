@@ -1,38 +1,32 @@
 export const FEATURES = [
   {
-    title: 'AI SQL Co-pilot',
+    title: 'Lightweight by Design',
     summary:
-      'Write, optimize, and explain SQL with an integrated AI sidebar built for real database workflows.',
+      'Around 10MB installer and ~80MB installed size. Built with Rust + Tauri for fast startup and ultra-low memory usage.',
+    tag: 'Lightweight'
+  },
+  {
+    title: 'Modern and Easy to Use',
+    summary:
+      'No cockpit-level complexity. A clean, focused workflow built around the features you actually use every day.',
+    tag: 'Modern'
+  },
+  {
+    title: 'Beautiful Theme System',
+    summary:
+      'Choose from a wide range of themes and dark/light modes for a setup that looks great and stays comfortable for long sessions.',
+    tag: 'Themes'
+  },
+  {
+    title: 'AI-Assisted Insights',
+    summary:
+      'Use AI for quick summaries and basic insight extraction to speed up analysis, with security capabilities continuously improving.',
     tag: 'AI'
   },
   {
-    title: 'Secure SSH Tunneling',
+    title: 'Free, No Login Required',
     summary:
-      'Connect to remote databases through encrypted SSH tunnels without leaving your workflow.',
-    tag: 'Security'
-  },
-  {
-    title: 'Advanced SQL Editor',
-    summary:
-      'Use syntax highlighting, formatting, and saved queries to ship cleaner SQL faster.',
-    tag: 'Productivity'
-  },
-  {
-    title: 'Interactive Data Grid',
-    summary:
-      'Browse, filter, and inspect records quickly with a responsive table explorer.',
-    tag: 'Data'
-  },
-  {
-    title: 'Rust-Powered Performance',
-    summary:
-      'Get native-speed startup and low memory usage from the Tauri + Rust architecture.',
-    tag: 'Performance'
-  },
-  {
-    title: 'Cross-Platform Delivery',
-    summary:
-      'Run one workflow on macOS, Windows, and Linux with consistent behavior.',
-    tag: 'Platform'
+      'No account, no paywall, no feature gating. Download and use the full core experience right away.',
+    tag: 'Free'
   }
 ] as const;

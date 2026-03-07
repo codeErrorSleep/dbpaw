@@ -31,7 +31,11 @@ export function LanguageSelector() {
         <SelectContent>
           {SUPPORTED_LANGUAGES.map((lang) => (
             <SelectItem key={lang} value={lang}>
-              {lang === "en" ? t("settings.language.en") : t("settings.language.zh")}
+              {lang === "en"
+                ? t("settings.language.en")
+                : lang === "zh"
+                  ? t("settings.language.zh")
+                  : t("settings.language.ja")}
             </SelectItem>
           ))}
         </SelectContent>

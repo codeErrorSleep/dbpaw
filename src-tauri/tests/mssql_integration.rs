@@ -40,10 +40,7 @@ async fn test_mssql_integration_flow() {
         .expect("list_databases failed");
     assert!(!databases.is_empty(), "list_databases returned empty");
 
-    let _tables = driver
-        .list_tables(None)
-        .await
-        .expect("list_tables failed");
+    let _tables = driver.list_tables(None).await.expect("list_tables failed");
 
     let result = driver
         .execute_query("SELECT TOP 1 name FROM sys.databases".to_string())
@@ -88,7 +85,10 @@ async fn test_mssql_integration_flow() {
         .first()
         .expect("typed_result should include at least one row");
     assert_eq!(row["flag"], serde_json::Value::Bool(true));
-    assert_eq!(row["amount"], serde_json::Value::String("12.34".to_string()));
+    assert_eq!(
+        row["amount"],
+        serde_json::Value::String("12.34".to_string())
+    );
     assert!(
         row["created_at"]
             .as_str()
@@ -143,10 +143,7 @@ async fn test_mssql_metadata_and_ddl_with_special_table_name() {
         .await
         .expect("create special-name table failed");
 
-    let tables = driver
-        .list_tables(None)
-        .await
-        .expect("list_tables failed");
+    let tables = driver.list_tables(None).await.expect("list_tables failed");
     assert!(
         tables
             .iter()
@@ -159,7 +156,10 @@ async fn test_mssql_metadata_and_ddl_with_special_table_name() {
         .await
         .expect("get_table_metadata failed");
     assert!(
-        metadata.columns.iter().any(|c| c.name == "id" && c.primary_key),
+        metadata
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.primary_key),
         "metadata should include primary key id"
     );
     assert!(

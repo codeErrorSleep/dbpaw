@@ -1,8 +1,31 @@
 use crate::models::{ConnectionForm, QueryResult, SqlExecutionLog, TableDataResponse};
 use crate::state::AppState;
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 use tauri::{Emitter, State};
+use tokio::sync::Mutex;
 
 const DEFAULT_SELECT_LIMIT: i64 = 1000;
+type RunningQueryRegistry = HashMap<i64, HashSet<String>>;
+
+fn running_queries() -> &'static Mutex<RunningQueryRegistry> {
+    static RUNNING_QUERIES: OnceLock<Mutex<RunningQueryRegistry>> = OnceLock::new();
+    RUNNING_QUERIES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn make_query_id(connection_id: i64, provided: Option<String>) -> String {
+    if let Some(id) = provided {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("q-{}-{}", connection_id, ts)
+}
 
 fn normalize_for_guard(sql: &str) -> &str {
     sql.trim()
@@ -268,7 +291,10 @@ fn has_top_level_limit(sql: &str) -> bool {
                 while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
                     i += 1;
                 }
-                return Some((true, String::from_utf8_lossy(&bytes[start..i]).to_ascii_lowercase()));
+                return Some((
+                    true,
+                    String::from_utf8_lossy(&bytes[start..i]).to_ascii_lowercase(),
+                ));
             }
 
             if b.is_ascii_digit() {
@@ -406,11 +432,12 @@ fn append_mssql_fetch_1000(sql: &str) -> String {
     let has_order_by = collect_top_level_keywords(trimmed)
         .windows(2)
         .any(|pair| pair[0] == "order" && pair[1] == "by");
+    let has_offset_clause = has_top_level_mssql_offset_clause(trimmed);
 
-    let with_fetch = if has_order_by {
-        format!(
-            "{trimmed} OFFSET 0 ROWS FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY"
-        )
+    let with_fetch = if has_offset_clause {
+        format!("{trimmed} FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY")
+    } else if has_order_by {
+        format!("{trimmed} OFFSET 0 ROWS FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY")
     } else {
         format!(
             "{trimmed} ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY"
@@ -424,12 +451,46 @@ fn append_mssql_fetch_1000(sql: &str) -> String {
     }
 }
 
+fn has_top_level_mssql_offset_clause(sql: &str) -> bool {
+    let tokens = collect_top_level_keywords(sql);
+    let mut order_by_seen = false;
+    let mut i = 0;
+
+    while i < tokens.len() {
+        if i + 1 < tokens.len() && tokens[i] == "order" && tokens[i + 1] == "by" {
+            order_by_seen = true;
+            i += 2;
+            continue;
+        }
+
+        if order_by_seen
+            && i + 1 < tokens.len()
+            && tokens[i] == "offset"
+            && (tokens[i + 1] == "row" || tokens[i + 1] == "rows")
+        {
+            return true;
+        }
+
+        i += 1;
+    }
+
+    false
+}
+
 fn has_top_level_mssql_top(sql: &str) -> bool {
     let tokens = collect_top_level_keywords(sql);
     if tokens.first().map(|s| s.as_str()) == Some("select") {
         return tokens.iter().skip(1).take(3).any(|t| t == "top");
     }
     false
+}
+
+fn has_top_level_clickhouse_format_clause(sql: &str) -> bool {
+    let tokens = collect_top_level_keywords(sql);
+    tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, token)| token == "format" && idx + 1 < tokens.len() && idx + 3 >= tokens.len())
 }
 
 fn maybe_apply_default_limit(sql: &str, driver: Option<&str>) -> String {
@@ -451,6 +512,14 @@ fn maybe_apply_default_limit(sql: &str, driver: Option<&str>) -> String {
     }
 
     if driver
+        .map(|d| d.eq_ignore_ascii_case("clickhouse"))
+        .unwrap_or(false)
+        && has_top_level_clickhouse_format_clause(normalized)
+    {
+        return sql.to_string();
+    }
+
+    if driver
         .map(|d| d.eq_ignore_ascii_case("mssql"))
         .unwrap_or(false)
     {
@@ -468,7 +537,36 @@ async fn resolve_driver(state: &State<'_, AppState>, id: i64) -> Option<String> 
         let lock = state.local_db.lock().await;
         lock.clone()
     }?;
-    db.get_connection_form_by_id(id).await.ok().map(|f| f.driver)
+    db.get_connection_form_by_id(id)
+        .await
+        .ok()
+        .map(|f| f.driver)
+}
+
+async fn register_running_query(connection_id: i64, query_id: &str) {
+    let mut guard = running_queries().lock().await;
+    guard
+        .entry(connection_id)
+        .or_default()
+        .insert(query_id.to_string());
+}
+
+async fn unregister_running_query(connection_id: i64, query_id: &str) {
+    let mut guard = running_queries().lock().await;
+    if let Some(ids) = guard.get_mut(&connection_id) {
+        ids.remove(query_id);
+        if ids.is_empty() {
+            guard.remove(&connection_id);
+        }
+    }
+}
+
+async fn is_running_query(connection_id: i64, query_id: &str) -> bool {
+    let guard = running_queries().lock().await;
+    guard
+        .get(&connection_id)
+        .map(|ids| ids.contains(query_id))
+        .unwrap_or(false)
 }
 
 async fn append_sql_execution_log(
@@ -517,20 +615,43 @@ pub async fn execute_query(
     query: String,
     database: Option<String>,
     source: Option<String>,
+    query_id: Option<String>,
 ) -> Result<QueryResult, String> {
-    let query_id = format!("q-{}", id);
+    let query_id = make_query_id(id, query_id);
     let _ = app_handle.emit(
         "query.progress",
-        serde_json::json!({"queryId": query_id, "phase": "prepare"}),
+        serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
     );
     let driver = resolve_driver(&state, id).await;
+    let is_clickhouse = driver
+        .as_deref()
+        .map(|d| d.eq_ignore_ascii_case("clickhouse"))
+        .unwrap_or(false);
     let guarded_query = maybe_apply_default_limit(&query, driver.as_deref());
+    if is_clickhouse {
+        register_running_query(id, &query_id).await;
+    }
 
     let result = super::execute_with_retry(&state, id, database.clone(), |driver| {
         let query_clone = guarded_query.clone();
-        async move { driver.execute_query(query_clone).await }
+        let query_id_clone = query_id.clone();
+        async move {
+            driver
+                .execute_query_with_id(
+                    query_clone,
+                    if is_clickhouse {
+                        Some(query_id_clone.as_str())
+                    } else {
+                        None
+                    },
+                )
+                .await
+        }
     })
     .await;
+    if is_clickhouse {
+        unregister_running_query(id, &query_id).await;
+    }
 
     if let Ok(res) = &result {
         // Stream first chunk for UX (simulated)
@@ -610,7 +731,36 @@ pub async fn get_table_data(
 }
 
 #[tauri::command]
-pub async fn cancel_query(_uuid: String, _query_id: String) -> Result<bool, String> {
+pub async fn cancel_query(
+    state: State<'_, AppState>,
+    uuid: String,
+    query_id: String,
+) -> Result<bool, String> {
+    let connection_id = uuid
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| "[VALIDATION_ERROR] Invalid connection id for cancellation".to_string())?;
+    let query_id = query_id.trim().to_string();
+    if query_id.is_empty() {
+        return Err("[VALIDATION_ERROR] query_id cannot be empty".to_string());
+    }
+    if !is_running_query(connection_id, &query_id).await {
+        return Ok(false);
+    }
+
+    let local_db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+    let db = local_db.ok_or("Local DB not initialized".to_string())?;
+    let form = db.get_connection_form_by_id(connection_id).await?;
+    if !form.driver.eq_ignore_ascii_case("clickhouse") {
+        return Ok(false);
+    }
+
+    let driver = crate::db::drivers::clickhouse::ClickHouseDriver::connect(&form).await?;
+    driver.kill_query(&query_id).await?;
+    unregister_running_query(connection_id, &query_id).await;
     Ok(true)
 }
 
@@ -621,16 +771,25 @@ pub async fn execute_by_conn(
     form: ConnectionForm,
     sql: String,
 ) -> Result<QueryResult, String> {
-    let query_id = "q-conn-ephemeral";
+    let query_id = make_query_id(-1, None);
     let _ = app_handle.emit(
         "query.progress",
-        serde_json::json!({"queryId": query_id, "phase": "prepare"}),
+        serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
     );
     let guarded_sql = maybe_apply_default_limit(&sql, Some(&form.driver));
 
     let database = form.database.clone();
     let driver = crate::db::drivers::connect(&form).await?;
-    let result = driver.execute_query(guarded_sql.clone()).await;
+    let result = driver
+        .execute_query_with_id(
+            guarded_sql.clone(),
+            if form.driver.eq_ignore_ascii_case("clickhouse") {
+                Some(query_id.as_str())
+            } else {
+                None
+            },
+        )
+        .await;
 
     if let Ok(res) = &result {
         if !res.data.is_empty() {
@@ -785,7 +944,10 @@ mod tests {
     #[test]
     fn skips_with_non_select_queries() {
         assert_eq!(
-            maybe_apply_default_limit("WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte", None),
+            maybe_apply_default_limit(
+                "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte",
+                None
+            ),
             "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte"
         );
     }
@@ -795,6 +957,22 @@ mod tests {
         assert_eq!(
             maybe_apply_default_limit("SELECT * FROM t WHERE name = 'limit x'", None),
             "SELECT * FROM t WHERE name = 'limit x' LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn clickhouse_skips_default_limit_when_format_clause_exists() {
+        assert_eq!(
+            maybe_apply_default_limit("SELECT * FROM t FORMAT JSON", Some("clickhouse")),
+            "SELECT * FROM t FORMAT JSON"
+        );
+    }
+
+    #[test]
+    fn clickhouse_keeps_default_limit_for_regular_select() {
+        assert_eq!(
+            maybe_apply_default_limit("SELECT * FROM t", Some("clickhouse")),
+            "SELECT * FROM t LIMIT 1000"
         );
     }
 
@@ -819,6 +997,22 @@ mod tests {
         assert_eq!(
             maybe_apply_default_limit("SELECT TOP 20 * FROM t", Some("mssql")),
             "SELECT TOP 20 * FROM t"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_fetch_to_existing_offset_clause() {
+        assert_eq!(
+            maybe_apply_default_limit("SELECT * FROM t ORDER BY id OFFSET 10 ROWS", Some("mssql")),
+            "SELECT * FROM t ORDER BY id OFFSET 10 ROWS FETCH NEXT 1000 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_fetch_to_existing_offset_clause_with_semicolon() {
+        assert_eq!(
+            maybe_apply_default_limit("SELECT * FROM t ORDER BY id OFFSET 10 ROWS;", Some("mssql")),
+            "SELECT * FROM t ORDER BY id OFFSET 10 ROWS FETCH NEXT 1000 ROWS ONLY;"
         );
     }
 

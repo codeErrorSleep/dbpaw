@@ -11,9 +11,15 @@ import {
 } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap, EditorView } from "@codemirror/view";
-import { CompletionContext, acceptCompletion } from "@codemirror/autocomplete";
+import {
+  CompletionContext,
+  CompletionResult,
+  acceptCompletion,
+} from "@codemirror/autocomplete";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import { insertTab } from "@codemirror/commands";
+import { tags as t } from "@lezer/highlight";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -39,7 +45,6 @@ import {
   TransferFormat,
   isTauri,
 } from "@/services/api";
-import { format } from "sql-formatter";
 import { SaveQueryDialog } from "./SaveQueryDialog";
 import {
   Tooltip,
@@ -55,13 +60,153 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { sqlEditorThemeDark, sqlEditorThemeLight } from "./codemirrorTheme";
-import { getThemePreset } from "@/theme/themeRegistry";
+import { getThemePreset, type ThemeId } from "@/theme/themeRegistry";
+import { CLICKHOUSE_COMPLETIONS } from "./clickhouseKeywords";
+import { useTranslation } from "react-i18next";
 
 const editorFontSizeExtension = EditorView.theme({
   ".cm-scroller": {
     fontSize: "1rem",
   },
 });
+
+type SqlSyntaxPalette = {
+  keyword: string;
+  function: string;
+  type: string;
+  string: string;
+  number: string;
+  variable: string;
+  operator: string;
+  comment: string;
+  constant: string;
+};
+
+const createSqlSyntaxTheme = (palette: SqlSyntaxPalette): Extension[] => [
+  syntaxHighlighting(
+    HighlightStyle.define([
+      { tag: t.keyword, color: palette.keyword },
+      { tag: t.operatorKeyword, color: palette.keyword },
+      { tag: t.typeName, color: palette.type },
+      { tag: t.className, color: palette.type },
+      { tag: t.function(t.variableName), color: palette.function },
+      { tag: t.function(t.propertyName), color: palette.function },
+      { tag: t.propertyName, color: palette.variable },
+      { tag: t.variableName, color: palette.variable },
+      { tag: t.string, color: palette.string },
+      { tag: t.special(t.string), color: palette.string },
+      { tag: t.number, color: palette.number },
+      { tag: t.bool, color: palette.constant },
+      { tag: t.atom, color: palette.constant },
+      { tag: t.operator, color: palette.operator },
+      { tag: t.comment, color: palette.comment, fontStyle: "italic" },
+    ]),
+  ),
+];
+
+const SQL_SYNTAX_THEME_MAP: Record<ThemeId, Extension[]> = {
+  default: [],
+  "one-dark": [oneDark],
+  "github-light": createSqlSyntaxTheme({
+    keyword: "#cf222e",
+    function: "#8250df",
+    type: "#0550ae",
+    string: "#0a3069",
+    number: "#0550ae",
+    variable: "#24292f",
+    operator: "#57606a",
+    comment: "#6e7781",
+    constant: "#953800",
+  }),
+  "github-dark": createSqlSyntaxTheme({
+    keyword: "#ff7b72",
+    function: "#d2a8ff",
+    type: "#79c0ff",
+    string: "#a5d6ff",
+    number: "#79c0ff",
+    variable: "#c9d1d9",
+    operator: "#8b949e",
+    comment: "#8b949e",
+    constant: "#ffa657",
+  }),
+  "monokai-pro": createSqlSyntaxTheme({
+    keyword: "#ff6188",
+    function: "#a9dc76",
+    type: "#78dce8",
+    string: "#ffd866",
+    number: "#ab9df2",
+    variable: "#fcfcfa",
+    operator: "#f8f8f2",
+    comment: "#939293",
+    constant: "#fc9867",
+  }),
+  "night-owl": createSqlSyntaxTheme({
+    keyword: "#c792ea",
+    function: "#82aaff",
+    type: "#7fdbca",
+    string: "#ecc48d",
+    number: "#f78c6c",
+    variable: "#d6deeb",
+    operator: "#7fdbca",
+    comment: "#637777",
+    constant: "#ff5874",
+  }),
+  "shades-of-purple": createSqlSyntaxTheme({
+    keyword: "#ff9d00",
+    function: "#b362ff",
+    type: "#9effff",
+    string: "#a5ff90",
+    number: "#ff628c",
+    variable: "#ffffff",
+    operator: "#ff9d00",
+    comment: "#b9b4f5",
+    constant: "#fad000",
+  }),
+  palenight: createSqlSyntaxTheme({
+    keyword: "#c792ea",
+    function: "#82aaff",
+    type: "#89ddff",
+    string: "#c3e88d",
+    number: "#f78c6c",
+    variable: "#c7cbe6",
+    operator: "#89ddff",
+    comment: "#7f85a3",
+    constant: "#ffcb6b",
+  }),
+  cyberpunk: createSqlSyntaxTheme({
+    keyword: "#ff2bd6",
+    function: "#00f5ff",
+    type: "#7df9ff",
+    string: "#ffe66d",
+    number: "#ff8fab",
+    variable: "#f8f7ff",
+    operator: "#00f5ff",
+    comment: "#9f88c5",
+    constant: "#faff00",
+  }),
+  nord: createSqlSyntaxTheme({
+    keyword: "#81a1c1",
+    function: "#88c0d0",
+    type: "#8fbcbb",
+    string: "#a3be8c",
+    number: "#b48ead",
+    variable: "#eceff4",
+    operator: "#d8dee9",
+    comment: "#616e88",
+    constant: "#ebcb8b",
+  }),
+  dracula: createSqlSyntaxTheme({
+    keyword: "#ff79c6",
+    function: "#50fa7b",
+    type: "#8be9fd",
+    string: "#f1fa8c",
+    number: "#bd93f9",
+    variable: "#f8f8f2",
+    operator: "#ff79c6",
+    comment: "#6272a4",
+    constant: "#ffb86c",
+  }),
+};
 
 interface SqlEditorProps {
   queryResults?: {
@@ -99,15 +244,17 @@ export function SqlEditor({
   initialDescription,
   onSaveSuccess,
 }: SqlEditorProps) {
+  const { t } = useTranslation();
   const [internalSql, setInternalSql] = useState("");
   const { theme } = useTheme();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [isFormatting, setIsFormatting] = useState(false);
   const resultStatus = useMemo(() => {
     if (!queryResults) return null;
     if (queryResults.error) {
       return {
-        text: "Result: Execution failed.",
+        text: t("sqlEditor.result.failed"),
         toneClass: "text-destructive",
         Icon: XCircle,
       };
@@ -116,15 +263,17 @@ export function SqlEditor({
     const returnedRows = queryResults.data.length;
     const hasResultSet = queryResults.columns.length > 0;
     const suffix = hasResultSet
-      ? ` (${returnedRows} row${returnedRows === 1 ? "" : "s"})`
+      ? returnedRows === 1
+        ? t("sqlEditor.result.rowsSuffix", { count: returnedRows })
+        : t("sqlEditor.result.rowsSuffixPlural", { count: returnedRows })
       : "";
 
     return {
-      text: `Result: Execution successful.${suffix}`,
+      text: `${t("sqlEditor.result.success")}${suffix}`,
       toneClass: "text-emerald-600 dark:text-emerald-400",
       Icon: CheckCircle2,
     };
-  }, [queryResults]);
+  }, [queryResults, t]);
 
   // Use controlled value if provided, otherwise internal state
   const code = value !== undefined ? value : internalSql;
@@ -187,12 +336,17 @@ export function SqlEditor({
     handleSqlChange("");
   };
 
-  const handleFormat = useCallback(() => {
+  const handleFormat = useCallback(async () => {
+    if (isFormatting) return;
+
+    setIsFormatting(true);
     try {
+      const { format } = await import("sql-formatter");
       const dialectMap: Record<string, string> = {
         postgres: "postgresql",
         postgresql: "postgresql",
         mysql: "mysql",
+        tidb: "mysql",
         sqlite: "sqlite",
         clickhouse: "sql",
         mssql: "transactsql",
@@ -206,8 +360,13 @@ export function SqlEditor({
       handleSqlChange(formatted);
     } catch (e) {
       console.error("Format failed:", e);
+      toast.error(t("sqlEditor.error.formatFailed"), {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setIsFormatting(false);
     }
-  }, [code, driver, handleSqlChange]);
+  }, [code, driver, handleSqlChange, isFormatting, t]);
 
   const savedQueryIdRef = useRef(savedQueryId);
   useEffect(() => {
@@ -253,11 +412,11 @@ export function SqlEditor({
   const handleExportResult = useCallback(
     async (format: TransferFormat) => {
       if (!_connectionId) {
-        toast.error("Please run query with a saved connection to export.");
+        toast.error(t("sqlEditor.export.runWithSavedConnection"));
         return;
       }
       if (!isTauri()) {
-        toast.error("Export dialog is only available in Tauri desktop mode.");
+        toast.error(t("sqlEditor.export.desktopOnly"));
         return;
       }
 
@@ -273,7 +432,7 @@ export function SqlEditor({
       let filePath: string | undefined;
       try {
         const selected = await save({
-          title: "Save Export File",
+          title: t("sqlEditor.export.saveFileTitle"),
           defaultPath,
           filters,
         });
@@ -281,7 +440,7 @@ export function SqlEditor({
         filePath = Array.isArray(selected) ? selected[0] : selected;
         if (!filePath) return;
       } catch (e) {
-        toast.error("Failed to open save dialog", {
+        toast.error(t("sqlEditor.export.openSaveDialogFailed"), {
           description: e instanceof Error ? e.message : String(e),
         });
         return;
@@ -296,26 +455,26 @@ export function SqlEditor({
           format,
           filePath,
         });
-        toast.success(`Export completed (${result.rowCount} rows)`, {
+        toast.success(t("sqlEditor.export.completed", { count: result.rowCount }), {
           description: result.filePath,
         });
       } catch (e) {
-        toast.error("Export failed", {
+        toast.error(t("sqlEditor.export.failed"), {
           description: e instanceof Error ? e.message : String(e),
         });
       }
     },
-    [_connectionId, databaseName, code, driver],
+    [_connectionId, databaseName, code, driver, t],
   );
 
   const triggerSave = useCallback(() => {
     const currentId = savedQueryIdRef.current;
     if (currentId) {
-      executeSave(initialName || "Untitled", initialDescription || "");
+      executeSave(initialName || t("sqlEditor.untitled"), initialDescription || "");
     } else {
       setIsSaveDialogOpen(true);
     }
-  }, [initialName, initialDescription, executeSave]);
+  }, [initialName, initialDescription, executeSave, t]);
 
   // Determine Dialect
   const dialect = useMemo(() => {
@@ -323,6 +482,7 @@ export function SqlEditor({
       case "postgres":
         return PostgreSQL;
       case "mysql":
+      case "tidb":
         return MySQL;
       case "sqlite":
         return SQLite;
@@ -394,6 +554,44 @@ export function SqlEditor({
     };
   }, [schemaOverview]);
 
+  const clickhouseCompletion = useMemo(() => {
+    if (driver !== "clickhouse") return null;
+
+    return (context: CompletionContext): CompletionResult | null => {
+      const word = context.matchBefore(/[\w\s]*/);
+      if (!word || (word.from === word.to && !context.explicit)) return null;
+
+      return {
+        from: word.from,
+        options: CLICKHOUSE_COMPLETIONS,
+      };
+    };
+  }, [driver]);
+
+  const mergedCompletion = useMemo(() => {
+    if (!globalCompletion && !clickhouseCompletion) return null;
+
+    return (context: CompletionContext): CompletionResult | null => {
+      const results = [globalCompletion, clickhouseCompletion]
+        .map((provider) => provider?.(context))
+        .filter((item): item is CompletionResult => !!item);
+      if (!results.length) return null;
+
+      const from = results.reduce((min, curr) => Math.min(min, curr.from), results[0].from);
+      const options: NonNullable<CompletionResult["options"]>[number][] = [];
+      const seen = new Set<string>();
+      for (const result of results) {
+        for (const option of result.options) {
+          const key = `${option.label}::${option.type ?? ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          options.push(option);
+        }
+      }
+      return { from, options };
+    };
+  }, [globalCompletion, clickhouseCompletion]);
+
   // Extensions
   const extensions = useMemo(() => {
     const exts: Extension[] = [
@@ -420,7 +618,7 @@ export function SqlEditor({
           {
             key: "Shift-Alt-f",
             run: () => {
-              handleFormat();
+              void handleFormat();
               return true;
             },
           },
@@ -436,10 +634,10 @@ export function SqlEditor({
     ];
 
     // Inject global completion if available
-    if (globalCompletion) {
+    if (mergedCompletion) {
       exts.push(
         dialect.language.data.of({
-          autocomplete: globalCompletion,
+          autocomplete: mergedCompletion,
         }),
       );
     }
@@ -450,15 +648,14 @@ export function SqlEditor({
     sqlSchema,
     executeFromEditorSelection,
     handleFormat,
-    globalCompletion,
+    mergedCompletion,
     triggerSave,
   ]);
 
   // Theme
   const editorTheme = useMemo(() => {
     const preset = getThemePreset(theme);
-    const syntaxTheme =
-      preset.editorTheme === "one-dark" ? [oneDark] : [];
+    const syntaxTheme = SQL_SYNTAX_THEME_MAP[preset.editorTheme] ?? [];
     return preset.appearance === "dark"
       ? [...syntaxTheme, sqlEditorThemeDark]
       : [...syntaxTheme, sqlEditorThemeLight];
@@ -498,7 +695,7 @@ export function SqlEditor({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Run SQL (Cmd/Ctrl+Enter)</p>
+                  <p>{t("sqlEditor.tooltip.runSql")}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -508,13 +705,14 @@ export function SqlEditor({
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={handleFormat}
+                    onClick={() => void handleFormat()}
+                    disabled={isFormatting}
                   >
                     <Braces className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Format SQL (Shift+Alt+F)</p>
+                  <p>{t("sqlEditor.tooltip.formatSql")}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -530,7 +728,7 @@ export function SqlEditor({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Cancel Query</p>
+                  <p>{t("sqlEditor.tooltip.cancelQuery")}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -546,7 +744,7 @@ export function SqlEditor({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Save Query (Cmd/Ctrl+S)</p>
+                  <p>{t("sqlEditor.tooltip.saveQuery")}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -562,7 +760,7 @@ export function SqlEditor({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Clear Editor</p>
+                  <p>{t("sqlEditor.tooltip.clearEditor")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -586,7 +784,7 @@ export function SqlEditor({
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1.5">
                     <Download className="w-4 h-4" />
-                    Export Result
+                    {t("sqlEditor.export.result")}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -643,7 +841,7 @@ export function SqlEditor({
                   {queryResults.error ? (
                     <div className="h-full p-4 bg-destructive/10 text-destructive overflow-auto font-mono text-sm whitespace-pre-wrap">
                       <div className="font-bold mb-2">
-                        Error executing query:
+                        {t("sqlEditor.error.executingQuery")}
                       </div>
                       {queryResults.error}
                     </div>

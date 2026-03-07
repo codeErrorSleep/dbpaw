@@ -4,6 +4,7 @@ export const en = {
     save: "Save",
     delete: "Delete",
     close: "Close",
+    loading: "Loading...",
     unknown: "Unknown",
     search: "Search",
   },
@@ -62,6 +63,7 @@ export const en = {
       description: "Choose your preferred language",
       en: "English",
       zh: "简体中文",
+      ja: "日本語",
     },
     appearance: {
       title: "Appearance",
@@ -152,6 +154,8 @@ export const en = {
         database: "Database",
         schema: "Schema",
         ssl: "SSL",
+        sslMode: "SSL Mode",
+        sslCaCert: "CA Certificate (PEM)",
         ssh: "SSH",
         sshHost: "SSH Host",
         sshPort: "SSH Port",
@@ -163,6 +167,7 @@ export const en = {
       placeholders: {
         selectDatabaseType: "Select database type",
         keepPassword: "Leave empty to keep current password",
+        sslCaCert: "Paste CA certificate PEM content",
         sshHost: "ssh.example.com",
         sshPort: "22",
         sshUsername: "root",
@@ -171,7 +176,11 @@ export const en = {
         sqlitePath: "/path/to/db.sqlite",
       },
       fileDialogTitle: "Select SQLite Database File",
+      sslCaFileDialogTitle: "Select CA Certificate File",
+      sshKeyFileDialogTitle: "Select SSH Private Key File",
       fileFilterSqlite: "SQLite Database",
+      fileFilterCert: "Certificate Files",
+      fileFilterPem: "Private Key Files",
       fileFilterAll: "All Files",
       browse: "Browse",
       test: "Test",
@@ -183,13 +192,23 @@ export const en = {
       testSuccess: "Connection Test Successful",
       testFailed: "Connection Test Failed",
       requiredSqlite: "File path",
-      requiredCreate: "Host, Port, Username, Password",
+      requiredCreateWithPassword: "Host, Port, Username, Password",
+      requiredCreateNoPassword: "Host, Port, Username",
       requiredEdit: "Host, Port, Username",
       requiredMessage: "Please fill in required fields: {{fields}}",
+      sslMode: {
+        require: "Encrypt only (skip CA verification)",
+        verifyCa: "Verify server certificate (CA)",
+      },
+      sslValidation: {
+        caRequired: "CA certificate is required in verify CA mode.",
+      },
     },
     menu: {
       edit: "Edit",
       reconnect: "Reconnect",
+      copy: "Duplicate",
+      refresh: "Refresh",
       delete: "Delete",
       refreshTables: "Refresh Tables",
       newQuery: "New Query",
@@ -205,11 +224,14 @@ export const en = {
     },
     toast: {
       loadDatabasesFailed: "Failed to load databases",
+      duplicateSuccess: "Connection duplicated successfully",
+      duplicateFailed: "Failed to duplicate connection",
       exportDesktopOnly: "Export dialog is only available in Tauri desktop mode.",
       saveExportFile: "Save Export File",
       openSaveDialogFailed: "Failed to open save dialog",
       fileBrowserDesktopOnly: "File browser is only available in desktop app",
       openFileDialogFailed: "Failed to open file dialog",
+      readFileFailed: "Failed to read file",
     },
   },
   aiSidebar: {
@@ -245,14 +267,44 @@ export const en = {
     noTablesFound: "No tables found",
     tablesHeading: "Tables",
   },
+  sqlEditor: {
+    result: {
+      failed: "Result: Execution failed.",
+      success: "Result: Execution successful.",
+      rowsSuffix: " ({{count}} row)",
+      rowsSuffixPlural: " ({{count}} rows)",
+    },
+    tooltip: {
+      runSql: "Run SQL (Cmd/Ctrl+Enter)",
+      formatSql: "Format SQL (Shift+Alt+F)",
+      cancelQuery: "Cancel Query",
+      saveQuery: "Save Query (Cmd/Ctrl+S)",
+      clearEditor: "Clear Editor",
+    },
+    export: {
+      result: "Export Result",
+      runWithSavedConnection:
+        "Please run query with a saved connection to export.",
+      desktopOnly: "Export dialog is only available in Tauri desktop mode.",
+      saveFileTitle: "Save Export File",
+      openSaveDialogFailed: "Failed to open save dialog",
+      completed: "Export completed ({{count}} rows)",
+      failed: "Export failed",
+    },
+    error: {
+      executingQuery: "Error executing query:",
+      formatFailed: "Failed to format SQL",
+    },
+    untitled: "Untitled",
+  },
 } as const;
 
 type DeepStringify<T> = {
   [K in keyof T]: T[K] extends string
-    ? string
-    : T[K] extends object
-      ? DeepStringify<T[K]>
-      : T[K];
+  ? string
+  : T[K] extends object
+  ? DeepStringify<T[K]>
+  : T[K];
 };
 
 export type Translations = DeepStringify<typeof en>;

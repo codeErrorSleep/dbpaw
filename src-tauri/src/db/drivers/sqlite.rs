@@ -329,6 +329,7 @@ impl DatabaseDriver for SqliteDriver {
             columns,
             indexes,
             foreign_keys,
+            clickhouse_extra: None,
         })
     }
 

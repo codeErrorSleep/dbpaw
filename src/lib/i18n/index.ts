@@ -3,18 +3,21 @@ import { initReactI18next } from "react-i18next";
 import { getSetting, saveSetting } from "@/services/store";
 import { en } from "./locales/en";
 import { zh } from "./locales/zh";
+import { ja } from "./locales/ja";
 
-export const SUPPORTED_LANGUAGES = ["en", "zh"] as const;
+export const SUPPORTED_LANGUAGES = ["en", "zh", "ja"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 const resources = {
   en: { translation: en },
   zh: { translation: zh },
+  ja: { translation: ja },
 };
 
 const normalizeLanguage = (value?: string | null): SupportedLanguage => {
   if (!value) return "en";
   if (value.toLowerCase().startsWith("zh")) return "zh";
+  if (value.toLowerCase().startsWith("ja")) return "ja";
   return "en";
 };
 

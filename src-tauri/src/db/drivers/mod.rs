@@ -54,6 +54,14 @@ pub trait DatabaseDriver: Send + Sync {
         order_by: Option<String>,
     ) -> Result<TableDataResponse, String>;
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String>;
+    async fn execute_query_with_id(
+        &self,
+        sql: String,
+        query_id: Option<&str>,
+    ) -> Result<QueryResult, String> {
+        let _ = query_id;
+        self.execute_query(sql).await
+    }
     async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String>;
     async fn close(&self);
 }
@@ -74,7 +82,7 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
             let driver = PostgresDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
-        "mysql" => {
+        "mysql" | "tidb" => {
             let driver = MysqlDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
