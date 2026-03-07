@@ -1,5 +1,6 @@
 ---
 import type { PlatformDownloads } from '@/lib/github';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
 
 interface Props {
   downloads: PlatformDownloads;
@@ -8,13 +9,15 @@ interface Props {
 }
 
 const { downloads, releaseNotesUrl, version } = Astro.props;
+const lang = getLangFromUrl(new URL(Astro.request.url));
+const t = useTranslations(lang);
 ---
 
 <section id="download" class="scroll-mt-20">
   <div class="bg-black p-8 md:px-20 md:py-20 mt-20 mx-auto rounded-lg flex flex-col items-center text-center">
-    <h2 class="text-white text-4xl md:text-6xl tracking-tight">Install DbPaw {version}</h2>
+    <h2 class="text-white text-4xl md:text-6xl tracking-tight">{t('cta.title')} {version}</h2>
     <p class="text-slate-300 mt-4 text-lg md:text-xl">
-      Pick your installer or open release notes for checksums and changelog details.
+      {t('cta.subtitle')}
     </p>
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 mt-6 gap-3 w-full">
       <a class="rounded-sm px-5 py-2.5 bg-white text-black border-2 border-transparent hover:bg-gray-100 transition" href={downloads.mac ?? releaseNotesUrl}>macOS</a>
@@ -26,11 +29,11 @@ const { downloads, releaseNotesUrl, version } = Astro.props;
         target="_blank"
         rel="noreferrer"
       >
-        Release Notes
+        {t('cta.releaseNotes')}
       </a>
     </div>
     <p class="text-slate-400 mt-3 text-sm">
-      Download links are generated from the latest GitHub release automatically.
+      {t('cta.note')}
     </p>
   </div>
 </section>

@@ -1,26 +1,33 @@
+---
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+
+const lang = getLangFromUrl(new URL(Astro.request.url));
+const t = useTranslations(lang);
+---
+
 <section id="screenshots" class="mt-20 scroll-mt-20" aria-labelledby="screenshots-title">
   <div>
     <h2 id="screenshots-title" class="text-4xl lg:text-5xl font-bold lg:tracking-tight">
-      See DbPaw in action
+      {t('screenshots.title')}
     </h2>
-    <p class="text-lg mt-4 text-slate-600">Connection setup, SQL editing, result browsing, and AI workflows.</p>
+    <p class="text-lg mt-4 text-slate-600">{t('screenshots.subtitle')}</p>
   </div>
   <div class="grid sm:grid-cols-2 mt-10 gap-6">
     <figure class="rounded-lg border border-slate-200 overflow-hidden">
       <img src="/screenshots/app-connect.png" alt="Connection setup" loading="lazy" decoding="async" class="w-full" />
-      <figcaption class="px-3 py-2 text-sm text-slate-500">Connect</figcaption>
+      <figcaption class="px-3 py-2 text-sm text-slate-500">{t('screenshots.caption.connect')}</figcaption>
     </figure>
     <figure class="rounded-lg border border-slate-200 overflow-hidden">
       <img src="/screenshots/app-editor.png" alt="SQL editor" loading="lazy" decoding="async" class="w-full" />
-      <figcaption class="px-3 py-2 text-sm text-slate-500">Write SQL</figcaption>
+      <figcaption class="px-3 py-2 text-sm text-slate-500">{t('screenshots.caption.editor')}</figcaption>
     </figure>
     <figure class="rounded-lg border border-slate-200 overflow-hidden">
       <img src="/screenshots/app-grid.png" alt="Data grid results" loading="lazy" decoding="async" class="w-full" />
-      <figcaption class="px-3 py-2 text-sm text-slate-500">ddl</figcaption>
+      <figcaption class="px-3 py-2 text-sm text-slate-500">{t('screenshots.caption.grid')}</figcaption>
     </figure>
     <figure class="rounded-lg border border-slate-200 overflow-hidden">
       <img src="/screenshots/app-ai.png" alt="AI assistant sidebar" loading="lazy" decoding="async" class="w-full" />
-      <figcaption class="px-3 py-2 text-sm text-slate-500">AI assist</figcaption>
+      <figcaption class="px-3 py-2 text-sm text-slate-500">{t('screenshots.caption.ai')}</figcaption>
     </figure>
   </div>
 </section>

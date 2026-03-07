@@ -1,15 +1,20 @@
 ---
 import { FAQS } from '@/config/faqs';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+
+const lang = getLangFromUrl(new URL(Astro.request.url));
+const t = useTranslations(lang);
+const faqs = FAQS[lang];
 ---
 
 <section id="faq" class="mt-20 scroll-mt-20">
   <div>
-    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">Frequently asked questions</h2>
-    <p class="text-lg mt-4 text-slate-600">Answers for setup, compatibility, and release workflow.</p>
+    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">{t('faq.title')}</h2>
+    <p class="text-lg mt-4 text-slate-600">{t('faq.subtitle')}</p>
   </div>
   <div class="mt-10 grid gap-4">
     {
-      FAQS.map((item) => (
+      faqs.map((item) => (
         <details class="rounded-lg border border-slate-200 p-5 bg-white group">
           <summary class="list-none cursor-pointer font-semibold text-lg flex items-center justify-between gap-4">
             {item.question}

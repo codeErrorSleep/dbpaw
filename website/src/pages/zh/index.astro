@@ -10,16 +10,16 @@ import { ui } from '@/i18n/ui';
 import { getReleaseSnapshot } from '@/lib/release';
 
 const snapshot = await getReleaseSnapshot();
-const releasedDate = new Date(snapshot.release.publishedAt).toLocaleDateString('en-US', {
+const releasedDate = new Date(snapshot.release.publishedAt).toLocaleDateString('zh-CN', {
   year: 'numeric',
-  month: 'short',
+  month: 'long',
   day: 'numeric'
 });
 
-const t = ui.en;
+const t = ui.zh;
 ---
 
-<Layout title={t['seo.title']} description={t['seo.description']} path="/">
+<Layout title={t['seo.title']} description={t['seo.description']} path="/zh">
   <Hero
     version={snapshot.release.version}
     releasedDate={releasedDate}

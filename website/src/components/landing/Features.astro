@@ -1,17 +1,22 @@
 ---
 import { FEATURES } from '@/config/features';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+
+const lang = getLangFromUrl(new URL(Astro.request.url));
+const t = useTranslations(lang);
+const features = FEATURES[lang];
 ---
 
 <section id="features" class="mt-16 md:mt-0 scroll-mt-20">
   <div>
-    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">Everything you need to run database work</h2>
+    <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">{t('features.title')}</h2>
     <p class="text-lg mt-4 text-slate-600">
-      Built for daily query workflows: secure connections, fast editor ergonomics, and AI-assisted SQL.
+      {t('features.subtitle')}
     </p>
   </div>
   <div class="grid sm:grid-cols-2 md:grid-cols-3 mt-16 gap-10">
     {
-      FEATURES.map((feature) => (
+      features.map((feature) => (
         <article class="flex gap-4 items-start">
           <div class="mt-1 bg-black rounded-full p-2 w-8 h-8 shrink-0 text-white text-xs font-bold grid place-items-center">
             {feature.tag.slice(0, 1)}

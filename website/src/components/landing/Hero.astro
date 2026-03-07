@@ -1,5 +1,6 @@
 ---
 import type { PlatformDownloads } from '@/lib/github';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
 
 interface Props {
   version: string;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.props;
+const lang = getLangFromUrl(new URL(Astro.request.url));
+const t = useTranslations(lang);
 ---
 
 <section class="grid lg:grid-cols-2 place-items-center pt-16 pb-8 md:pt-12 md:pb-24">
@@ -24,11 +27,10 @@ const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.prop
   </div>
   <div>
     <h1 class="text-5xl lg:text-6xl xl:text-7xl font-bold lg:tracking-tight xl:tracking-tighter">
-      Faster SQL editing and data exploration
+      {t('hero.title')}
     </h1>
     <p class="text-lg mt-4 text-slate-600 max-w-xl">
-      Cross‑platform, ultra‑lightweight, with optional AI assistance. Built with Rust + Tauri for fast startup and low
-      memory usage on macOS, Windows, and Linux.
+      {t('hero.subtitle')}
     </p>
     <div class="mt-6 flex flex-col sm:flex-row gap-3">
       <a
@@ -36,7 +38,7 @@ const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.prop
         id="smart-download"
         href={downloads.mac ?? releaseNotesUrl}
       >
-        Download for your platform
+        {t('hero.download')}
       </a>
       <a
         class="rounded-sm px-5 py-2.5 bg-white border-2 border-black hover:bg-gray-100 text-black transition text-center"
@@ -44,18 +46,18 @@ const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.prop
         target="_blank"
         rel="noreferrer"
       >
-        View release notes
+        {t('hero.releaseNotes')}
       </a>
     </div>
     <p class="mt-4 text-sm text-slate-500">
-      Latest release <strong>{version}</strong>, published {releasedDate} ({source === 'github'
-        ? 'live from GitHub'
-        : 'fallback mode'}).
+      {t('hero.latestRelease')} <strong>{version}</strong>, {t('hero.published')} {releasedDate} ({source === 'github'
+        ? t('hero.liveFromGithub')
+        : t('hero.fallbackMode')}).
     </p>
   </div>
 </section>
 
-<script is:inline define:vars={{ links: downloads, fallback: releaseNotesUrl }}>
+<script is:inline define:vars={{ links: downloads, fallback: releaseNotesUrl, texts: { mac: t('hero.downloadMac'), win: t('hero.downloadWin'), linux: t('hero.downloadLinux') } }}>
   const downloadButton = document.getElementById('smart-download');
   if (downloadButton) {
     const userAgent = navigator.userAgent.toLowerCase();
@@ -67,9 +69,9 @@ const { version, releasedDate, releaseNotesUrl, source, downloads } = Astro.prop
     downloadButton.href = target;
     downloadButton.textContent =
       platform === 'mac'
-        ? 'Download for macOS'
+        ? texts.mac
         : platform === 'windows'
-          ? 'Download for Windows'
-          : 'Download for Linux';
+          ? texts.win
+          : texts.linux;
   }
 </script>
