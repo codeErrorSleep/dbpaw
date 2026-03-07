@@ -772,6 +772,29 @@ export function ConnectionList({
     }
   };
 
+  const handleCreateQueryFromContext = (
+    connectionId: string | null | undefined,
+    databaseName?: string | null,
+  ) => {
+    if (!onCreateQuery || !connectionId) return;
+    const connection = connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+
+    const explicitDatabaseName = (databaseName || "").trim();
+    const fallbackDatabaseName =
+      (connection.database || "").trim() ||
+      connection.databases.find((db) => db.name.trim().length > 0)?.name ||
+      (connection.type === "sqlite" ? "main" : "");
+    const resolvedDatabaseName = explicitDatabaseName || fallbackDatabaseName;
+
+    if (!resolvedDatabaseName) {
+      toast.error(t("connection.toast.newQueryNoDatabase"));
+      return;
+    }
+
+    onCreateQuery(Number(connectionId), resolvedDatabaseName, connection.type);
+  };
+
   const handleTestConnection = async () => {
     try {
       setValidationMsg(null);
@@ -1161,7 +1184,7 @@ export function ConnectionList({
                         <SelectItem value="tidb">TiDB</SelectItem>
                         <SelectItem value="sqlite">SQLite</SelectItem>
                         <SelectItem value="clickhouse">ClickHouse</SelectItem>
-                        <SelectItem value="mssql">MSSQL</SelectItem>
+                        <SelectItem value="mssql">SQL Server</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1743,6 +1766,17 @@ export function ConnectionList({
                               <ContextMenuContent>
                                 <ContextMenuItem
                                   onClick={() =>
+                                    handleCreateQueryFromContext(
+                                      connection.id,
+                                      database.name,
+                                    )
+                                  }
+                                >
+                                  <FileCode className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.newQuery")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
                                     void handleTableExport(
                                       connection,
                                       database,
@@ -1836,6 +1870,16 @@ export function ConnectionList({
                 <RefreshCw className="w-4 h-4" />
                 {t("connection.menu.refresh")}
               </button>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
+                onClick={() => {
+                  handleCreateQueryFromContext(contextMenu.connectionId);
+                  setContextMenu((prev) => ({ ...prev, visible: false }));
+                }}
+              >
+                <FileCode className="w-4 h-4" />
+                {t("connection.menu.newQuery")}
+              </button>
               <div className="h-px bg-border my-1" />
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent text-destructive flex items-center gap-2"
@@ -1870,22 +1914,10 @@ export function ConnectionList({
               <button
                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                 onClick={() => {
-                  if (
-                    onCreateQuery &&
-                    contextMenu.connectionId &&
-                    contextMenu.databaseName
-                  ) {
-                    const conn = connections.find(
-                      (c) => c.id === contextMenu.connectionId,
-                    );
-                    const driver = conn ? conn.type : "postgres";
-
-                    onCreateQuery(
-                      Number(contextMenu.connectionId),
-                      contextMenu.databaseName,
-                      driver,
-                    );
-                  }
+                  handleCreateQueryFromContext(
+                    contextMenu.connectionId,
+                    contextMenu.databaseName,
+                  );
                   setContextMenu((prev) => ({ ...prev, visible: false }));
                 }}
               >
