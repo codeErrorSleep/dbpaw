@@ -461,7 +461,20 @@ fn quote_ident(name: &str, driver: &str) -> String {
 }
 
 fn quote_target(schema: Option<&str>, table: &str, driver: &str) -> String {
-    match schema.map(str::trim).filter(|s| !s.is_empty()) {
+    let normalized_schema = schema
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| {
+            if driver.eq_ignore_ascii_case("duckdb")
+                && (s.eq_ignore_ascii_case("main") || s.eq_ignore_ascii_case("public"))
+            {
+                None
+            } else {
+                Some(s)
+            }
+        });
+
+    match normalized_schema {
         Some(schema_name) => format!(
             "{}.{}",
             quote_ident(schema_name, driver),
@@ -529,6 +542,15 @@ mod tests {
         assert_eq!(quote_target(None, "users", "mysql"), "`users`");
         assert_eq!(quote_target(None, "users", "tidb"), "`users`");
         assert_eq!(quote_target(None, "users", "mariadb"), "`users`");
+    }
+
+    #[test]
+    fn quote_target_uses_unqualified_main_for_duckdb() {
+        assert_eq!(quote_target(Some("main"), "users", "duckdb"), "\"users\"");
+        assert_eq!(
+            quote_target(Some("analytics"), "events", "duckdb"),
+            "\"analytics\".\"events\""
+        );
     }
 
     #[test]

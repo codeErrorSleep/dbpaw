@@ -161,7 +161,7 @@ export default function App() {
         ? database || ""
         : driver === "mssql"
           ? "dbo"
-          : driver === "sqlite"
+          : driver === "sqlite" || driver === "duckdb"
             ? "main"
             : "public",
       dbParam: isDatabaseScoped ? undefined : database,
@@ -1573,6 +1573,8 @@ export default function App() {
                                       ? tab.database
                                       : tab.driver === "mssql"
                                         ? "dbo"
+                                        : tab.driver === "duckdb"
+                                          ? "main"
                                         : "public",
                                   table: tab.tableName,
                                   driver: tab.driver,

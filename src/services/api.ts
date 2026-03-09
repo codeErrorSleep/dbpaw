@@ -64,6 +64,7 @@ export interface SqlExecutionLog {
 export type Driver =
   | "postgres"
   | "sqlite"
+  | "duckdb"
   | "mysql"
   | "tidb"
   | "mariadb"

@@ -10,7 +10,13 @@ import {
   Server,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { siMysql, siPostgresql, siSqlite, type SimpleIcon } from "simple-icons";
+import {
+  siMysql,
+  siPostgresql,
+  siSqlite,
+  siDuckdb,
+  type SimpleIcon,
+} from "simple-icons";
 
 const renderSimpleIcon = (icon: SimpleIcon) => (
   <svg
@@ -42,6 +48,8 @@ const getConnectionIcon = (driver?: Driver): React.ReactNode => {
     case "sqlite":
     case "sqlite3":
       return renderSimpleIcon(siSqlite);
+    case "duckdb":
+      return renderSimpleIcon(siDuckdb);
     case "clickhouse":
     case "mssql":
       return <Database className="w-4 h-4" />;

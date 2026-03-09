@@ -121,4 +121,10 @@ describe("getQualifiedTableName", () => {
       "\"analytics\".\"events\"",
     );
   });
+
+  test("does not qualify duckdb main/public schema", () => {
+    expect(getQualifiedTableName("duckdb", "main", "users")).toBe("\"users\"");
+    expect(getQualifiedTableName("duckdb", "public", "users")).toBe("\"users\"");
+    expect(getQualifiedTableName("duckdb", "", "users")).toBe("\"users\"");
+  });
 });

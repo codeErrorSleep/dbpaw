@@ -350,7 +350,7 @@ export function ConnectionList({
     }
   }, [searchTerm, filteredConnections]);
 
-  const isSqlite = form.driver === "sqlite";
+  const isFileBased = form.driver === "sqlite" || form.driver === "duckdb";
   const supportsSslCa =
     form.driver === "postgres" ||
     form.driver === "mysql" ||
@@ -365,14 +365,14 @@ export function ConnectionList({
     );
   }, [form.driver]);
   const requiredOk = useMemo(() => {
-    if (isSqlite) return !!form.filePath;
+    if (isFileBased) return !!form.filePath;
     const hasBasic = !!form.host && !!form.port && !!form.username;
     if (dialogMode === "edit") return hasBasic;
     if (isPasswordRequiredOnCreate) {
       return hasBasic && !!form.password;
     }
     return hasBasic;
-  }, [form, isSqlite, dialogMode, isPasswordRequiredOnCreate]);
+  }, [form, isFileBased, dialogMode, isPasswordRequiredOnCreate]);
 
   const validateSslSettings = () => {
     if (!form.ssl || !supportsSslCa) {
@@ -873,7 +873,9 @@ export function ConnectionList({
     const fallbackDatabaseName =
       (connection.database || "").trim() ||
       connection.databases.find((db) => db.name.trim().length > 0)?.name ||
-      (connection.type === "sqlite" ? "main" : "");
+      (connection.type === "sqlite" || connection.type === "duckdb"
+        ? "main"
+        : "");
     const resolvedDatabaseName = explicitDatabaseName || fallbackDatabaseName;
 
     if (!resolvedDatabaseName) {
@@ -992,8 +994,8 @@ export function ConnectionList({
 
   const handleConnect = async () => {
     if (!requiredOk) {
-      const requiredFields = isSqlite
-        ? t("connection.dialog.requiredSqlite")
+      const requiredFields = isFileBased
+        ? t("connection.dialog.requiredFilePath")
         : isPasswordRequiredOnCreate
           ? t("connection.dialog.requiredCreateWithPassword")
           : t("connection.dialog.requiredCreateNoPassword");
@@ -1050,8 +1052,8 @@ export function ConnectionList({
   const handleSaveEdit = async () => {
     if (!editingConnectionId) return;
     if (!requiredOk) {
-      const requiredFields = isSqlite
-        ? t("connection.dialog.requiredSqlite")
+      const requiredFields = isFileBased
+        ? t("connection.dialog.requiredFilePath")
         : t("connection.dialog.requiredEdit");
       setValidationMsg(
         t("connection.dialog.requiredMessage", { fields: requiredFields }),
@@ -1362,6 +1364,7 @@ export function ConnectionList({
                         <SelectItem value="mariadb">MariaDB</SelectItem>
                         <SelectItem value="tidb">TiDB</SelectItem>
                         <SelectItem value="sqlite">SQLite</SelectItem>
+                        <SelectItem value="duckdb">DuckDB</SelectItem>
                         <SelectItem value="clickhouse">ClickHouse</SelectItem>
                         <SelectItem value="mssql">SQL Server</SelectItem>
                       </SelectContent>
@@ -1377,7 +1380,7 @@ export function ConnectionList({
                       }
                     />
                   </div>
-                  {!isSqlite && (
+                  {!isFileBased && (
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="grid gap-2">
@@ -1663,16 +1666,22 @@ export function ConnectionList({
                       )}
                     </>
                   )}
-                  {isSqlite && (
+                  {isFileBased && (
                     <div className="grid gap-2">
                       <Label htmlFor="filePath">
-                        {t("connection.dialog.fields.sqliteFilePath")}{" "}
+                        {form.driver === "duckdb"
+                          ? t("connection.dialog.fields.duckdbFilePath")
+                          : t("connection.dialog.fields.sqliteFilePath")}{" "}
                         <span className="text-red-600">*</span>
                       </Label>
                       <div className="flex gap-2">
                         <Input
                           id="filePath"
-                          placeholder={t("connection.dialog.placeholders.sqlitePath")}
+                          placeholder={
+                            form.driver === "duckdb"
+                              ? t("connection.dialog.placeholders.duckdbPath")
+                              : t("connection.dialog.placeholders.sqlitePath")
+                          }
                           value={form.filePath || ""}
                           onChange={(e) =>
                             setForm((f) => ({ ...f, filePath: e.target.value }))
@@ -1684,11 +1693,20 @@ export function ConnectionList({
                           variant="outline"
                           onClick={async () => {
                             const selected = await pickSingleFile({
-                              title: t("connection.dialog.fileDialogTitle"),
+                              title:
+                                form.driver === "duckdb"
+                                  ? t("connection.dialog.fileDialogTitleDuckdb")
+                                  : t("connection.dialog.fileDialogTitle"),
                               filters: [
                                 {
-                                  name: t("connection.dialog.fileFilterSqlite"),
-                                  extensions: ["sqlite", "db", "sqlite3", "db3"],
+                                  name:
+                                    form.driver === "duckdb"
+                                      ? t("connection.dialog.fileFilterDuckdb")
+                                      : t("connection.dialog.fileFilterSqlite"),
+                                  extensions:
+                                    form.driver === "duckdb"
+                                      ? ["duckdb", "db"]
+                                      : ["sqlite", "db", "sqlite3", "db3"],
                                 },
                                 { name: t("connection.dialog.fileFilterAll"), extensions: ["*"] },
                               ],
@@ -1848,9 +1866,14 @@ export function ConnectionList({
                         level={1}
                         icon={<Database className="w-4 h-4" />}
                         label={
-                          connection.type === "sqlite" &&
+                          (connection.type === "sqlite" ||
+                            connection.type === "duckdb") &&
                           database.name === "main"
-                            ? t("connection.sqliteMainLabel")
+                            ? t(
+                                connection.type === "duckdb"
+                                  ? "connection.duckdbMainLabel"
+                                  : "connection.sqliteMainLabel",
+                              )
                             : database.name
                         }
                         isExpanded={expandedDatabases.has(dbKey)}

@@ -201,7 +201,7 @@ pub async fn create_database_by_id(
         db.get_connection_form_by_id(id).await?.driver.to_lowercase()
     };
 
-    if matches!(driver.as_str(), "sqlite" | "clickhouse") {
+    if matches!(driver.as_str(), "sqlite" | "duckdb" | "clickhouse") {
         return Err(format!(
             "[UNSUPPORTED] Driver {} does not support creating databases in this flow",
             driver

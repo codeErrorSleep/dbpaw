@@ -246,7 +246,7 @@ export function getQualifiedTableName(
     return quoteIdent(driver, table);
   }
 
-  if (driver === "sqlite") {
+  if (driver === "sqlite" || driver === "duckdb") {
     const normalizedSchema = schema.trim().toLowerCase();
     if (
       normalizedSchema === "" ||

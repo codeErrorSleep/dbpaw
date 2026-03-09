@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { Database, Server, CircleDot, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { siMysql, siPostgresql, siSqlite, siClickhouse, type SimpleIcon } from "simple-icons";
+import {
+  siMysql,
+  siPostgresql,
+  siSqlite,
+  siClickhouse,
+  siDuckdb,
+  type SimpleIcon,
+} from "simple-icons";
 import type { Driver } from "@/services/api";
 
 export interface ConnectionStatusLike {
@@ -38,6 +45,8 @@ export const getConnectionIcon = (driver: Driver | string): ReactNode => {
     case "sqlite":
     case "sqlite3":
       return renderSimpleIcon(siSqlite);
+    case "duckdb":
+      return renderSimpleIcon(siDuckdb);
     case "clickhouse":
       return renderSimpleIcon(siClickhouse);
     case "mssql":
