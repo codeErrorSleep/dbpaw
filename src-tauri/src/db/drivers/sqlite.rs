@@ -4,7 +4,8 @@ use crate::models::{
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use sqlx::{sqlite::SqlitePoolOptions, Column, Executor, Row, TypeInfo};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use sqlx::{sqlite::SqlitePoolOptions, Column, Executor, Row, TypeInfo, ValueRef};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -52,36 +53,215 @@ impl SqliteDriver {
     }
 }
 
-fn sqlite_cell_to_json(row: &sqlx::sqlite::SqliteRow, column_name: &str) -> serde_json::Value {
-    if let Ok(v) = row.try_get::<Option<i64>, _>(column_name) {
-        return v
-            .map(|x| serde_json::Value::String(x.to_string()))
-            .unwrap_or(serde_json::Value::Null);
+fn sqlite_temporal_decl_kind(declared_type: Option<&str>) -> Option<&'static str> {
+    let ty = declared_type?.trim().to_ascii_lowercase();
+    if ty.contains("datetime") || ty.contains("timestamp") {
+        return Some("datetime");
     }
-    if let Ok(v) = row.try_get::<Option<f64>, _>(column_name) {
-        return match v {
-            Some(x) => serde_json::Number::from_f64(x)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null),
-            None => serde_json::Value::Null,
-        };
+    if ty == "time" || ty.contains(" time") || ty.starts_with("time(") {
+        return Some("time");
     }
-    if let Ok(v) = row.try_get::<Option<bool>, _>(column_name) {
-        return v
-            .map(serde_json::Value::Bool)
-            .unwrap_or(serde_json::Value::Null);
+    if ty.contains("date") {
+        return Some("date");
     }
-    if let Ok(v) = row.try_get::<Option<String>, _>(column_name) {
-        return v
-            .map(serde_json::Value::String)
-            .unwrap_or(serde_json::Value::Null);
+    None
+}
+
+fn sqlite_declared_bool(declared_type: Option<&str>) -> bool {
+    declared_type
+        .map(|ty| {
+            let lower = ty.to_ascii_lowercase();
+            lower.contains("bool")
+        })
+        .unwrap_or(false)
+}
+
+fn sqlite_format_date_from_days(days_since_epoch: i64) -> Option<String> {
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
+    epoch
+        .checked_add_signed(Duration::days(days_since_epoch))
+        .map(|d| d.format("%F").to_string())
+}
+
+fn sqlite_format_time_from_seconds_f64(seconds: f64) -> Option<String> {
+    let day_secs = 86_400.0_f64;
+    let normalized = seconds.rem_euclid(day_secs);
+    let sec_int = normalized.trunc() as u32;
+    let nanos = ((normalized.fract() * 1_000_000_000.0).round() as u32).min(999_999_999);
+    NaiveTime::from_num_seconds_from_midnight_opt(sec_int, nanos)
+        .map(|t| t.format("%T%.f").to_string())
+}
+
+fn sqlite_format_datetime_from_unix_seconds_f64(seconds: f64) -> Option<String> {
+    let sec_int = seconds.trunc() as i64;
+    let nanos = ((seconds.fract() * 1_000_000_000.0).round() as u32).min(999_999_999);
+    DateTime::<Utc>::from_timestamp(sec_int, nanos)
+        .map(|dt| dt.naive_utc().format("%F %T%.f").to_string())
+}
+
+fn sqlite_normalize_temporal_text(value: &str, temporal_kind: &str) -> Option<String> {
+    let text = value.trim();
+    if text.is_empty() {
+        return None;
     }
-    if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(column_name) {
-        return v
+
+    match temporal_kind {
+        "date" => NaiveDate::parse_from_str(text, "%Y-%m-%d")
+            .ok()
+            .map(|d| d.format("%F").to_string()),
+        "time" => {
+            for fmt in ["%H:%M:%S%.f", "%H:%M:%S"] {
+                if let Ok(t) = NaiveTime::parse_from_str(text, fmt) {
+                    return Some(t.format("%T%.f").to_string());
+                }
+            }
+            None
+        }
+        "datetime" => {
+            if let Ok(dt) = DateTime::parse_from_rfc3339(text) {
+                return Some(dt.to_rfc3339());
+            }
+            for fmt in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
+                if let Ok(dt) = NaiveDateTime::parse_from_str(text, fmt) {
+                    return Some(dt.format("%F %T%.f").to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn sqlite_cell_to_json(
+    row: &sqlx::sqlite::SqliteRow,
+    column_name: &str,
+    declared_type: Option<&str>,
+) -> serde_json::Value {
+    let temporal_kind = sqlite_temporal_decl_kind(declared_type);
+    let declared_bool = sqlite_declared_bool(declared_type);
+
+    let runtime_type = row
+        .try_get_raw(column_name)
+        .ok()
+        .map(|v| v.type_info().name().to_string())
+        .unwrap_or_else(|| "NULL".to_string());
+
+    match runtime_type.as_str() {
+        "NULL" => serde_json::Value::Null,
+        "INTEGER" => {
+            let value = row.try_get::<Option<i64>, _>(column_name).unwrap_or(None);
+            match value {
+                None => serde_json::Value::Null,
+                Some(v) => {
+                    if declared_bool {
+                        serde_json::Value::Bool(v != 0)
+                    } else if let Some(kind) = temporal_kind {
+                        match kind {
+                            "date" => {
+                                let maybe_date = if (-200_000..=200_000).contains(&v) {
+                                    sqlite_format_date_from_days(v)
+                                } else {
+                                    sqlite_format_datetime_from_unix_seconds_f64(v as f64).and_then(
+                                        |s| {
+                                            NaiveDateTime::parse_from_str(
+                                                &s,
+                                                "%Y-%m-%d %H:%M:%S%.f",
+                                            )
+                                            .ok()
+                                            .map(|dt| dt.date().format("%F").to_string())
+                                        },
+                                    )
+                                };
+                                maybe_date
+                                    .map(serde_json::Value::String)
+                                    .unwrap_or_else(|| serde_json::Value::String(v.to_string()))
+                            }
+                            "time" => sqlite_format_time_from_seconds_f64(v as f64)
+                                .map(serde_json::Value::String)
+                                .unwrap_or_else(|| serde_json::Value::String(v.to_string())),
+                            "datetime" => sqlite_format_datetime_from_unix_seconds_f64(v as f64)
+                                .map(serde_json::Value::String)
+                                .unwrap_or_else(|| serde_json::Value::String(v.to_string())),
+                            _ => serde_json::Value::String(v.to_string()),
+                        }
+                    } else {
+                        serde_json::Value::String(v.to_string())
+                    }
+                }
+            }
+        }
+        "REAL" => {
+            let value = row.try_get::<Option<f64>, _>(column_name).unwrap_or(None);
+            match value {
+                None => serde_json::Value::Null,
+                Some(v) => {
+                    if let Some(kind) = temporal_kind {
+                        match kind {
+                            "time" => sqlite_format_time_from_seconds_f64(v)
+                                .map(serde_json::Value::String)
+                                .unwrap_or_else(|| {
+                                    serde_json::Number::from_f64(v)
+                                        .map(serde_json::Value::Number)
+                                        .unwrap_or(serde_json::Value::Null)
+                                }),
+                            "datetime" => sqlite_format_datetime_from_unix_seconds_f64(v)
+                                .map(serde_json::Value::String)
+                                .unwrap_or_else(|| {
+                                    serde_json::Number::from_f64(v)
+                                        .map(serde_json::Value::Number)
+                                        .unwrap_or(serde_json::Value::Null)
+                                }),
+                            "date" => sqlite_format_datetime_from_unix_seconds_f64(v)
+                                .and_then(|s| {
+                                    NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S%.f")
+                                        .ok()
+                                        .map(|dt| dt.date().format("%F").to_string())
+                                })
+                                .map(serde_json::Value::String)
+                                .unwrap_or_else(|| {
+                                    serde_json::Number::from_f64(v)
+                                        .map(serde_json::Value::Number)
+                                        .unwrap_or(serde_json::Value::Null)
+                                }),
+                            _ => serde_json::Number::from_f64(v)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null),
+                        }
+                    } else {
+                        serde_json::Number::from_f64(v)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null)
+                    }
+                }
+            }
+        }
+        "TEXT" => row
+            .try_get::<Option<String>, _>(column_name)
+            .ok()
+            .flatten()
+            .map(|s| {
+                if let Some(kind) = temporal_kind {
+                    sqlite_normalize_temporal_text(&s, kind)
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::String(s))
+                } else {
+                    serde_json::Value::String(s)
+                }
+            })
+            .unwrap_or(serde_json::Value::Null),
+        "BLOB" => row
+            .try_get::<Option<Vec<u8>>, _>(column_name)
+            .ok()
+            .flatten()
             .map(|x| serde_json::Value::String(String::from_utf8_lossy(&x).to_string()))
-            .unwrap_or(serde_json::Value::Null);
+            .unwrap_or(serde_json::Value::Null),
+        _ => row
+            .try_get::<Option<String>, _>(column_name)
+            .ok()
+            .flatten()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     }
-    serde_json::Value::Null
 }
 
 fn quote_ident(ident: &str) -> String {
@@ -435,7 +615,10 @@ impl DatabaseDriver for SqliteDriver {
             let mut obj = serde_json::Map::new();
             for col in row.columns() {
                 let name = col.name();
-                obj.insert(name.to_string(), sqlite_cell_to_json(row, name));
+                obj.insert(
+                    name.to_string(),
+                    sqlite_cell_to_json(row, name, Some(col.type_info().name())),
+                );
             }
             data.push(serde_json::Value::Object(obj));
         }
@@ -507,7 +690,10 @@ impl DatabaseDriver for SqliteDriver {
                 let mut obj = serde_json::Map::new();
                 for col in row.columns() {
                     let name = col.name();
-                    obj.insert(name.to_string(), sqlite_cell_to_json(row, name));
+                    obj.insert(
+                        name.to_string(),
+                        sqlite_cell_to_json(row, name, Some(col.type_info().name())),
+                    );
                 }
                 data.push(serde_json::Value::Object(obj));
             }
@@ -902,6 +1088,94 @@ mod tests {
 
         let overview = driver.get_schema_overview(None).await.unwrap();
         assert!(overview.tables.iter().any(|t| t.name == "children"));
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_raw_dispatch_and_temporal_normalization() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query(
+                "CREATE TABLE products (\
+                    id INTEGER PRIMARY KEY, \
+                    price NUMERIC, \
+                    created_date DATE, \
+                    created_at DATETIME, \
+                    is_active BOOLEAN\
+                );"
+                .to_string(),
+            )
+            .await
+            .unwrap();
+        driver
+            .execute_query(
+                "INSERT INTO products (id, price, created_date, created_at, is_active) \
+                 VALUES (1, 4236.50, '2026-01-02', '2026-01-02T03:04:05.120Z', 1);"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        let table_data = driver
+            .get_table_data(
+                "main".to_string(),
+                "products".to_string(),
+                1,
+                100,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(table_data.total, 1);
+        let row = table_data.data.first().unwrap();
+        assert!(
+            row["price"].is_number(),
+            "price should keep numeric semantics"
+        );
+        assert_eq!(
+            row["created_date"],
+            serde_json::Value::String("2026-01-02".to_string())
+        );
+        assert!(
+            row["created_at"]
+                .as_str()
+                .map(|v| v.starts_with("2026-01-02T03:04:05"))
+                .unwrap_or(false),
+            "created_at should be normalized"
+        );
+        assert_eq!(row["is_active"], serde_json::Value::Bool(true));
+
+        let query_result = driver
+            .execute_query(
+                "SELECT price, created_date, created_at, is_active FROM products WHERE id = 1;"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(query_result.row_count, 1);
+        let query_row = query_result.data.first().unwrap();
+        assert!(query_row["price"].is_number());
+        assert_eq!(
+            query_row["created_date"],
+            serde_json::Value::String("2026-01-02".to_string())
+        );
+        assert!(query_row["created_at"]
+            .as_str()
+            .map(|v| v.starts_with("2026-01-02T03:04:05"))
+            .unwrap_or(false));
+        assert_eq!(query_row["is_active"], serde_json::Value::Bool(true));
 
         driver.close().await;
         let _ = std::fs::remove_file(path);
