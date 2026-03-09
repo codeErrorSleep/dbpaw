@@ -234,6 +234,35 @@ async fn test_mysql_metadata_and_type_mapping_flow() {
         "payload(VARBINARY) should be decodable without error"
     );
 
+    let table_data = driver
+        .get_table_data(
+            database.clone(),
+            table_name.to_string(),
+            1,
+            100,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("get_table_data failed");
+    assert_eq!(table_data.total, 1);
+    assert_eq!(table_data.data.len(), 1);
+    let grid_row = table_data
+        .data
+        .first()
+        .expect("table_data should include at least one row");
+    assert_eq!(
+        grid_row["amount"],
+        serde_json::Value::String("12.34".to_string()),
+        "amount should be rendered as string in table data"
+    );
+    assert!(
+        grid_row.get("created_at").is_some(),
+        "created_at should exist"
+    );
+
     let _ = driver
         .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
         .await;

@@ -10,7 +10,10 @@ fn duckdb_test_path() -> PathBuf {
         return PathBuf::from(v);
     }
     let mut p = env::temp_dir();
-    p.push(format!("dbpaw-duckdb-integration-{}.duckdb", Uuid::new_v4()));
+    p.push(format!(
+        "dbpaw-duckdb-integration-{}.duckdb",
+        Uuid::new_v4()
+    ));
     p
 }
 

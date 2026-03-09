@@ -25,11 +25,16 @@ async fn test_mariadb_integration_flow() {
         ..Default::default()
     };
 
-    let driver = MysqlDriver::connect(&form).await.expect("Failed to connect");
+    let driver = MysqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect");
 
     driver.test_connection().await.expect("Connection failed");
 
-    let dbs = driver.list_databases().await.expect("Failed to list databases");
+    let dbs = driver
+        .list_databases()
+        .await
+        .expect("Failed to list databases");
     assert!(!dbs.is_empty());
 
     if let Some(db_name) = database {
@@ -96,7 +101,9 @@ async fn test_mariadb_show_create_and_information_schema_compat() {
         ..Default::default()
     };
 
-    let driver = MysqlDriver::connect(&form).await.expect("Failed to connect");
+    let driver = MysqlDriver::connect(&form)
+        .await
+        .expect("Failed to connect");
     let table = "dbpaw_mariadb_meta";
     let qualified = format!("`{}`.`{}`", database, table);
 

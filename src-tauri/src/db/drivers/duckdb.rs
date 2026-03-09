@@ -4,7 +4,11 @@ use crate::models::{
     TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use duckdb::{Connection, Row};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
+use duckdb::{
+    types::{TimeUnit, Value as DuckValue, ValueRef},
+    Connection, Row,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -97,37 +101,155 @@ fn first_sql_keyword(sql: &str) -> Option<String> {
     Some(sql[start..i].to_ascii_lowercase())
 }
 
-fn duckdb_cell_to_json(row: &Row<'_>, idx: usize) -> serde_json::Value {
-    if let Ok(v) = row.get::<usize, Option<i64>>(idx) {
-        return v
-            .map(|x| serde_json::Value::String(x.to_string()))
-            .unwrap_or(serde_json::Value::Null);
-    }
-    if let Ok(v) = row.get::<usize, Option<f64>>(idx) {
-        return match v {
-            Some(x) => serde_json::Number::from_f64(x)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null),
-            None => serde_json::Value::Null,
-        };
-    }
-    if let Ok(v) = row.get::<usize, Option<bool>>(idx) {
-        return v
-            .map(serde_json::Value::Bool)
-            .unwrap_or(serde_json::Value::Null);
-    }
-    if let Ok(v) = row.get::<usize, Option<String>>(idx) {
-        return v
-            .map(serde_json::Value::String)
-            .unwrap_or(serde_json::Value::Null);
-    }
-    if let Ok(v) = row.get::<usize, Option<Vec<u8>>>(idx) {
-        return v
-            .map(|x| serde_json::Value::String(String::from_utf8_lossy(&x).to_string()))
-            .unwrap_or(serde_json::Value::Null);
-    }
+fn number_from_f64(v: f64) -> serde_json::Value {
+    serde_json::Number::from_f64(v)
+        .map(serde_json::Value::Number)
+        .unwrap_or(serde_json::Value::Null)
+}
 
-    serde_json::Value::Null
+fn format_date32(days_since_epoch: i32) -> String {
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).expect("valid epoch date");
+    epoch
+        .checked_add_signed(Duration::days(days_since_epoch.into()))
+        .unwrap_or(epoch)
+        .format("%F")
+        .to_string()
+}
+
+fn format_timestamp(unit: TimeUnit, value: i64) -> String {
+    let micros = unit.to_micros(value);
+    let seconds = micros.div_euclid(1_000_000);
+    let nanos = (micros.rem_euclid(1_000_000) as u32) * 1_000;
+    DateTime::<Utc>::from_timestamp(seconds, nanos)
+        .map(|dt| dt.naive_utc().format("%F %T%.f").to_string())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn format_time64(unit: TimeUnit, value: i64) -> String {
+    let micros = unit.to_micros(value);
+    let micros_per_day = 86_400_i64 * 1_000_000_i64;
+    let normalized_micros = micros.rem_euclid(micros_per_day);
+    let seconds = (normalized_micros / 1_000_000) as u32;
+    let nanos = ((normalized_micros % 1_000_000) as u32) * 1_000;
+    NaiveTime::from_num_seconds_from_midnight_opt(seconds, nanos)
+        .map(|t| t.format("%T%.f").to_string())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn duckdb_value_key_to_string(value: &DuckValue) -> String {
+    match duckdb_value_to_json(value) {
+        serde_json::Value::String(v) => v,
+        serde_json::Value::Number(v) => v.to_string(),
+        serde_json::Value::Bool(v) => v.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn duckdb_value_to_json(value: &DuckValue) -> serde_json::Value {
+    match value {
+        DuckValue::Null => serde_json::Value::Null,
+        DuckValue::Boolean(v) => serde_json::Value::Bool(*v),
+        DuckValue::TinyInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::SmallInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::Int(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::BigInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::HugeInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::UTinyInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::USmallInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::UInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::UBigInt(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::Float(v) => number_from_f64((*v).into()),
+        DuckValue::Double(v) => number_from_f64(*v),
+        DuckValue::Decimal(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::Timestamp(unit, v) => serde_json::Value::String(format_timestamp(*unit, *v)),
+        DuckValue::Date32(v) => serde_json::Value::String(format_date32(*v)),
+        DuckValue::Time64(unit, v) => serde_json::Value::String(format_time64(*unit, *v)),
+        DuckValue::Text(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::Blob(v) => serde_json::Value::String(String::from_utf8_lossy(v).to_string()),
+        DuckValue::Interval {
+            months,
+            days,
+            nanos,
+        } => {
+            let mut obj = serde_json::Map::new();
+            obj.insert("months".to_string(), serde_json::Value::from(*months));
+            obj.insert("days".to_string(), serde_json::Value::from(*days));
+            obj.insert(
+                "nanos".to_string(),
+                serde_json::Value::String(nanos.to_string()),
+            );
+            serde_json::Value::Object(obj)
+        }
+        DuckValue::List(items) | DuckValue::Array(items) => {
+            serde_json::Value::Array(items.iter().map(duckdb_value_to_json).collect())
+        }
+        DuckValue::Enum(v) => serde_json::Value::String(v.to_string()),
+        DuckValue::Struct(fields) => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in fields.iter() {
+                obj.insert(k.clone(), duckdb_value_to_json(v));
+            }
+            serde_json::Value::Object(obj)
+        }
+        DuckValue::Map(entries) => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in entries.iter() {
+                obj.insert(duckdb_value_key_to_string(k), duckdb_value_to_json(v));
+            }
+            serde_json::Value::Object(obj)
+        }
+        DuckValue::Union(v) => duckdb_value_to_json(v),
+    }
+}
+
+fn duckdb_cell_to_json(row: &Row<'_>, idx: usize) -> serde_json::Value {
+    let value = match row.get_ref(idx) {
+        Ok(v) => v,
+        Err(_) => return serde_json::Value::Null,
+    };
+
+    match value {
+        ValueRef::Null => serde_json::Value::Null,
+        ValueRef::Boolean(v) => serde_json::Value::Bool(v),
+        ValueRef::TinyInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::SmallInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::Int(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::BigInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::HugeInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::UTinyInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::USmallInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::UInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::UBigInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::Float(v) => number_from_f64(v.into()),
+        ValueRef::Double(v) => number_from_f64(v),
+        ValueRef::Decimal(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::Timestamp(unit, v) => serde_json::Value::String(format_timestamp(unit, v)),
+        ValueRef::Date32(v) => serde_json::Value::String(format_date32(v)),
+        ValueRef::Time64(unit, v) => serde_json::Value::String(format_time64(unit, v)),
+        ValueRef::Text(v) => serde_json::Value::String(String::from_utf8_lossy(v).to_string()),
+        ValueRef::Blob(v) => serde_json::Value::String(String::from_utf8_lossy(v).to_string()),
+        ValueRef::Interval {
+            months,
+            days,
+            nanos,
+        } => {
+            let mut obj = serde_json::Map::new();
+            obj.insert("months".to_string(), serde_json::Value::from(months));
+            obj.insert("days".to_string(), serde_json::Value::from(days));
+            obj.insert(
+                "nanos".to_string(),
+                serde_json::Value::String(nanos.to_string()),
+            );
+            serde_json::Value::Object(obj)
+        }
+        ValueRef::List(_, _)
+        | ValueRef::Enum(_, _)
+        | ValueRef::Struct(_, _)
+        | ValueRef::Array(_, _)
+        | ValueRef::Map(_, _)
+        | ValueRef::Union(_, _) => duckdb_value_to_json(&value.to_owned()),
+    }
 }
 
 impl DuckdbDriver {
@@ -179,7 +301,9 @@ impl DatabaseDriver for DuckdbDriver {
             if let Ok(mut stmt) = conn.prepare("SELECT database_name FROM duckdb_databases()") {
                 let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
-                    let db_name = row.get::<usize, String>(0).unwrap_or_else(|_| "main".to_string());
+                    let db_name = row
+                        .get::<usize, String>(0)
+                        .unwrap_or_else(|_| "main".to_string());
                     out.push(db_name);
                 }
             }
@@ -218,7 +342,9 @@ impl DatabaseDriver for DuckdbDriver {
                     .to_string()
             };
 
-            let mut stmt = conn.prepare(&sql).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             let mut tables = Vec::new();
 
@@ -266,7 +392,9 @@ impl DatabaseDriver for DuckdbDriver {
                 quote_literal(&schema_name),
                 quote_literal(&table)
             );
-            let mut stmt = conn.prepare(&sql).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
             let pk_sql = format!(
@@ -285,7 +413,9 @@ impl DatabaseDriver for DuckdbDriver {
             let mut pk_stmt = conn
                 .prepare(&pk_sql)
                 .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-            let mut pk_rows = pk_stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let mut pk_rows = pk_stmt
+                .query([])
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             let mut pk_cols = std::collections::HashSet::new();
             while let Some(row) = pk_rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
                 let col_name = row.get::<usize, String>(0).unwrap_or_default();
@@ -349,7 +479,9 @@ impl DatabaseDriver for DuckdbDriver {
                 quote_literal(&schema_name),
                 quote_literal(&table)
             );
-            let mut stmt = conn.prepare(&sql).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
             if let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
                 let ddl = row.get::<usize, Option<String>>(0).unwrap_or(None);
@@ -423,10 +555,8 @@ impl DatabaseDriver for DuckdbDriver {
             let mut rows = stmt
                 .query([])
                 .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", query, e))?;
-            let col_names: Vec<String> = rows
-                .as_ref()
-                .map(|s| s.column_names())
-                .unwrap_or_default();
+            let col_names: Vec<String> =
+                rows.as_ref().map(|s| s.column_names()).unwrap_or_default();
 
             let mut data = Vec::new();
             while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
@@ -484,7 +614,9 @@ impl DatabaseDriver for DuckdbDriver {
             ) || sql_lower.contains(" returning ");
 
             if should_fetch_rows {
-                let mut stmt = conn.prepare(&sql).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 let columns: Vec<QueryColumn> = rows
                     .as_ref()
@@ -658,6 +790,93 @@ mod tests {
             .await
             .unwrap();
         assert!(ddl.to_lowercase().contains("create table"));
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_cell_to_json_preserves_decimal_and_temporal_values() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "duckdb".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = DuckdbDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query(
+                "CREATE TABLE products (\
+                    product_id INTEGER PRIMARY KEY, \
+                    price DECIMAL(10,2), \
+                    created_date DATE, \
+                    created_at TIMESTAMP\
+                );"
+                .to_string(),
+            )
+            .await
+            .unwrap();
+        driver
+            .execute_query(
+                "INSERT INTO products (product_id, price, created_date, created_at) VALUES \
+                 (1, 4236.50, '2026-01-02', '2026-01-02 03:04:05');"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        let table_data = driver
+            .get_table_data(
+                "main".to_string(),
+                "products".to_string(),
+                1,
+                100,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(table_data.data.len(), 1);
+        let row = table_data.data.first().unwrap();
+        let price = row["price"].as_str().expect("price should be a string");
+        assert!(price.contains('.'));
+        assert_eq!(price.parse::<f64>().unwrap(), 4236.5);
+        assert_eq!(
+            row["created_date"],
+            serde_json::Value::String("2026-01-02".to_string())
+        );
+        assert_ne!(
+            row["created_date"],
+            serde_json::Value::String("20456".to_string())
+        );
+        let created_at = row["created_at"]
+            .as_str()
+            .expect("created_at should be a string");
+        assert!(created_at.contains("2026-01-02"));
+
+        let query_result = driver
+            .execute_query(
+                "SELECT price, created_date, created_at FROM products WHERE product_id = 1;"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(query_result.row_count, 1);
+        let query_row = query_result.data.first().unwrap();
+        let query_price = query_row["price"].as_str().unwrap();
+        assert!(query_price.contains('.'));
+        assert_eq!(query_price.parse::<f64>().unwrap(), 4236.5);
+        assert_eq!(
+            query_row["created_date"],
+            serde_json::Value::String("2026-01-02".to_string())
+        );
+        let query_created_at = query_row["created_at"]
+            .as_str()
+            .expect("created_at should be a string");
+        assert!(query_created_at.contains("2026-01-02"));
 
         driver.close().await;
         let _ = std::fs::remove_file(path);

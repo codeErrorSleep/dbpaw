@@ -198,7 +198,10 @@ pub async fn create_database_by_id(
             lock.clone()
         };
         let db = local_db.ok_or("Local DB not initialized".to_string())?;
-        db.get_connection_form_by_id(id).await?.driver.to_lowercase()
+        db.get_connection_form_by_id(id)
+            .await?
+            .driver
+            .to_lowercase()
     };
 
     if matches!(driver.as_str(), "sqlite" | "duckdb" | "clickhouse") {
