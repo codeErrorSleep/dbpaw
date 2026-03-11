@@ -101,6 +101,38 @@ fn first_sql_keyword(sql: &str) -> Option<String> {
     Some(sql[start..i].to_ascii_lowercase())
 }
 
+fn sql_contains_keyword(sql: &str, keyword: &str) -> bool {
+    let keyword_bytes = keyword.as_bytes();
+    if keyword_bytes.is_empty() {
+        return false;
+    }
+
+    let sql_bytes = sql.as_bytes();
+    let keyword_len = keyword_bytes.len();
+    if sql_bytes.len() < keyword_len {
+        return false;
+    }
+
+    for i in 0..=(sql_bytes.len() - keyword_len) {
+        let before_ok = i == 0 || !sql_bytes[i - 1].is_ascii_alphabetic();
+        if !before_ok {
+            continue;
+        }
+
+        let after_idx = i + keyword_len;
+        let after_ok = after_idx == sql_bytes.len() || !sql_bytes[after_idx].is_ascii_alphabetic();
+        if !after_ok {
+            continue;
+        }
+
+        if sql_bytes[i..after_idx].eq_ignore_ascii_case(keyword_bytes) {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn number_from_f64(v: f64) -> serde_json::Value {
     serde_json::Number::from_f64(v)
         .map(serde_json::Value::Number)
@@ -607,11 +639,17 @@ impl DatabaseDriver for DuckdbDriver {
         self.run_blocking(move |conn| {
             let start = std::time::Instant::now();
             let first_keyword = first_sql_keyword(&sql);
-            let sql_lower = sql.to_ascii_lowercase();
             let should_fetch_rows = matches!(
                 first_keyword.as_deref(),
-                Some("select") | Some("pragma") | Some("with") | Some("explain")
-            ) || sql_lower.contains(" returning ");
+                Some("select")
+                    | Some("pragma")
+                    | Some("with")
+                    | Some("explain")
+                    | Some("show")
+                    | Some("describe")
+                    | Some("desc")
+                    | Some("values")
+            ) || sql_contains_keyword(&sql, "returning");
 
             if should_fetch_rows {
                 let mut stmt = conn
@@ -753,6 +791,25 @@ mod tests {
             .unwrap();
         assert_eq!(select_result.row_count, 2);
         assert_eq!(select_result.columns.len(), 2);
+
+        let show_result = driver
+            .execute_query("SHOW TABLES;".to_string())
+            .await
+            .unwrap();
+        assert!(!show_result.data.is_empty());
+        assert!(!show_result.columns.is_empty());
+
+        let returning_result = driver
+            .execute_query("INSERT INTO items VALUES (3, 'c')\nRETURNING id, name;".to_string())
+            .await
+            .unwrap();
+        assert_eq!(returning_result.row_count, 1);
+        assert_eq!(returning_result.columns.len(), 2);
+        assert_eq!(returning_result.data[0]["id"], serde_json::Value::String("3".to_string()));
+        assert_eq!(
+            returning_result.data[0]["name"],
+            serde_json::Value::String("c".to_string())
+        );
 
         driver.close().await;
         let _ = std::fs::remove_file(path);
