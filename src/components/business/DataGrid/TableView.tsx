@@ -2001,16 +2001,18 @@ export function TableView({
                             ? "Copy Selected as CSV"
                             : "Copy as CSV"}
                         </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            const sql = buildRowsInsertSQL(copyTargetRows);
-                            handleCopy(sql);
-                          }}
-                        >
-                          {isMultiRowCopyTarget
-                            ? "Copy Selected as Insert SQL"
-                            : "Copy as Insert SQL"}
-                        </ContextMenuItem>
+                        {!!tableContext && (
+                          <ContextMenuItem
+                            onClick={() => {
+                              const sql = buildRowsInsertSQL(copyTargetRows);
+                              handleCopy(sql);
+                            }}
+                          >
+                            {isMultiRowCopyTarget
+                              ? "Copy Selected as Insert SQL"
+                              : "Copy as Insert SQL"}
+                          </ContextMenuItem>
+                        )}
                         {isEditable && (
                           <ContextMenuItem
                             onClick={() => {
