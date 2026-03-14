@@ -1,5 +1,32 @@
 import { relaunch } from "@tauri-apps/plugin-process";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+
+// ============ Mock 测试配置 ============
+let mockEnabled = false;
+let mockScenario: 'available' | 'no_update' | 'error' | 'slow_download' = 'available';
+
+/** 启用测试模式 */
+export function enableMock(scenario: typeof mockScenario = 'available') {
+  mockEnabled = true;
+  mockScenario = scenario;
+  console.log('[Updater Mock] 已启用:', scenario);
+}
+
+/** 禁用测试模式 */
+export function disableMock() {
+  mockEnabled = false;
+  console.log('[Updater Mock] 已禁用');
+}
+
+/** 获取当前 mock 状态 */
+export function isMockEnabled() {
+  return { enabled: mockEnabled, scenario: mockScenario };
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+// =====================================
 
 export type UpdateState =
   | "idle"
@@ -108,6 +135,12 @@ export async function checkForUpdates(
   options?: CheckForUpdatesOptions,
 ): Promise<UpdateResult> {
   if (checkInFlight) return checkInFlight;
+
+  // ===== Mock 模式 =====
+  if (mockEnabled) {
+    return mockCheckForUpdates(options);
+  }
+  // ===================
 
   checkInFlight = (async () => {
     options?.onStateChange?.("checking");
@@ -255,4 +288,108 @@ export async function waitForInstallCompletion(): Promise<UpdateResult | null> {
 
 export async function relaunchAfterUpdate(): Promise<void> {
   await relaunch();
+}
+
+// ============ Mock 实现 ============
+
+async function mockCheckForUpdates(
+  options?: CheckForUpdatesOptions,
+): Promise<UpdateResult> {
+  options?.onStateChange?.("checking");
+
+  // 模拟网络延迟
+  await delay(800);
+
+  switch (mockScenario) {
+    case 'available':
+      options?.onStateChange?.("available");
+      return {
+        state: "available",
+        available: true,
+        update: {
+          version: "9.9.9-test",
+          body: "## 🎉 测试更新\n\n### 新功能\n- 支持 Mock 测试\n- 自动更新流程验证\n- 状态展示优化\n\n### 修复\n- 测试 Bug 修复\n\n> 这是一个 **Mock** 更新，仅用于本地测试。",
+          raw: createMockUpdate(),
+        },
+      };
+
+    case 'no_update':
+      options?.onStateChange?.("idle");
+      return {
+        state: "idle",
+        available: false,
+        errorCode: "NO_UPDATE",
+        message: "You are on the latest version.",
+      };
+
+    case 'error':
+      options?.onStateChange?.("error");
+      return {
+        state: "error",
+        available: false,
+        errorCode: "CHECK_FAILED",
+        message: "Mock: Network error - Unable to connect to update server",
+      };
+
+    case 'slow_download':
+      options?.onStateChange?.("available");
+      return {
+        state: "available",
+        available: true,
+        update: {
+          version: "9.9.9-slow",
+          body: "## 🐌 慢速下载测试\n\n用于测试长时间下载的状态展示。",
+          raw: createMockUpdate({ slowMode: true }),
+        },
+      };
+
+    default:
+      options?.onStateChange?.("idle");
+      return { state: "idle", available: false };
+  }
+}
+
+function createMockUpdate(options?: { slowMode?: boolean }): Update {
+  const { slowMode = false } = options || {};
+  
+  return {
+    available: true,
+    version: slowMode ? "9.9.9-slow" : "9.9.9-test",
+    date: new Date().toISOString(),
+    body: slowMode ? "慢速下载测试" : "Mock 更新",
+    downloadAndInstall: async (eventHandler) => {
+      updateTaskState("downloading");
+      
+      const totalSteps = slowMode ? 10 : 5;
+      const stepDelay = slowMode ? 2000 : 800;
+      
+      // 模拟下载进度
+      for (let i = 1; i <= totalSteps; i++) {
+        await delay(stepDelay);
+        const progress = Math.round((i / totalSteps) * 100);
+        console.log(`[Mock] Downloading... ${progress}%`);
+        
+        // 触发进度事件
+        if (eventHandler) {
+          eventHandler({
+            event: 'Progress',
+            data: {
+              chunkLength: 1024 * 100,
+            }
+          });
+        }
+      }
+      
+      // 模拟安装阶段
+      updateTaskState("installing");
+      await delay(slowMode ? 3000 : 1500);
+      
+      // 完成
+      updateTaskState("ready_to_restart", {
+        message: slowMode 
+          ? "Slow download completed. Restart to apply changes." 
+          : "Mock: Update installed. Restart to apply changes.",
+      });
+    },
+  } as Update;
 }
