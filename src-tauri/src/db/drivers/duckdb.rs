@@ -136,7 +136,7 @@ fn sql_contains_keyword(sql: &str, keyword: &str) -> bool {
 fn number_from_f64(v: f64) -> serde_json::Value {
     serde_json::Number::from_f64(v)
         .map(serde_json::Value::Number)
-        .unwrap_or(serde_json::Value::Null)
+        .unwrap_or_else(|| serde_json::Value::String(v.to_string()))
 }
 
 fn format_date32(days_since_epoch: i32) -> String {
@@ -235,13 +235,53 @@ fn duckdb_value_to_json(value: &DuckValue) -> serde_json::Value {
     }
 }
 
-fn duckdb_cell_to_json(row: &Row<'_>, idx: usize) -> serde_json::Value {
+fn duckdb_value_ref_type_name(value: &ValueRef<'_>) -> &'static str {
+    match value {
+        ValueRef::Null => "NULL",
+        ValueRef::Boolean(_) => "BOOLEAN",
+        ValueRef::TinyInt(_) => "TINYINT",
+        ValueRef::SmallInt(_) => "SMALLINT",
+        ValueRef::Int(_) => "INTEGER",
+        ValueRef::BigInt(_) => "BIGINT",
+        ValueRef::HugeInt(_) => "HUGEINT",
+        ValueRef::UTinyInt(_) => "UTINYINT",
+        ValueRef::USmallInt(_) => "USMALLINT",
+        ValueRef::UInt(_) => "UINTEGER",
+        ValueRef::UBigInt(_) => "UBIGINT",
+        ValueRef::Float(_) => "FLOAT",
+        ValueRef::Double(_) => "DOUBLE",
+        ValueRef::Decimal(_) => "DECIMAL",
+        ValueRef::Timestamp(_, _) => "TIMESTAMP",
+        ValueRef::Date32(_) => "DATE",
+        ValueRef::Time64(_, _) => "TIME",
+        ValueRef::Text(_) => "TEXT",
+        ValueRef::Blob(_) => "BLOB",
+        ValueRef::Interval { .. } => "INTERVAL",
+        ValueRef::List(_, _) => "LIST",
+        ValueRef::Enum(_, _) => "ENUM",
+        ValueRef::Struct(_, _) => "STRUCT",
+        ValueRef::Array(_, _) => "ARRAY",
+        ValueRef::Map(_, _) => "MAP",
+        ValueRef::Union(_, _) => "UNION",
+    }
+}
+
+fn duckdb_cell_to_json(
+    row: &Row<'_>,
+    idx: usize,
+    column_name: &str,
+) -> Result<serde_json::Value, String> {
     let value = match row.get_ref(idx) {
         Ok(v) => v,
-        Err(_) => return serde_json::Value::Null,
+        Err(e) => {
+            return Err(format!(
+                "[QUERY_ERROR] Failed to decode DuckDB column '{}' at index {}: {}",
+                column_name, idx, e
+            ));
+        }
     };
 
-    match value {
+    Ok(match value {
         ValueRef::Null => serde_json::Value::Null,
         ValueRef::Boolean(v) => serde_json::Value::Bool(v),
         ValueRef::TinyInt(v) => serde_json::Value::String(v.to_string()),
@@ -281,7 +321,7 @@ fn duckdb_cell_to_json(row: &Row<'_>, idx: usize) -> serde_json::Value {
         | ValueRef::Array(_, _)
         | ValueRef::Map(_, _)
         | ValueRef::Union(_, _) => duckdb_value_to_json(&value.to_owned()),
-    }
+    })
 }
 
 impl DuckdbDriver {
@@ -594,7 +634,8 @@ impl DatabaseDriver for DuckdbDriver {
             while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
                 let mut obj = serde_json::Map::new();
                 for (idx, name) in col_names.iter().enumerate() {
-                    obj.insert(name.to_string(), duckdb_cell_to_json(row, idx));
+                    let cell = duckdb_cell_to_json(row, idx, name)?;
+                    obj.insert(name.to_string(), cell);
                 }
                 data.push(serde_json::Value::Object(obj));
             }
@@ -668,11 +709,22 @@ impl DatabaseDriver for DuckdbDriver {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
+                let mut columns = columns;
                 let mut data = Vec::new();
+                let mut inferred_types = false;
                 while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
+                    if !inferred_types {
+                        for (idx, col) in columns.iter_mut().enumerate() {
+                            if let Ok(v) = row.get_ref(idx) {
+                                col.r#type = duckdb_value_ref_type_name(&v).to_string();
+                            }
+                        }
+                        inferred_types = true;
+                    }
                     let mut obj = serde_json::Map::new();
                     for (idx, col) in columns.iter().enumerate() {
-                        obj.insert(col.name.clone(), duckdb_cell_to_json(row, idx));
+                        let cell = duckdb_cell_to_json(row, idx, &col.name)?;
+                        obj.insert(col.name.clone(), cell);
                     }
                     data.push(serde_json::Value::Object(obj));
                 }
@@ -791,6 +843,8 @@ mod tests {
             .unwrap();
         assert_eq!(select_result.row_count, 2);
         assert_eq!(select_result.columns.len(), 2);
+        assert_eq!(select_result.columns[0].r#type, "INTEGER");
+        assert_eq!(select_result.columns[1].r#type, "TEXT");
 
         let show_result = driver
             .execute_query("SHOW TABLES;".to_string())
@@ -813,6 +867,15 @@ mod tests {
 
         driver.close().await;
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_number_from_f64_nan_and_inf_are_stringified() {
+        assert_eq!(number_from_f64(f64::NAN), serde_json::Value::String("NaN".to_string()));
+        assert_eq!(
+            number_from_f64(f64::INFINITY),
+            serde_json::Value::String("inf".to_string())
+        );
     }
 
     #[tokio::test]

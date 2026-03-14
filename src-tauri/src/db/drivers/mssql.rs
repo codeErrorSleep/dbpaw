@@ -4,9 +4,7 @@ use crate::models::{
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use futures_util::TryStreamExt;
-use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 use tiberius::{AuthMethod, Client, Config, EncryptionLevel, QueryItem, Row};
 use tokio::net::TcpStream;
@@ -263,58 +261,61 @@ impl MssqlDriver {
         Ok((rows, columns))
     }
 
-    fn row_to_json(row: &Row) -> serde_json::Value {
-        let mut obj = serde_json::Map::new();
-
-        for (i, col) in row.columns().iter().enumerate() {
-            let key = col.name().to_string();
-
-            let value = if let Ok(Some(v)) = row.try_get::<&str, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<i16, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<i32, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<i64, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<u8, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<Decimal, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<tiberius::numeric::Numeric, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<f32, _>(i) {
-                serde_json::Number::from_f64(v as f64)
-                    .map(serde_json::Value::Number)
-                    .unwrap_or(serde_json::Value::Null)
-            } else if let Ok(Some(v)) = row.try_get::<f64, _>(i) {
-                serde_json::Number::from_f64(v)
-                    .map(serde_json::Value::Number)
-                    .unwrap_or(serde_json::Value::Null)
-            } else if let Ok(Some(v)) = row.try_get::<bool, _>(i) {
-                serde_json::Value::Bool(v)
-            } else if let Ok(Some(v)) = row.try_get::<uuid::Uuid, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<NaiveDateTime, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<NaiveDate, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<NaiveTime, _>(i) {
-                serde_json::Value::String(v.to_string())
-            } else if let Ok(Some(v)) = row.try_get::<DateTime<Utc>, _>(i) {
-                serde_json::Value::String(v.to_rfc3339())
-            } else if let Ok(Some(v)) = row.try_get::<DateTime<FixedOffset>, _>(i) {
-                serde_json::Value::String(v.to_rfc3339())
-            } else if let Ok(Some(v)) = row.try_get::<&[u8], _>(i) {
-                serde_json::Value::String(String::from_utf8_lossy(v).to_string())
-            } else {
-                serde_json::Value::Null
-            };
-
-            obj.insert(key, value);
+    async fn load_table_column_type_map(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<HashMap<String, String>, String> {
+        let sql = format!(
+            "SELECT COLUMN_NAME, DATA_TYPE \
+             FROM INFORMATION_SCHEMA.COLUMNS \
+             WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
+            escape_literal(schema),
+            escape_literal(table)
+        );
+        let rows = self.fetch_rows(&sql).await?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let col = Self::parse_string(&row, 0);
+            let data_type = Self::parse_string(&row, 1);
+            if !col.is_empty() {
+                map.insert(col, data_type);
+            }
         }
+        Ok(map)
+    }
 
-        serde_json::Value::Object(obj)
+    fn build_for_json_query(sql: &str) -> String {
+        let trimmed = sql.trim_end().trim_end_matches(';').trim_end();
+        format!("{trimmed} FOR JSON PATH, INCLUDE_NULL_VALUES")
+    }
+
+    async fn fetch_json_rows(
+        &self,
+        sql: &str,
+        high_precision_cols: &HashSet<String>,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let rows = self.fetch_rows(sql).await?;
+        let mut json_text = String::new();
+        for row in rows {
+            json_text.push_str(&Self::parse_string(&row, 0));
+        }
+        if json_text.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let parsed: serde_json::Value = serde_json::from_str(&json_text)
+            .map_err(|e| format!("[QUERY_ERROR] Failed to parse MSSQL JSON result: {e}"))?;
+        let mut out = match parsed {
+            serde_json::Value::Array(arr) => arr,
+            serde_json::Value::Object(obj) => vec![serde_json::Value::Object(obj)],
+            _ => {
+                return Err("[QUERY_ERROR] MSSQL FOR JSON result is not array/object".to_string());
+            }
+        };
+        for row in &mut out {
+            normalize_mssql_row_json(row, high_precision_cols)?;
+        }
+        Ok(out)
     }
 
     fn parse_i64(row: &Row, idx: usize) -> i64 {
@@ -341,9 +342,56 @@ impl MssqlDriver {
     }
 }
 
+fn is_high_precision_mssql_data_type(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "bigint" | "decimal" | "numeric" | "money" | "smallmoney"
+    )
+}
+
+fn is_high_precision_mssql_query_type(type_name: &str) -> bool {
+    let t = type_name.trim().to_ascii_lowercase();
+    t.contains("int8")
+        || t.contains("bigint")
+        || t.contains("numeric")
+        || t.contains("decimal")
+        || t.contains("money")
+}
+
+fn normalize_mssql_row_json(
+    row_json: &mut serde_json::Value,
+    high_precision_cols: &HashSet<String>,
+) -> Result<(), String> {
+    let obj = row_json
+        .as_object_mut()
+        .ok_or("[QUERY_ERROR] Expected JSON object row from MSSQL FOR JSON".to_string())?;
+
+    let mut lookup: HashMap<String, String> = HashMap::new();
+    for key in obj.keys() {
+        lookup.insert(key.to_ascii_lowercase(), key.clone());
+    }
+
+    for col in high_precision_cols {
+        let Some(actual_key) = lookup.get(&col.to_ascii_lowercase()) else {
+            continue;
+        };
+        let Some(v) = obj.get_mut(actual_key) else {
+            continue;
+        };
+        if v.is_number() {
+            *v = serde_json::Value::String(v.to_string());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::quote_ident;
+    use super::{
+        is_high_precision_mssql_data_type, is_high_precision_mssql_query_type, quote_ident,
+        MssqlDriver,
+    };
+    use std::collections::HashSet;
 
     #[test]
     fn quote_ident_allows_common_mssql_names() {
@@ -363,6 +411,45 @@ mod tests {
     fn quote_ident_rejects_empty_and_null_byte() {
         assert!(quote_ident("   ").is_err());
         assert!(quote_ident("abc\0def").is_err());
+    }
+
+    #[test]
+    fn test_is_high_precision_mssql_data_type() {
+        assert!(is_high_precision_mssql_data_type("bigint"));
+        assert!(is_high_precision_mssql_data_type("DECIMAL"));
+        assert!(is_high_precision_mssql_data_type("money"));
+        assert!(!is_high_precision_mssql_data_type("int"));
+    }
+
+    #[test]
+    fn test_is_high_precision_mssql_query_type() {
+        assert!(is_high_precision_mssql_query_type("Int8"));
+        assert!(is_high_precision_mssql_query_type("Numericn"));
+        assert!(is_high_precision_mssql_query_type("Money"));
+        assert!(!is_high_precision_mssql_query_type("Int4"));
+    }
+
+    #[test]
+    fn test_normalize_mssql_row_json_stringify_high_precision() {
+        let mut row = serde_json::json!({
+            "id": 9223372036854775807_i64,
+            "amount": 1234.56,
+            "name": "x"
+        });
+        let hp = HashSet::from(["ID".to_string(), "amount".to_string()]);
+        super::normalize_mssql_row_json(&mut row, &hp).unwrap();
+        assert_eq!(row.get("id").and_then(|v| v.as_str()), Some("9223372036854775807"));
+        assert_eq!(row.get("amount").and_then(|v| v.as_str()), Some("1234.56"));
+        assert_eq!(row.get("name").and_then(|v| v.as_str()), Some("x"));
+    }
+
+    #[test]
+    fn test_build_for_json_query_trims_trailing_semicolon() {
+        let sql = "SELECT id, name FROM dbo.users;";
+        assert_eq!(
+            MssqlDriver::build_for_json_query(sql),
+            "SELECT id, name FROM dbo.users FOR JSON PATH, INCLUDE_NULL_VALUES"
+        );
     }
 }
 
@@ -634,6 +721,13 @@ impl DatabaseDriver for MssqlDriver {
             .map(|row| Self::parse_i64(row, 0))
             .unwrap_or(0);
 
+        let col_type_map = self.load_table_column_type_map(&schema, &table).await?;
+        let high_precision_cols: HashSet<String> = col_type_map
+            .into_iter()
+            .filter(|(_, data_type)| is_high_precision_mssql_data_type(data_type))
+            .map(|(col, _)| col)
+            .collect();
+
         let order_clause = if let Some(ref raw) = order_by {
             if raw.trim().is_empty() {
                 " ORDER BY (SELECT NULL)".to_string()
@@ -655,8 +749,8 @@ impl DatabaseDriver for MssqlDriver {
             "SELECT * FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
             qualified, where_clause, order_clause, offset, safe_limit
         );
-        let rows = self.fetch_rows(&sql).await?;
-        let data = rows.iter().map(Self::row_to_json).collect::<Vec<_>>();
+        let json_sql = Self::build_for_json_query(&sql);
+        let data = self.fetch_json_rows(&json_sql, &high_precision_cols).await?;
 
         Ok(TableDataResponse {
             data,
@@ -700,8 +794,14 @@ impl DatabaseDriver for MssqlDriver {
         );
 
         if is_read_query {
-            let (rows, columns) = self.fetch_rows_with_columns(&sql).await?;
-            let data = rows.iter().map(Self::row_to_json).collect::<Vec<_>>();
+            let (_, columns) = self.fetch_rows_with_columns(&sql).await?;
+            let high_precision_cols: HashSet<String> = columns
+                .iter()
+                .filter(|col| is_high_precision_mssql_query_type(&col.r#type))
+                .map(|col| col.name.clone())
+                .collect();
+            let json_sql = Self::build_for_json_query(&sql);
+            let data = self.fetch_json_rows(&json_sql, &high_precision_cols).await?;
 
             return Ok(QueryResult {
                 row_count: data.len() as i64,

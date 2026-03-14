@@ -4,8 +4,6 @@ use crate::models::{
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use rust_decimal::Decimal;
 use sqlx::{mysql::MySqlPoolOptions, Column, Executor, Row, TypeInfo};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -176,6 +174,76 @@ impl MysqlDriver {
             })
             .collect())
     }
+
+    async fn resolve_schema_name(&self, schema: &str) -> Result<String, String> {
+        if !schema.trim().is_empty() {
+            return Ok(schema.to_string());
+        }
+        let row = sqlx::query("SELECT DATABASE()")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] Failed to resolve current database: {e}"))?;
+        decode_mysql_optional_text_cell(&row, 0)?
+            .ok_or("[QUERY_ERROR] No active MySQL database selected".to_string())
+    }
+
+    async fn load_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<(String, String)>, String> {
+        let rows = sqlx::query(
+            "SELECT column_name, data_type \
+            FROM information_schema.columns \
+            WHERE table_schema = ? AND table_name = ? \
+            ORDER BY ordinal_position",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| format!("[QUERY_ERROR] Failed to load MySQL column metadata: {e}"))?;
+
+        let mut columns = Vec::with_capacity(rows.len());
+        for row in rows {
+            let name = decode_mysql_text_cell(&row, 0)?;
+            let data_type = decode_mysql_text_cell(&row, 1)?;
+            columns.push((name, data_type));
+        }
+        Ok(columns)
+    }
+
+    async fn fetch_rows_as_json(
+        &self,
+        base_query: &str,
+        binds: &[i64],
+        json_expr: &str,
+        high_precision_cols: &HashSet<String>,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let query = format!(
+            "SELECT {} AS __row_json FROM ({}) AS {}",
+            json_expr,
+            base_query,
+            quote_mysql_ident("__dbpaw_row")
+        );
+
+        let mut q = sqlx::query(&query);
+        for bind in binds {
+            q = q.bind(*bind);
+        }
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", query, e))?;
+
+        let mut data = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut row_json = decode_mysql_json_cell(&row, "__row_json")?;
+            normalize_mysql_row_json(&mut row_json, high_precision_cols)?;
+            data.push(row_json);
+        }
+        Ok(data)
+    }
 }
 
 fn decode_mysql_text_cell(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, String> {
@@ -209,6 +277,126 @@ fn decode_mysql_optional_text_cell(
     Err(format!(
         "[QUERY_ERROR] Failed to decode MySQL optional text column at index {idx}"
     ))
+}
+
+fn quote_mysql_ident(ident: &str) -> String {
+    format!("`{}`", ident.replace('`', "``"))
+}
+
+fn quote_mysql_json_key(key: &str) -> String {
+    format!("'{}'", key.replace('\'', "''"))
+}
+
+fn mysql_qualified_table(schema: &str, table: &str) -> String {
+    if schema.is_empty() {
+        quote_mysql_ident(table)
+    } else {
+        format!("{}.{}", quote_mysql_ident(schema), quote_mysql_ident(table))
+    }
+}
+
+fn is_high_precision_mysql_data_type(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "bigint" | "decimal" | "numeric"
+    )
+}
+
+fn is_high_precision_mysql_query_type(type_name: &str) -> bool {
+    let type_name = type_name.trim().to_ascii_uppercase();
+    type_name == "BIGINT" || type_name == "BIGINT UNSIGNED" || type_name.starts_with("DECIMAL")
+}
+
+fn normalize_mysql_row_json(
+    row_json: &mut serde_json::Value,
+    high_precision_cols: &HashSet<String>,
+) -> Result<(), String> {
+    let obj = row_json
+        .as_object_mut()
+        .ok_or("[QUERY_ERROR] Expected JSON object row from JSON_OBJECT".to_string())?;
+
+    let mut lookup: HashMap<String, String> = HashMap::new();
+    for key in obj.keys() {
+        lookup.insert(key.to_ascii_lowercase(), key.clone());
+    }
+
+    for col in high_precision_cols {
+        let Some(actual_key) = lookup.get(&col.to_ascii_lowercase()) else {
+            continue;
+        };
+        let Some(value) = obj.get_mut(actual_key) else {
+            continue;
+        };
+        if value.is_number() {
+            *value = serde_json::Value::String(value.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn decode_mysql_json_cell(row: &sqlx::mysql::MySqlRow, column_name: &str) -> Result<serde_json::Value, String> {
+    if let Ok(v) = row.try_get::<sqlx::types::Json<serde_json::Value>, _>(column_name) {
+        return Ok(v.0);
+    }
+    if let Ok(v) = row.try_get::<String, _>(column_name) {
+        return serde_json::from_str(&v)
+            .map_err(|e| format!("[QUERY_ERROR] Failed to parse JSON cell: {e}"));
+    }
+    if let Ok(v) = row.try_get::<Vec<u8>, _>(column_name) {
+        return serde_json::from_slice(&v)
+            .map_err(|e| format!("[QUERY_ERROR] Failed to parse JSON bytes cell: {e}"));
+    }
+    Err("[QUERY_ERROR] Failed to decode MySQL JSON cell".to_string())
+}
+
+fn build_mysql_json_object_expr(
+    columns: &[(String, String)],
+    table_alias: Option<&str>,
+) -> String {
+    if columns.is_empty() {
+        return "JSON_OBJECT()".to_string();
+    }
+
+    let alias = table_alias.map(quote_mysql_ident);
+    let mut args = Vec::with_capacity(columns.len() * 2);
+    for (name, data_type) in columns {
+        args.push(quote_mysql_json_key(name));
+        let base_ref = if let Some(alias) = &alias {
+            format!("{}.{}", alias, quote_mysql_ident(name))
+        } else {
+            quote_mysql_ident(name)
+        };
+        if is_high_precision_mysql_data_type(data_type) {
+            args.push(format!("CAST({base_ref} AS CHAR)"));
+        } else {
+            args.push(base_ref);
+        }
+    }
+    format!("JSON_OBJECT({})", args.join(", "))
+}
+
+fn first_sql_keyword(sql: &str) -> Option<String> {
+    let trimmed = sql.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut end = 0usize;
+    for (idx, ch) in trimmed.char_indices() {
+        if !(ch.is_ascii_alphanumeric() || ch == '_') {
+            break;
+        }
+        end = idx + ch.len_utf8();
+    }
+    if end == 0 {
+        None
+    } else {
+        Some(trimmed[..end].to_ascii_uppercase())
+    }
+}
+
+fn is_json_projectable_statement(sql: &str) -> bool {
+    matches!(first_sql_keyword(sql).as_deref(), Some("SELECT" | "WITH"))
 }
 
 #[async_trait]
@@ -505,30 +693,22 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<TableDataResponse, String> {
         let start = std::time::Instant::now();
         let offset = (page - 1) * limit;
-        let qualified = if schema.is_empty() {
-            format!("`{}`", table)
-        } else {
-            format!("`{}`.`{}`", schema, table)
-        };
+        let qualified = mysql_qualified_table(&schema, &table);
 
-        // Normalize smart quotes from macOS input
         let filter = filter.map(|f| super::normalize_quotes(&f));
         let order_by = order_by.map(|f| super::normalize_quotes(&f));
 
-        // Build WHERE clause from filter
         let where_clause = match &filter {
             Some(f) if !f.trim().is_empty() => format!(" WHERE {}", f.trim()),
             _ => String::new(),
         };
 
-        // Get total count (with filter applied)
         let count_query = format!("SELECT COUNT(*) FROM {}{}", qualified, where_clause);
         let total: i64 = sqlx::query_scalar(&count_query)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", count_query, e))?;
 
-        // Build ORDER BY clause: order_by (raw) takes priority over sort_column/sort_direction
         let order_clause = if let Some(ref ob) = order_by {
             if !ob.trim().is_empty() {
                 format!(" ORDER BY {}", ob.trim())
@@ -544,131 +724,31 @@ impl DatabaseDriver for MysqlDriver {
                 Some("desc") => "DESC",
                 _ => "ASC",
             };
-            format!(" ORDER BY `{}` {}", col, dir)
+            format!(" ORDER BY {} {}", quote_mysql_ident(col), dir)
         } else {
             String::new()
         };
 
-        let query = format!(
+        let target_schema = self.resolve_schema_name(&schema).await?;
+        let table_columns = self.load_table_columns(&target_schema, &table).await?;
+        let high_precision_cols: HashSet<String> = table_columns
+            .iter()
+            .filter(|(_, data_type)| is_high_precision_mysql_data_type(data_type))
+            .map(|(name, _)| name.clone())
+            .collect();
+        let json_expr = build_mysql_json_object_expr(&table_columns, Some("__dbpaw_row"));
+        let base_query = format!(
             "SELECT * FROM {}{}{} LIMIT ? OFFSET ?",
             qualified, where_clause, order_clause
         );
-        let rows = sqlx::query(&query)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", query, e))?;
-
-        let mut data = Vec::new();
-        for row in &rows {
-            let mut obj = serde_json::Map::new();
-            for col in row.columns() {
-                let name = col.name();
-                let type_name = col.type_info().name();
-
-                let value = match type_name {
-                    "TINYINT" | "TINYINT UNSIGNED" | "SMALLINT" | "SMALLINT UNSIGNED" | "INT"
-                    | "INT UNSIGNED" | "INTEGER" | "INTEGER UNSIGNED" | "MEDIUMINT"
-                    | "MEDIUMINT UNSIGNED" | "BIGINT" | "BIGINT UNSIGNED" | "YEAR" => {
-                        if let Ok(v) = row.try_get::<i64, _>(name) {
-                            serde_json::Value::String(v.to_string())
-                        } else if let Ok(v) = row.try_get::<u64, _>(name) {
-                            serde_json::Value::String(v.to_string())
-                        } else {
-                            serde_json::Value::Null
-                        }
-                    }
-                    "FLOAT" | "DOUBLE" | "REAL" => row
-                        .try_get::<f64, _>(name)
-                        .ok()
-                        .map(serde_json::Value::from)
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DECIMAL" | "NEWDECIMAL" => row
-                        .try_get::<Decimal, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "BOOL" | "BOOLEAN" => row
-                        .try_get::<bool, _>(name)
-                        .ok()
-                        .map(serde_json::Value::Bool)
-                        .or_else(|| {
-                            row.try_get::<i64, _>(name)
-                                .ok()
-                                .map(|v| serde_json::Value::Bool(v != 0))
-                        })
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATE" => row
-                        .try_get::<NaiveDate, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "TIME" => row
-                        .try_get::<NaiveTime, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATETIME" | "TIMESTAMP" => row
-                        .try_get::<NaiveDateTime, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "JSON" => row
-                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(name)
-                        .ok()
-                        .map(|v| v.0)
-                        .unwrap_or(serde_json::Value::Null),
-                    "BIT" => row
-                        .try_get::<u64, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::Number(v.into()))
-                        .unwrap_or(serde_json::Value::Null),
-                    _ => {
-                        if let Ok(v) = row.try_get::<String, _>(name) {
-                            serde_json::Value::String(v)
-                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
-                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
-                        } else {
-                            serde_json::Value::Null
-                        }
-                    }
-                };
-
-                obj.insert(name.to_string(), value);
-            }
-            data.push(serde_json::Value::Object(obj));
-        }
+        let data = self
+            .fetch_rows_as_json(
+                &base_query,
+                &[limit, offset],
+                &json_expr,
+                &high_precision_cols,
+            )
+            .await?;
 
         let duration = start.elapsed();
         Ok(TableDataResponse {
@@ -706,137 +786,66 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let rows = sqlx::query(&sql)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-
-        let mut data = Vec::new();
-        let columns = if let Some(first_row) = rows.first() {
-            first_row
-                .columns()
+        let (columns, data, row_count) = if is_json_projectable_statement(&sql) {
+            let columns = self.describe_query_columns(&sql).await?;
+            let high_precision_cols: HashSet<String> = columns
                 .iter()
-                .map(|col| QueryColumn {
-                    name: col.name().to_string(),
-                    r#type: col.type_info().to_string(),
-                })
-                .collect()
+                .filter(|col| is_high_precision_mysql_query_type(&col.r#type))
+                .map(|col| col.name.clone())
+                .collect();
+            let query_columns: Vec<(String, String)> = columns
+                .iter()
+                .map(|col| (col.name.clone(), col.r#type.clone()))
+                .collect();
+            let json_expr = build_mysql_json_object_expr(&query_columns, Some("__dbpaw_row"));
+            let data = self
+                .fetch_rows_as_json(&sql, &[], &json_expr, &high_precision_cols)
+                .await?;
+            let row_count = data.len() as i64;
+            (columns, data, row_count)
         } else {
-            self.describe_query_columns(&sql).await?
-        };
-
-        for row in &rows {
-            let mut obj = serde_json::Map::new();
-            for col in row.columns() {
-                let name = col.name();
-                let type_name = col.type_info().name();
-
-                let value = match type_name {
-                    "TINYINT" | "TINYINT UNSIGNED" | "SMALLINT" | "SMALLINT UNSIGNED" | "INT"
-                    | "INT UNSIGNED" | "INTEGER" | "INTEGER UNSIGNED" | "MEDIUMINT"
-                    | "MEDIUMINT UNSIGNED" | "BIGINT" | "BIGINT UNSIGNED" | "YEAR" => {
-                        if let Ok(v) = row.try_get::<i64, _>(name) {
-                            serde_json::Value::String(v.to_string())
-                        } else if let Ok(v) = row.try_get::<u64, _>(name) {
-                            serde_json::Value::String(v.to_string())
-                        } else {
-                            serde_json::Value::Null
-                        }
+            let rows = sqlx::query(&sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let columns = if let Some(first_row) = rows.first() {
+                first_row
+                    .columns()
+                    .iter()
+                    .map(|col| QueryColumn {
+                        name: col.name().to_string(),
+                        r#type: col.type_info().to_string(),
+                    })
+                    .collect()
+            } else {
+                self.describe_query_columns(&sql).await?
+            };
+            let mut data = Vec::new();
+            for row in &rows {
+                let mut obj = serde_json::Map::new();
+                for col in row.columns() {
+                    let name = col.name();
+                    if let Ok(v) = row.try_get::<String, _>(name) {
+                        obj.insert(name.to_string(), serde_json::Value::String(v));
+                    } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
+                        obj.insert(
+                            name.to_string(),
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string()),
+                        );
+                    } else {
+                        obj.insert(name.to_string(), serde_json::Value::Null);
                     }
-                    "FLOAT" | "DOUBLE" | "REAL" => row
-                        .try_get::<f64, _>(name)
-                        .ok()
-                        .map(serde_json::Value::from)
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DECIMAL" | "NEWDECIMAL" => row
-                        .try_get::<Decimal, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "BOOL" | "BOOLEAN" => row
-                        .try_get::<bool, _>(name)
-                        .ok()
-                        .map(serde_json::Value::Bool)
-                        .or_else(|| {
-                            row.try_get::<i64, _>(name)
-                                .ok()
-                                .map(|v| serde_json::Value::Bool(v != 0))
-                        })
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATE" => row
-                        .try_get::<NaiveDate, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "TIME" => row
-                        .try_get::<NaiveTime, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "DATETIME" | "TIMESTAMP" => row
-                        .try_get::<NaiveDateTime, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::String(v.to_string()))
-                        .or_else(|| {
-                            row.try_get::<String, _>(name)
-                                .ok()
-                                .map(serde_json::Value::String)
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                    "JSON" => row
-                        .try_get::<sqlx::types::Json<serde_json::Value>, _>(name)
-                        .ok()
-                        .map(|v| v.0)
-                        .unwrap_or(serde_json::Value::Null),
-                    "BIT" => row
-                        .try_get::<u64, _>(name)
-                        .ok()
-                        .map(|v| serde_json::Value::Number(v.into()))
-                        .unwrap_or(serde_json::Value::Null),
-                    _ => {
-                        if let Ok(v) = row.try_get::<String, _>(name) {
-                            serde_json::Value::String(v)
-                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
-                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
-                        } else {
-                            serde_json::Value::Null
-                        }
-                    }
-                };
-                obj.insert(name.to_string(), value);
+                }
+                data.push(serde_json::Value::Object(obj));
             }
-            data.push(serde_json::Value::Object(obj));
-        }
+            let row_count = rows.len() as i64;
+            (columns, data, row_count)
+        };
 
         let duration = start.elapsed();
         Ok(QueryResult {
             data,
-            row_count: rows.len() as i64,
+            row_count,
             columns,
             time_taken_ms: duration.as_millis() as i64,
             success: true,
@@ -1065,5 +1074,48 @@ mod tests {
         assert!(path.exists());
         cleanup_ca_file_opt(Some(&path));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_is_json_projectable_statement() {
+        assert!(is_json_projectable_statement("SELECT 1"));
+        assert!(is_json_projectable_statement("  WITH t AS (SELECT 1) SELECT * FROM t"));
+        assert!(!is_json_projectable_statement("SHOW TABLES"));
+        assert!(!is_json_projectable_statement("UPDATE t SET a = 1"));
+    }
+
+    #[test]
+    fn test_is_high_precision_mysql_data_type() {
+        assert!(is_high_precision_mysql_data_type("bigint"));
+        assert!(is_high_precision_mysql_data_type("DECIMAL"));
+        assert!(is_high_precision_mysql_data_type("numeric"));
+        assert!(!is_high_precision_mysql_data_type("int"));
+        assert!(!is_high_precision_mysql_data_type("varchar"));
+    }
+
+    #[test]
+    fn test_is_high_precision_mysql_query_type() {
+        assert!(is_high_precision_mysql_query_type("BIGINT"));
+        assert!(is_high_precision_mysql_query_type("BIGINT UNSIGNED"));
+        assert!(is_high_precision_mysql_query_type("DECIMAL(18,2)"));
+        assert!(!is_high_precision_mysql_query_type("INT"));
+    }
+
+    #[test]
+    fn test_normalize_mysql_row_json_stringifies_high_precision_numbers() {
+        let mut row = serde_json::json!({
+            "id": 9223372036854775807_i64,
+            "amount": 1234.56,
+            "name": "demo",
+            "nullable": null
+        });
+        let high_precision_cols = HashSet::from(["ID".to_string(), "amount".to_string()]);
+
+        normalize_mysql_row_json(&mut row, &high_precision_cols).unwrap();
+
+        assert_eq!(row.get("id").and_then(|v| v.as_str()), Some("9223372036854775807"));
+        assert_eq!(row.get("amount").and_then(|v| v.as_str()), Some("1234.56"));
+        assert_eq!(row.get("name").and_then(|v| v.as_str()), Some("demo"));
+        assert!(row.get("nullable").unwrap().is_null());
     }
 }

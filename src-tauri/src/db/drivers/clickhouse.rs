@@ -226,6 +226,22 @@ fn value_to_string(v: &Value) -> Option<String> {
     }
 }
 
+fn required_i64_from_json_row(
+    row: Option<&Value>,
+    key: &str,
+    context_sql: &str,
+) -> Result<i64, String> {
+    let value = row
+        .and_then(|v| v.get(key))
+        .ok_or_else(|| format!("[PARSE_ERROR] Missing '{}' in response for SQL: {}", key, context_sql))?;
+    value_to_i64(value).ok_or_else(|| {
+        format!(
+            "[PARSE_ERROR] Invalid '{}' value {:?} for SQL: {}",
+            key, value, context_sql
+        )
+    })
+}
+
 fn parse_summary_header(headers: &reqwest::header::HeaderMap) -> Option<ClickHouseSummary> {
     let header = headers.get("X-ClickHouse-Summary")?;
     let text = header.to_str().ok()?;
@@ -245,15 +261,26 @@ fn raw_text_to_query_result(body: String, time_taken_ms: i64) -> QueryResult {
         };
     }
 
-    let mut row = serde_json::Map::new();
-    row.insert("result".to_string(), Value::String(trimmed));
+    let mut rows = Vec::new();
+    for (idx, line) in trimmed.lines().enumerate() {
+        let mut row = serde_json::Map::new();
+        row.insert("line_no".to_string(), Value::from((idx + 1) as i64));
+        row.insert("raw_line".to_string(), Value::String(line.to_string()));
+        rows.push(Value::Object(row));
+    }
     QueryResult {
-        data: vec![Value::Object(row)],
-        row_count: 1,
-        columns: vec![QueryColumn {
-            name: "result".to_string(),
-            r#type: "String".to_string(),
-        }],
+        row_count: rows.len() as i64,
+        data: rows,
+        columns: vec![
+            QueryColumn {
+                name: "line_no".to_string(),
+                r#type: "Int64".to_string(),
+            },
+            QueryColumn {
+                name: "raw_line".to_string(),
+                r#type: "String".to_string(),
+            },
+        ],
         time_taken_ms,
         success: true,
         error: None,
@@ -668,12 +695,7 @@ impl DatabaseDriver for ClickHouseDriver {
                         qualified, where_clause
                     );
                     let count_resp = self.execute_json(&count_sql, None).await?;
-                    count_resp
-                        .data
-                        .first()
-                        .and_then(|v| v.get("total"))
-                        .and_then(value_to_i64)
-                        .unwrap_or(0)
+                    required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
                 }
             }
         } else {
@@ -682,12 +704,7 @@ impl DatabaseDriver for ClickHouseDriver {
                 qualified, where_clause
             );
             let count_resp = self.execute_json(&count_sql, None).await?;
-            count_resp
-                .data
-                .first()
-                .and_then(|v| v.get("total"))
-                .and_then(value_to_i64)
-                .unwrap_or(0)
+            required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
         };
 
         let order_clause = if let Some(ref ob) = order_by {
@@ -818,12 +835,28 @@ impl DatabaseDriver for ClickHouseDriver {
 
         let raw = self.execute_raw(&sql, query_id).await?;
         let summary = raw.summary.unwrap_or_default();
-        let affected = summary
+        let affected_opt = summary
             .written_rows
             .or(summary.result_rows)
             .or(summary.read_rows)
-            .or(summary.total_rows_to_read)
-            .unwrap_or(0);
+            .or(summary.total_rows_to_read);
+        let affected = if let Some(v) = affected_opt {
+            v
+        } else if raw.body.trim().is_empty() {
+            0
+        } else if let Ok(v) = raw.body.trim().parse::<i64>() {
+            v
+        } else {
+            let snippet = if raw.body.len() > 200 {
+                format!("{}...", &raw.body[..200])
+            } else {
+                raw.body.clone()
+            };
+            return Err(format!(
+                "[PARSE_ERROR] Unable to determine affected rows from ClickHouse response. body: {}",
+                snippet
+            ));
+        };
         let duration = start.elapsed();
         Ok(QueryResult {
             data: vec![],
@@ -950,5 +983,26 @@ mod tests {
     fn table_ref_quotes_schema_and_table() {
         assert_eq!(table_ref("analytics", "events"), "`analytics`.`events`");
         assert_eq!(table_ref("", "events"), "`events`");
+    }
+
+    #[test]
+    fn raw_text_to_query_result_splits_lines() {
+        let result = raw_text_to_query_result("a\nb\n".to_string(), 12);
+        assert_eq!(result.row_count, 2);
+        assert_eq!(result.columns.len(), 2);
+        assert_eq!(result.data[0]["line_no"], Value::from(1));
+        assert_eq!(result.data[0]["raw_line"], Value::String("a".to_string()));
+        assert_eq!(result.data[1]["line_no"], Value::from(2));
+        assert_eq!(result.data[1]["raw_line"], Value::String("b".to_string()));
+    }
+
+    #[test]
+    fn required_i64_from_json_row_errors_on_missing_or_invalid() {
+        let row = serde_json::json!({ "total": "abc" });
+        let invalid = required_i64_from_json_row(Some(&row), "total", "SELECT count()");
+        assert!(invalid.is_err());
+
+        let missing = required_i64_from_json_row(None, "total", "SELECT count()");
+        assert!(missing.is_err());
     }
 }
