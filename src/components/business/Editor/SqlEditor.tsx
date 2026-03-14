@@ -67,6 +67,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { sqlEditorThemeDark, sqlEditorThemeLight } from "./codemirrorTheme";
+import { collectSelectedSql } from "./sqlSelection";
 import { getThemePreset, type ThemeId } from "@/theme/themeRegistry";
 import { CLICKHOUSE_COMPLETIONS } from "./clickhouseKeywords";
 import { useTranslation } from "react-i18next";
@@ -326,27 +327,31 @@ export function SqlEditor({
     [onChange, value],
   );
 
-  const handleExecute = useCallback(() => {
-    if (onExecute) {
-      onExecute(code);
-    }
-  }, [onExecute, code]);
-
   const executeFromEditorSelection = useCallback(
     (view: EditorView) => {
       if (!onExecute) {
         return;
       }
+      const sqlToRun = collectSelectedSql({
+        ranges: view.state.selection.ranges,
+        sliceDoc: (from, to) => view.state.sliceDoc(from, to),
+        fullDoc: () => view.state.doc.toString(),
+      });
 
-      const selectedSql = view.state.selection.ranges
-        .map((range) => view.state.sliceDoc(range.from, range.to))
-        .filter((text) => text.trim().length > 0)
-        .join("\n");
-
-      onExecute(selectedSql || view.state.doc.toString());
+      onExecute(sqlToRun);
     },
     [onExecute],
   );
+
+  const handleExecute = useCallback(() => {
+    if (!onExecute) return;
+    const view = editorViewRef.current;
+    if (view) {
+      executeFromEditorSelection(view);
+      return;
+    }
+    onExecute(code);
+  }, [onExecute, code, executeFromEditorSelection]);
 
   const handleClear = () => {
     handleSqlChange("");
@@ -387,6 +392,7 @@ export function SqlEditor({
   }, [code, driver, handleSqlChange, isFormatting, t]);
 
   const savedQueryIdRef = useRef(savedQueryId);
+  const editorViewRef = useRef<EditorView | null>(null);
   useEffect(() => {
     savedQueryIdRef.current = savedQueryId;
   }, [savedQueryId]);
@@ -874,6 +880,9 @@ export function SqlEditor({
                 extensions={extensions}
                 theme={editorTheme}
                 onChange={handleSqlChange}
+                onCreateEditor={(view) => {
+                  editorViewRef.current = view;
+                }}
                 className="h-full"
                 basicSetup={{
                   lineNumbers: true,
