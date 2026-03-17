@@ -792,11 +792,15 @@ export default function App() {
     const nextOrderBy = hasOwn("orderBy") ? overrides?.orderBy : tab.orderBy;
 
     try {
-      const { schema, dbParam } = resolveTableScope(tab.driver, tab.database);
+      const { schema, dbParam } = resolveTableScope(
+        tab.driver,
+        tab.database,
+        tab.schema,
+      );
       const resp = await api.tableData.get({
         id: tab.connectionId,
         database: dbParam,
-        schema: schema || "public",
+        schema,
         table: tab.tableName,
         page: nextPage,
         limit: nextLimit,
@@ -835,11 +839,15 @@ export default function App() {
     if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
 
     try {
-      const { schema, dbParam } = resolveTableScope(tab.driver, tab.database);
+      const { schema, dbParam } = resolveTableScope(
+        tab.driver,
+        tab.database,
+        tab.schema,
+      );
       const resp = await api.tableData.get({
         id: tab.connectionId,
         database: dbParam,
-        schema: schema || "public",
+        schema,
         table: tab.tableName,
         page,
         limit: tab.pageSize || 100,
@@ -875,11 +883,15 @@ export default function App() {
     if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
 
     try {
-      const { schema, dbParam } = resolveTableScope(tab.driver, tab.database);
+      const { schema, dbParam } = resolveTableScope(
+        tab.driver,
+        tab.database,
+        tab.schema,
+      );
       const resp = await api.tableData.get({
         id: tab.connectionId,
         database: dbParam,
-        schema: schema || "public",
+        schema,
         table: tab.tableName,
         page: 1,
         limit: pageSize,
@@ -928,11 +940,15 @@ export default function App() {
     );
 
     try {
-      const { schema, dbParam } = resolveTableScope(tab.driver, tab.database);
+      const { schema, dbParam } = resolveTableScope(
+        tab.driver,
+        tab.database,
+        tab.schema,
+      );
       const resp = await api.tableData.get({
         id: tab.connectionId,
         database: dbParam,
-        schema: schema || "public",
+        schema,
         table: tab.tableName,
         page: 1, // Reset to first page on sort change
         limit: tab.pageSize || 100,
@@ -982,11 +998,15 @@ export default function App() {
     );
 
     try {
-      const { schema, dbParam } = resolveTableScope(tab.driver, tab.database);
+      const { schema, dbParam } = resolveTableScope(
+        tab.driver,
+        tab.database,
+        tab.schema,
+      );
       const resp = await api.tableData.get({
         id: tab.connectionId,
         database: dbParam,
-        schema: schema || "public",
+        schema,
         table: tab.tableName,
         page: 1, // Reset to first page on filter change
         limit: tab.pageSize || 100,
