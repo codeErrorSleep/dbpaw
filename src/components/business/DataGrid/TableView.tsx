@@ -252,6 +252,16 @@ export function TableView({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectedCellRef = useRef<{ row: number; col: string } | null>(null);
+  const selectedRowsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    selectedCellRef.current = selectedCell;
+  }, [selectedCell]);
+
+  useEffect(() => {
+    selectedRowsRef.current = selectedRows;
+  }, [selectedRows]);
 
   // Sort state: controlled (via props) or uncontrolled (internal state for client-side sorting)
   const [internalSortColumn, setInternalSortColumn] = useState<
@@ -424,8 +434,11 @@ export function TableView({
     setPendingChanges(new Map());
     setInsertDraftRows([]);
     setEditingCell(null);
+    selectedCellRef.current = null;
     setSelectedCell(null);
-    setSelectedRows(new Set());
+    const nextSelectedRows = new Set<number>();
+    selectedRowsRef.current = nextSelectedRows;
+    setSelectedRows(nextSelectedRows);
     setRowSelectionAnchor(null);
     setIsRowSelecting(false);
     setDeleteDialogOpen(false);
@@ -472,10 +485,14 @@ export function TableView({
       ) {
         commitEdit();
       }
-      setSelectedRows(new Set());
+      const nextSelectedRows = new Set<number>();
+      selectedRowsRef.current = nextSelectedRows;
+      setSelectedRows(nextSelectedRows);
       setRowSelectionAnchor(null);
       setIsRowSelecting(false);
-      setSelectedCell({ row: rowIndex, col });
+      const nextSelectedCell = { row: rowIndex, col };
+      selectedCellRef.current = nextSelectedCell;
+      setSelectedCell(nextSelectedCell);
     },
     [editingCell],
   );
@@ -564,11 +581,17 @@ export function TableView({
   }, []);
 
   const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text).catch((error) => {
+      toast.error("Failed to copy", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    });
   }, []);
 
   const selectSingleRow = useCallback((rowIndex: number) => {
-    setSelectedRows(new Set([rowIndex]));
+    const nextSelectedRows = new Set([rowIndex]);
+    selectedRowsRef.current = nextSelectedRows;
+    setSelectedRows(nextSelectedRows);
   }, []);
 
   const selectRowRange = useCallback((anchor: number, current: number) => {
@@ -578,6 +601,7 @@ export function TableView({
     for (let i = start; i <= end; i++) {
       next.add(i);
     }
+    selectedRowsRef.current = next;
     setSelectedRows(next);
   }, []);
 
@@ -585,6 +609,7 @@ export function TableView({
     (e: React.MouseEvent, rowIndex: number) => {
       if (e.button !== 0) return;
       e.preventDefault();
+      selectedCellRef.current = null;
       setSelectedCell(null);
       setIsRowSelecting(true);
       setRowSelectionAnchor(rowIndex);
@@ -955,6 +980,19 @@ export function TableView({
     [columns, currentData, getCellDisplayValue],
   );
 
+  const getSelectedCellCopyText = useCallback(() => {
+    const selectedCell = selectedCellRef.current;
+    if (!selectedCell) return null;
+    const row = currentData[selectedCell.row];
+    if (!row) return null;
+    const value = getCellDisplayValue(
+      selectedCell.row,
+      selectedCell.col,
+      row[selectedCell.col],
+    );
+    return value === null || value === undefined ? "" : String(value);
+  }, [currentData, getCellDisplayValue]);
+
   const buildRowsCSV = useCallback(
     (rowIndexes: number[]) => {
       const orderedRows = [...rowIndexes].sort((a, b) => a - b);
@@ -1283,14 +1321,22 @@ export function TableView({
       }
 
       if (isModKey(e) && e.key.toLowerCase() === "c") {
-        if (!selectedRows.size) return;
         if (isEditableTarget(e.target)) {
           return;
         }
-        e.preventDefault();
-        const tsv = buildRowsTSV(Array.from(selectedRows));
-        if (tsv) {
-          handleCopy(tsv);
+        const selectedRows = selectedRowsRef.current;
+        if (selectedRows.size) {
+          e.preventDefault();
+          const tsv = buildRowsTSV(Array.from(selectedRows));
+          if (tsv) {
+            handleCopy(tsv);
+          }
+          return;
+        }
+        const selectedCellText = getSelectedCellCopyText();
+        if (selectedCellText !== null) {
+          e.preventDefault();
+          handleCopy(selectedCellText);
         }
         return;
       }
@@ -1329,6 +1375,7 @@ export function TableView({
     handleDiscardChanges,
     focusSearchInput,
     buildRowsTSV,
+    getSelectedCellCopyText,
     handleCopy,
   ]);
 
@@ -1948,16 +1995,10 @@ export function TableView({
                     <ContextMenuItem
                       onClick={() => {
                         if (selectedCell && selectedCell.row === rowIndex) {
-                          const val = getCellDisplayValue(
-                            rowIndex,
-                            selectedCell.col,
-                            row[selectedCell.col],
-                          );
-                          handleCopy(
-                            val === null || val === undefined
-                              ? ""
-                              : String(val),
-                          );
+                          const text = getSelectedCellCopyText();
+                          if (text !== null) {
+                            handleCopy(text);
+                          }
                         }
                       }}
                     >
