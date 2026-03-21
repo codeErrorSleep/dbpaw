@@ -84,7 +84,7 @@ describe("updater startBackgroundInstall", () => {
     expect(first.started).toBe(true);
     expect(second.started).toBe(false);
 
-    const waitForResolve = async () => {
+    const waitForResolve = async (): Promise<() => void> => {
       const start = Date.now();
       while (!resolveInstall) {
         if (Date.now() - start > 2000) {
@@ -92,10 +92,11 @@ describe("updater startBackgroundInstall", () => {
         }
         await new Promise((r) => setTimeout(r, 0));
       }
+      return resolveInstall;
     };
 
-    await waitForResolve();
-    resolveInstall?.();
+    const resolve = await waitForResolve();
+    resolve();
     const completion = await updater.waitForInstallCompletion();
     expect(completion?.state).toBe("ready_to_restart");
   });
