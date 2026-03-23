@@ -334,15 +334,22 @@ export default function App() {
     databaseName: string,
     driver: string,
   ) => {
-    const newTabId = `query-${connectionId}-${databaseName}-${Date.now()}`;
+    const normalizedDatabaseName = databaseName.trim();
+    const fallbackDatabaseLabel = t("app.tab.defaultDatabase");
+    const initialDatabase = normalizedDatabaseName || undefined;
+    const titleDatabase = normalizedDatabaseName || fallbackDatabaseLabel;
+    const newTabId = `query-${connectionId}-${titleDatabase}-${Date.now()}`;
     const newTab: TabItem = {
       id: newTabId,
       type: "editor",
-      title: t("app.tab.queryTitle", { database: databaseName }),
+      title: t("app.tab.queryTitle", { database: titleDatabase }),
       connectionId,
-      database: databaseName,
+      database: initialDatabase,
       driver,
-      availableDatabases: normalizeDatabaseOptions([databaseName], databaseName),
+      availableDatabases: normalizeDatabaseOptions(
+        initialDatabase ? [initialDatabase] : [],
+        initialDatabase,
+      ),
       sqlContent: DEFAULT_SQL,
       lastSavedSql: DEFAULT_SQL,
       isDirty: false,
@@ -352,8 +359,8 @@ export default function App() {
     setActiveTab(newTabId);
 
     Promise.allSettled([
-      fetchEditorDatabases(connectionId, databaseName),
-      fetchEditorSchemaOverview(connectionId, databaseName),
+      fetchEditorDatabases(connectionId, initialDatabase),
+      fetchEditorSchemaOverview(connectionId, initialDatabase),
     ])
       .then(([availableDatabasesResult, schemaOverviewResult]) => {
         if (availableDatabasesResult.status === "rejected") {
@@ -376,7 +383,10 @@ export default function App() {
         const availableDatabases =
           availableDatabasesResult.status === "fulfilled"
             ? availableDatabasesResult.value
-            : normalizeDatabaseOptions([databaseName], databaseName);
+            : normalizeDatabaseOptions(
+                initialDatabase ? [initialDatabase] : [],
+                initialDatabase,
+              );
         const schemaOverview =
           schemaOverviewResult.status === "fulfilled"
             ? schemaOverviewResult.value
@@ -388,8 +398,8 @@ export default function App() {
               ? {
                   ...t,
                   database: resolvePreferredDatabase({
-                    preferredDatabase: databaseName,
-                    connectionDatabase: databaseName,
+                    preferredDatabase: initialDatabase,
+                    connectionDatabase: initialDatabase,
                     availableDatabases,
                   }),
                   availableDatabases,

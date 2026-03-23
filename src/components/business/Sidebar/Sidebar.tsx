@@ -96,6 +96,7 @@ export function Sidebar({
           <TabsContent value="queries" forceMount className="h-full m-0 border-0">
             <SavedQueriesList
               onSelectQuery={onSelectSavedQuery}
+              onCreateQuery={onCreateQuery}
               lastUpdated={lastUpdated}
             />
           </TabsContent>

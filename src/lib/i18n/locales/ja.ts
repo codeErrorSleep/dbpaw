@@ -28,6 +28,7 @@ export const ja: Translations = {
       closeTab: "タブを閉じる",
       closeOtherTabs: "他のタブを閉じる",
       queryTitle: "クエリ（{{database}}）",
+      defaultDatabase: "デフォルト",
       ddlTitle: "DDL: {{table}}",
     },
     dialog: {
@@ -56,6 +57,24 @@ export const ja: Translations = {
     tabs: {
       connections: "接続",
       queries: "クエリ",
+    },
+    queries: {
+      title: "保存済みクエリ",
+      newQuery: "新規",
+      searchPlaceholder: "クエリを検索...",
+      empty: "保存済みクエリが見つかりません。",
+      open: "開く",
+      delete: "削除",
+      newQueryDialog: {
+        title: "新しいクエリ",
+        connection: "接続",
+        connectionPlaceholder: "接続を選択",
+        databaseOptional: "データベース（任意）",
+        databasePlaceholder: "デフォルトデータベースを使用",
+        databaseDefault: "接続のデフォルトを使用",
+        cancel: "キャンセル",
+        confirm: "作成",
+      },
     },
   },
   settings: {
