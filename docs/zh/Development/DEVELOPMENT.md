@@ -57,11 +57,21 @@ bun run test:integration
 bun run format
 ```
 
-## 官网
+## 🌐 官网
 
-官网代码位于 `website/`。
+- 官方官网位于 `website/` 目录，基于 [Astro](https://astro.build/) 构建。
+- 本地开发：
+  ```bash
+  bun run website:dev
+  ```
+- 生产构建：
+  ```bash
+  bun run website:build
+  ```
 
-```bash
-bun run website:dev
-bun run website:build
-```
+### 版本同步机制
+
+- 官网会从以下地址拉取最新版本：
+  `https://api.github.com/repos/codeErrorSleep/dbpaw/releases/latest`
+- 官网展示的版本号与下载链接由 GitHub Releases 资产自动生成。
+- 若构建时 GitHub API 不可用，官网会自动回退到 `website/src/config/fallback.ts`，确保构建不中断。

@@ -1,14 +1,33 @@
-# DbPaw
+<div align="center">
+  <img align="center" src="./public/product-icon.png" width="120" height="120" />
+</div>
 
-![DbPaw Logo](public/product-icon.png)
+<h2 align="center">DbPaw</h2>
+
+<div align="center">
+<br>
+<em>更快的 SQL 编辑与数据探索体验：跨平台、超轻量，AI 助手可选。</em>
+<br><br>
 
 [English](README.md) | 简体中文 | [日本語](README_JA.md)
 
-> **更快的 SQL 编辑与数据探索体验：跨平台、超轻量，AI 助手可选。**
+</div>
 
+<div align="center">
+
+[![GitHub Repo stars](https://img.shields.io/github/stars/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw)
+[![G-Star](https://atomgit.com/codeErrorSleep/dbpaw/star/badge.svg)](https://atomgit.com/codeErrorSleep/dbpaw)
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/codeErrorSleep/dbpaw/total?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
+<br/>
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-blue?style=flat-square&logo=tauri&logoColor=white)](https://v2.tauri.app/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/pulls)
+
+</div>
 
 **DbPaw** 帮助你连接 PostgreSQL、MySQL、MariaDB（MySQL 兼容）、TiDB（MySQL 兼容）、SQLite、SQL Server 与 ClickHouse（预览版），高效编写和执行 SQL，并在清爽的桌面 UI 中查看与探索数据。
 
@@ -27,13 +46,12 @@
 
 ![DbPaw 主工作区（深色模式）](docs/screenshots/01-overview-black.png)
 
-
-| 连接管理 | SQL 编辑器 |
-| --- | --- |
+| 连接管理                                     | SQL 编辑器                                    |
+| -------------------------------------------- | --------------------------------------------- |
 | ![连接管理](docs/screenshots/02-connect.png) | ![SQL 编辑器](docs/screenshots/03-editor.png) |
 
-| 数据网格 | AI 助手 |
-| --- | --- |
+| 数据网格                                      | AI 助手                                |
+| --------------------------------------------- | -------------------------------------- |
 | ![数据网格](docs/screenshots/04-ddl-grid.png) | ![AI 助手](docs/screenshots/05-ai.png) |
 
 ## ✨ 特性
@@ -104,25 +122,6 @@ _注意：这是因为应用尚未经过 Apple 公证。_
 - **样式**: [TailwindCSS v4](https://tailwindcss.com/), [Shadcn/UI](https://ui.shadcn.com/)
 - **状态管理**: React Hooks & Context
 - **编辑器**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) / CodeMirror
-
-## 🌐 官网
-
-- 官方官网位于 `website/` 目录，基于 [Astro](https://astro.build/) 构建。
-- 本地开发：
-  ```bash
-  bun run website:dev
-  ```
-- 生产构建：
-  ```bash
-  bun run website:build
-  ```
-
-### 版本同步机制
-
-- 官网会从以下地址拉取最新版本：
-  `https://api.github.com/repos/codeErrorSleep/dbpaw/releases/latest`
-- 官网展示的版本号与下载链接由 GitHub Releases 资产自动生成。
-- 若构建时 GitHub API 不可用，官网会自动回退到 `website/src/config/fallback.ts`，确保构建不中断。
 
 ## 📄 许可证
 

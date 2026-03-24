@@ -1,14 +1,31 @@
-# DbPaw
+<div align="center">
+  <img align="center" src="./public/product-icon.png" width="120" height="120" />
+</div>
 
-![DbPaw Logo](public/product-icon.png)
+<h2 align="center">DbPaw</h2>
+
+<div align="center">
+<br>
+<em>Faster SQL editing and data exploration — cross-platform, ultra-lightweight, with optional AI assistance.</em>
+<br><br>
 
 English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
-> **Faster SQL editing and data exploration — cross‑platform, ultra‑lightweight, with optional AI assistance.**
+</div>
 
+<div align="center">
+
+[![GitHub Repo stars](https://img.shields.io/github/stars/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw)
+[![G-Star](https://atomgit.com/codeErrorSleep/dbpaw/star/badge.svg)](https://atomgit.com/codeErrorSleep/dbpaw)
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/codeErrorSleep/dbpaw/total?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
+<br/>
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-blue?style=flat-square&logo=tauri&logoColor=white)](https://v2.tauri.app/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/pulls)
 
 **DbPaw** helps you connect to PostgreSQL, MySQL, MariaDB (MySQL-compatible), TiDB (MySQL-compatible), SQLite, SQL Server, and ClickHouse (preview), write and run SQL efficiently, and inspect data in a clean desktop UI.
 
@@ -27,13 +44,12 @@ English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 
 ![DbPaw Main Workspace (Dark)](docs/screenshots/01-overview-black.png)
 
-
-| Connection | SQL Editor |
-| --- | --- |
+| Connection                                     | SQL Editor                                |
+| ---------------------------------------------- | ----------------------------------------- |
 | ![Connection](docs/screenshots/02-connect.png) | ![Editor](docs/screenshots/03-editor.png) |
 
-| Data Grid | AI Assistant |
-| --- | --- |
+| Data Grid                                 | AI Assistant                      |
+| ----------------------------------------- | --------------------------------- |
 | ![Grid](docs/screenshots/04-ddl-grid.png) | ![AI](docs/screenshots/05-ai.png) |
 
 ## ✨ Features
@@ -104,25 +120,6 @@ If your device is managed by an organization, you may need your IT admin to allo
 - **Styling**: [TailwindCSS v4](https://tailwindcss.com/), [Shadcn/UI](https://ui.shadcn.com/)
 - **State Management**: React Hooks & Context
 - **Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) / CodeMirror
-
-## 🌐 Website
-
-- The official marketing site lives in the `website/` directory and is built with [Astro](https://astro.build/).
-- Local development:
-  ```bash
-  bun run website:dev
-  ```
-- Production build:
-  ```bash
-  bun run website:build
-  ```
-
-### Release Sync Mechanism
-
-- The website fetches the latest release from:
-  `https://api.github.com/repos/codeErrorSleep/dbpaw/releases/latest`
-- Version and download links on the website are generated from GitHub release assets.
-- If GitHub API is unavailable during build, website generation falls back to `website/src/config/fallback.ts`.
 
 ## 📄 License
 
