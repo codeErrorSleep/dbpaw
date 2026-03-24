@@ -57,11 +57,21 @@ bun run test:integration
 bun run format
 ```
 
-## Web サイト
+## 🌐 Web サイト
 
-マーケティングサイトは `website/` にあります。
+- 公式マーケティングサイトは `website/` ディレクトリにあり、[Astro](https://astro.build/) で構築されています。
+- ローカル開発：
+  ```bash
+  bun run website:dev
+  ```
+- プロダクションビルド：
+  ```bash
+  bun run website:build
+  ```
 
-```bash
-bun run website:dev
-bun run website:build
-```
+### リリース同期メカニズム
+
+- Web サイトは以下から最新リリースを取得します：
+  `https://api.github.com/repos/codeErrorSleep/dbpaw/releases/latest`
+- Web サイト上のバージョンとダウンロードリンクは GitHub リリースのアセットから自動生成されます。
+- ビルド時に GitHub API が利用できない場合、Web サイトは `website/src/config/fallback.ts` にフォールバックします。

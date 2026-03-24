@@ -1,14 +1,33 @@
-# DbPaw
+<div align="center">
+  <img align="center" src="./public/product-icon.png" width="120" height="120" />
+</div>
 
-![DbPaw Logo](public/product-icon.png)
+<h2 align="center">DbPaw</h2>
+
+<div align="center">
+<br>
+<em>より速い SQL 編集とデータ探索体験 ― クロスプラットフォーム、超軽量、AI アシスタントはオプション。</em>
+<br><br>
 
 [English](README.md) | [简体中文](README_CN.md) | 日本語
 
-> **より速い SQL 編集とデータ探索体験 ― クロスプラットフォーム、超軽量、AI アシスタントはオプション。**
+</div>
 
+<div align="center">
+
+[![GitHub Repo stars](https://img.shields.io/github/stars/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw)
+[![G-Star](https://atomgit.com/codeErrorSleep/dbpaw/star/badge.svg)](https://atomgit.com/codeErrorSleep/dbpaw)
 [![Release](https://img.shields.io/github/v/release/codeErrorSleep/dbpaw?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/codeErrorSleep/dbpaw/total?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://tauri.app)
+<br/>
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-blue?style=flat-square&logo=tauri&logoColor=white)](https://v2.tauri.app/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/pulls)
+
+</div>
 
 **DbPaw** は PostgreSQL / MySQL / MariaDB（MySQL 互換）/ TiDB（MySQL 互換）/ SQLite / SQL Server / ClickHouse（プレビュー）に接続し、SQL の作成・実行とデータ確認を、クリーンなデスクトップ UI で快適に行えます。
 
@@ -27,12 +46,12 @@
 
 ![DbPaw Main Workspace (Dark)](docs/screenshots/01-overview-black.png)
 
-| 接続管理 | SQL エディタ |
-| --- | --- |
+| 接続管理                                       | SQL エディタ                              |
+| ---------------------------------------------- | ----------------------------------------- |
 | ![Connection](docs/screenshots/02-connect.png) | ![Editor](docs/screenshots/03-editor.png) |
 
-| データグリッド | AI アシスタント |
-| --- | --- |
+| データグリッド                            | AI アシスタント                   |
+| ----------------------------------------- | --------------------------------- |
 | ![Grid](docs/screenshots/04-ddl-grid.png) | ![AI](docs/screenshots/05-ai.png) |
 
 ## ✨ 主な機能
@@ -103,25 +122,6 @@ _注: 現時点では Apple の notarization（公証）が未完了のため、
 - **Styling**: [TailwindCSS v4](https://tailwindcss.com/), [Shadcn/UI](https://ui.shadcn.com/)
 - **State Management**: React Hooks & Context
 - **Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) / CodeMirror
-
-## 🌐 Website
-
-- 公式サイトは `website/` ディレクトリにあり、[Astro](https://astro.build/) で構築されています。
-- ローカル開発:
-  ```bash
-  bun run website:dev
-  ```
-- 本番ビルド:
-  ```bash
-  bun run website:build
-  ```
-
-### リリース同期の仕組み
-
-- 公式サイトは以下から最新リリース情報を取得します:
-  `https://api.github.com/repos/codeErrorSleep/dbpaw/releases/latest`
-- サイト上のバージョン情報とダウンロードリンクは、GitHub Releases の assets から自動生成されます。
-- ビルド時に GitHub API が利用できない場合は、`website/src/config/fallback.ts` にフォールバックします。
 
 ## 📄 ライセンス
 
