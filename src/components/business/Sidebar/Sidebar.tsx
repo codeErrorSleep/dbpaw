@@ -41,6 +41,7 @@ interface SidebarProps {
   onSelectSavedQuery: (query: SavedQuery) => void;
   lastUpdated?: number;
   activeTableTarget?: ActiveTableTarget;
+  layoutMode?: "tabs" | "tree";
 }
 
 export function Sidebar({
@@ -51,6 +52,7 @@ export function Sidebar({
   onSelectSavedQuery,
   lastUpdated,
   activeTableTarget,
+  layoutMode = "tabs",
 }: SidebarProps) {
   const { t } = useTranslation();
   const [sidebarTab, setSidebarTab] = useState<"connections" | "queries">(
@@ -61,6 +63,23 @@ export function Sidebar({
     if (!activeTableTarget) return;
     setSidebarTab("connections");
   }, [activeTableTarget]);
+
+  if (layoutMode === "tree") {
+    return (
+      <div className="h-full flex flex-col bg-background border-r border-border">
+        <ConnectionList
+          onTableSelect={onTableSelect}
+          onConnect={onConnect}
+          onCreateQuery={onCreateQuery}
+          onExportTable={onExportTable}
+          activeTableTarget={activeTableTarget}
+          onSelectSavedQuery={onSelectSavedQuery}
+          lastUpdated={lastUpdated}
+          showSavedQueriesInTree
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
@@ -96,6 +115,7 @@ export function Sidebar({
           <TabsContent value="queries" forceMount className="h-full m-0 border-0">
             <SavedQueriesList
               onSelectQuery={onSelectSavedQuery}
+              onCreateQuery={onCreateQuery}
               lastUpdated={lastUpdated}
             />
           </TabsContent>

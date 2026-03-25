@@ -1883,7 +1883,7 @@ export function TableView({
                         className={[
                           "px-4 py-2 text-xs text-muted-foreground border-r border-border cursor-pointer select-none",
                           isRowSelected
-                            ? "bg-primary/15 dark:bg-primary/45 text-foreground dark:text-primary-foreground"
+                            ? "bg-accent text-accent-foreground"
                             : "",
                         ]
                           .filter(Boolean)
@@ -1918,10 +1918,10 @@ export function TableView({
                             className={[
                               "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative transition-all duration-150 ease-out",
                               selected && !editing
-                                ? "bg-primary/15 dark:bg-primary/50 dark:text-primary-foreground"
+                                ? "bg-accent text-accent-foreground"
                                 : "",
                               isRowSelected && !selected && !editing
-                                ? "bg-primary/10 dark:bg-primary/30"
+                                ? "bg-accent/60"
                                 : "",
                               matched && !editing
                                 ? "bg-amber-100/60 dark:bg-amber-900/20"

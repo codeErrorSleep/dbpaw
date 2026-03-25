@@ -58,6 +58,7 @@ import type {
   ConnectionForm,
   CreateDatabasePayload,
   Driver,
+  SavedQuery,
 } from "@/services/api";
 import { toast } from "sonner";
 import { TreeNode } from "./connection-list/TreeNode";
@@ -221,6 +222,9 @@ interface ConnectionListProps {
     table: string;
     schema?: string;
   };
+  onSelectSavedQuery?: (query: SavedQuery) => void;
+  lastUpdated?: number;
+  showSavedQueriesInTree?: boolean;
 }
 
 export function ConnectionList({
@@ -229,15 +233,28 @@ export function ConnectionList({
   onCreateQuery,
   onExportTable,
   activeTableTarget,
+  onSelectSavedQuery,
+  lastUpdated,
+  showSavedQueriesInTree = false,
 }: ConnectionListProps) {
+  const AUTO_SCROLL_IDLE_DELAY_MS = 1200;
   const { t } = useTranslation();
   const tableNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const autoScrollReqIdRef = useRef(0);
+  const userInteractionUntilRef = useRef(0);
+  const interactionIdleTimerRef = useRef<number | null>(null);
+  const pendingAutoScrollKeyRef = useRef<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(
     new Set(["1"]),
   );
   const [expandedDatabases, setExpandedDatabases] = useState<Set<string>>(
+    new Set(),
+  );
+  const [expandedDatabaseGroups, setExpandedDatabaseGroups] = useState<
+    Set<string>
+  >(new Set());
+  const [expandedQueryGroups, setExpandedQueryGroups] = useState<Set<string>>(
     new Set(),
   );
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
@@ -288,6 +305,9 @@ export function ConnectionList({
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionForm>(defaultForm);
   const [searchTerm, setSearchTerm] = useState("");
+  const [savedQueriesByConnection, setSavedQueriesByConnection] = useState<
+    Record<string, SavedQuery[]>
+  >({});
 
   const supportsCreateDatabaseForDriver = (driver: Driver) =>
     createDatabaseSupportedDrivers.includes(driver);
@@ -301,6 +321,35 @@ export function ConnectionList({
     schemaName: string,
     tableName: string,
   ) => `${connectionId}-${databaseName}-${schemaName}-${tableName}`;
+  const isSidebarInteracting = () =>
+    Date.now() < userInteractionUntilRef.current;
+  const requestAutoScroll = (tableKey: string) => {
+    if (isSidebarInteracting()) {
+      pendingAutoScrollKeyRef.current = tableKey;
+      return;
+    }
+    pendingAutoScrollKeyRef.current = null;
+    setAutoScrollRequest({
+      key: tableKey,
+      id: ++autoScrollReqIdRef.current,
+    });
+  };
+  const markSidebarInteraction = () => {
+    userInteractionUntilRef.current = Date.now() + AUTO_SCROLL_IDLE_DELAY_MS;
+    if (interactionIdleTimerRef.current) {
+      window.clearTimeout(interactionIdleTimerRef.current);
+    }
+    interactionIdleTimerRef.current = window.setTimeout(() => {
+      interactionIdleTimerRef.current = null;
+      const pendingKey = pendingAutoScrollKeyRef.current;
+      if (!pendingKey) return;
+      pendingAutoScrollKeyRef.current = null;
+      setAutoScrollRequest({
+        key: pendingKey,
+        id: ++autoScrollReqIdRef.current,
+      });
+    }, AUTO_SCROLL_IDLE_DELAY_MS);
+  };
 
   const createDbTargetConnection = useMemo(
     () => connections.find((conn) => conn.id === createDbConnectionId) || null,
@@ -364,40 +413,81 @@ export function ConnectionList({
           })
           .filter(Boolean) as DatabaseInfo[];
 
-        if (filteredDbs.length > 0) {
+        const hasMatchingQuery =
+          showSavedQueriesInTree &&
+          (savedQueriesByConnection[conn.id] || []).some((query) =>
+            query.name.toLowerCase().includes(lowerTerm),
+          );
+
+        if (filteredDbs.length > 0 || hasMatchingQuery) {
           return { ...conn, databases: filteredDbs };
         }
         return null;
       })
       .filter(Boolean) as Connection[];
-  }, [connections, searchTerm]);
+  }, [connections, savedQueriesByConnection, searchTerm, showSavedQueriesInTree]);
 
   useEffect(() => {
     if (searchTerm) {
-      const newExpandedConns = new Set(expandedConnections);
-      const newExpandedDbs = new Set(expandedDatabases);
-      const newExpandedSchemas = new Set(expandedSchemas);
-      filteredConnections.forEach((conn) => {
-        newExpandedConns.add(conn.id);
-        conn.databases.forEach((db) => {
-          const databaseKey = `${conn.id}-${db.name}`;
-          newExpandedDbs.add(databaseKey);
-          db.schemas.forEach((schema) => {
-            newExpandedSchemas.add(getSchemaNodeKey(databaseKey, schema.name));
+      setExpandedConnections((prev) => {
+        const next = new Set(prev);
+        filteredConnections.forEach((conn) => {
+          next.add(conn.id);
+        });
+        return next;
+      });
+      setExpandedDatabases((prev) => {
+        const next = new Set(prev);
+        filteredConnections.forEach((conn) => {
+          conn.databases.forEach((db) => {
+            next.add(`${conn.id}-${db.name}`);
           });
         });
+        return next;
       });
-      setExpandedConnections(newExpandedConns);
-      setExpandedDatabases(newExpandedDbs);
-      setExpandedSchemas(newExpandedSchemas);
+      setExpandedSchemas((prev) => {
+        const next = new Set(prev);
+        filteredConnections.forEach((conn) => {
+          conn.databases.forEach((db) => {
+            const databaseKey = `${conn.id}-${db.name}`;
+            db.schemas.forEach((schema) => {
+              next.add(getSchemaNodeKey(databaseKey, schema.name));
+            });
+          });
+        });
+        return next;
+      });
+      if (showSavedQueriesInTree) {
+        setExpandedDatabaseGroups((prev) => {
+          const next = new Set(prev);
+          filteredConnections.forEach((conn) => {
+            next.add(`${conn.id}::databases`);
+          });
+          return next;
+        });
+        setExpandedQueryGroups((prev) => {
+          const next = new Set(prev);
+          filteredConnections.forEach((conn) => {
+            next.add(`${conn.id}::queries`);
+          });
+          return next;
+        });
+      }
     }
   }, [
     searchTerm,
     filteredConnections,
-    expandedConnections,
-    expandedDatabases,
-    expandedSchemas,
+    showSavedQueriesInTree,
   ]);
+
+  useEffect(
+    () => () => {
+      if (interactionIdleTimerRef.current) {
+        window.clearTimeout(interactionIdleTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const isFileBased = form.driver === "sqlite" || form.driver === "duckdb";
   const supportsSslCa =
@@ -505,6 +595,11 @@ export function ConnectionList({
     fetchConnections();
   }, []);
 
+  useEffect(() => {
+    if (!showSavedQueriesInTree) return;
+    void fetchSavedQueriesByConnection();
+  }, [showSavedQueriesInTree, lastUpdated]);
+
   const fetchConnections = async () => {
     try {
       const conns = await api.connections.list();
@@ -535,6 +630,7 @@ export function ConnectionList({
       );
       setExpandedConnections(new Set());
       setExpandedDatabases(new Set());
+      setExpandedDatabaseGroups(new Set());
     } catch (e) {
       console.error(
         "listConnections failed",
@@ -543,9 +639,32 @@ export function ConnectionList({
     }
   };
 
+  const fetchSavedQueriesByConnection = async () => {
+    try {
+      const queries = await api.queries.list();
+      const grouped: Record<string, SavedQuery[]> = {};
+      queries.forEach((query) => {
+        if (!query.connectionId) return;
+        const key = String(query.connectionId);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(query);
+      });
+      Object.values(grouped).forEach((items) =>
+        items.sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setSavedQueriesByConnection(grouped);
+    } catch (e) {
+      console.error(
+        "Failed to fetch saved queries for tree",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  };
+
   const toggleConnection = (id: string) => {
     const connection = connections.find((conn) => conn.id === id);
-    if (!connection || connection.connectState !== "success") return;
+    if (!connection) return;
+    if (connection.connectState !== "success" && !showSavedQueriesInTree) return;
 
     const newExpanded = new Set(expandedConnections);
     if (newExpanded.has(id)) {
@@ -758,10 +877,7 @@ export function ConnectionList({
       tableName,
     );
 
-    setAutoScrollRequest({
-      key: nextTableKey,
-      id: ++autoScrollReqIdRef.current,
-    });
+    requestAutoScroll(nextTableKey);
   }, [activeTableTarget]);
 
   // Effect 2: Sync UI state (expansion, selection) and load data if needed
@@ -829,10 +945,7 @@ export function ConnectionList({
         tableName,
       );
       setSelectedTableKey(resolvedTableKey);
-      setAutoScrollRequest({
-        key: resolvedTableKey,
-        id: ++autoScrollReqIdRef.current,
-      });
+      requestAutoScroll(resolvedTableKey);
     };
 
     void ensureDatabaseTablesLoaded();
@@ -936,6 +1049,31 @@ export function ConnectionList({
     }
     setExpandedDatabases(newExpanded);
   };
+
+  const toggleQueryGroup = (key: string) => {
+    setExpandedQueryGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleDatabaseGroup = (key: string) => {
+    setExpandedDatabaseGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   const toggleSchema = (schemaKey: string) => {
     setExpandedSchemas((prev) => {
       const next = new Set(prev);
@@ -1999,266 +2137,532 @@ export function ConnectionList({
           <Input
             placeholder={t("connection.searchTables")}
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onFocus={markSidebarInteraction}
+            onChange={(e) => {
+              markSidebarInteraction();
+              setSearchTerm(e.target.value);
+            }}
             className="pl-8"
           />
         </div>
       </div>
       <div
         className="flex-1 overflow-auto"
+        onPointerDown={markSidebarInteraction}
+        onWheel={markSidebarInteraction}
         onClick={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
       >
-        {filteredConnections.map((connection) => (
-          <TreeNode
-            key={connection.id}
-            level={0}
-            icon={getConnectionIcon(connection.type)}
-            label={connection.name}
-            isExpanded={expandedConnections.has(connection.id)}
-            toggleOnRowClick={connection.connectState === "success"}
-            onToggle={() => toggleConnection(connection.id)}
-            onDoubleClick={() => {
-              void connectConnection(connection.id);
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setContextMenu({
-                visible: true,
-                x: e.clientX,
-                y: e.clientY,
-                connectionId: connection.id,
-                type: "connection",
-              });
-            }}
-            leadingIndicator={
-              <span
-                className="inline-flex items-center justify-center shrink-0"
-                role="status"
-                aria-label={getConnectionStatusLabel(connection)}
-                title={getConnectionStatusLabel(connection)}
-              >
-                {renderConnectionStatusIndicator(connection)}
-              </span>
-            }
-          >
-            {connection.connectState === "success" ? (
+        {filteredConnections.map((connection) => {
+          const queriesForConnection = (savedQueriesByConnection[connection.id] || []).filter(
+            (query) => query.name.toLowerCase().includes(searchTerm.toLowerCase()),
+          );
+          const visibleDatabases = connection.databases.filter(
+            (database) =>
+              !["information_schema", "performance_schema"].includes(
+                database.name.toLowerCase(),
+              ),
+          );
+
+          return (
+            <TreeNode
+              key={connection.id}
+              level={0}
+              icon={getConnectionIcon(connection.type)}
+              label={connection.name}
+              isExpanded={expandedConnections.has(connection.id)}
+              toggleOnRowClick={
+                showSavedQueriesInTree || connection.connectState === "success"
+              }
+              onToggle={() => toggleConnection(connection.id)}
+              onDoubleClick={() => {
+                void connectConnection(connection.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({
+                  visible: true,
+                  x: e.clientX,
+                  y: e.clientY,
+                  connectionId: connection.id,
+                  type: "connection",
+                });
+              }}
+              leadingIndicator={
+                <span
+                  className="inline-flex items-center justify-center shrink-0"
+                  role="status"
+                  aria-label={getConnectionStatusLabel(connection)}
+                  title={getConnectionStatusLabel(connection)}
+                >
+                  {renderConnectionStatusIndicator(connection)}
+                </span>
+              }
+            >
               <>
-                {connection.databases
-                  .filter(
-                    (database) =>
-                      !["information_schema", "performance_schema"].includes(
-                        database.name.toLowerCase(),
-                      ),
-                  )
-                  .map((database) => {
-                    const dbKey = `${connection.id}-${database.name}`;
-                    const supportsSchemaNode = supportsSchemaNodeForDriver(
-                      connection.type,
-                    );
-                    const renderTableNode = (table: TableInfo, level: number) => {
-                      const tableKey = getTableNodeKey(
-                        connection.id,
-                        database.name,
-                        table.schema,
-                        table.name,
-                      );
-                      return (
-                        <ContextMenu key={tableKey}>
-                          <ContextMenuTrigger asChild>
-                            <div
-                              ref={(el) => {
-                                tableNodeRefs.current[tableKey] = el;
-                              }}
-                            >
-                              <TreeNode
-                                level={level}
-                                icon={<Table className="w-4 h-4" />}
-                                label={table.name}
-                                isSelected={selectedTableKey === tableKey}
-                                isExpanded={expandedTables.has(tableKey)}
-                                toggleOnRowClick={false}
-                                onToggle={() => {
-                                  toggleTable(
-                                    tableKey,
-                                    connection.id,
-                                    database.name,
-                                    table,
-                                  );
-                                }}
-                                onDoubleClick={() => {
-                                  handleTableClick(connection, database, table);
-                                }}
-                                actions={
-                                  <div onClick={(e) => e.stopPropagation()}>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 w-6 p-0"
-                                      onClick={() =>
-                                        handleTableClick(connection, database, table)
-                                      }
-                                    >
-                                      <Play className="w-3 h-3" />
-                                    </Button>
-                                  </div>
-                                }
-                              >
-                                {table.columns.map((column) => (
-                                  <div
-                                    key={column.name}
-                                    className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
-                                    style={{
-                                      paddingLeft: `${(level + 1) * 12 + 8}px`,
-                                    }}
-                                  >
-                                    <span className="w-4" />
-                                    {column.isPrimaryKey ? (
-                                      <Key className="w-3 h-3 text-yellow-600 shrink-0" />
-                                    ) : (
-                                      <span className="w-3 shrink-0" />
-                                    )}
-                                    <span className="flex-1 truncate text-foreground">
-                                      {column.name}
-                                    </span>
-                                    <span className="text-muted-foreground text-xs shrink-0">
-                                      {column.type}
-                                    </span>
-                                  </div>
-                                ))}
-                              </TreeNode>
-                            </div>
-                          </ContextMenuTrigger>
-                          <ContextMenuContent>
-                            <ContextMenuItem
-                              onClick={() =>
-                                handleCreateQueryFromContext(
-                                  connection.id,
-                                  database.name,
-                                )
-                              }
-                            >
-                              <FileCode className="w-4 h-4 mr-2" />
-                              {t("connection.menu.newQuery")}
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() =>
-                                void handleTableExport(
-                                  connection,
-                                  database,
-                                  table,
-                                  "csv",
-                                )
-                              }
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              {t("connection.menu.exportCsv")}
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() =>
-                                void handleTableExport(
-                                  connection,
-                                  database,
-                                  table,
-                                  "json",
-                                )
-                              }
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              {t("connection.menu.exportJson")}
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() =>
-                                void handleTableExport(
-                                  connection,
-                                  database,
-                                  table,
-                                  "sql",
-                                )
-                              }
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              {t("connection.menu.exportSql")}
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      );
-                    };
-                    return (
+                {showSavedQueriesInTree ? (
+                  <TreeNode
+                    level={1}
+                    icon={<FileCode className="w-4 h-4" />}
+                    label={t("connection.tree.queries")}
+                    isExpanded={expandedQueryGroups.has(`${connection.id}::queries`)}
+                    onToggle={() => toggleQueryGroup(`${connection.id}::queries`)}
+                    forceShowToggle={queriesForConnection.length > 0}
+                    canToggle={queriesForConnection.length > 0}
+                  >
+                    {queriesForConnection.map((query) => (
                       <TreeNode
-                        key={dbKey}
-                        level={1}
-                        icon={<Database className="w-4 h-4" />}
-                        label={
-                          (connection.type === "sqlite" ||
-                            connection.type === "duckdb") &&
-                          database.name === "main"
-                            ? t(
-                                connection.type === "duckdb"
-                                  ? "connection.duckdbMainLabel"
-                                  : "connection.sqliteMainLabel",
-                              )
-                            : database.name
-                        }
-                        isExpanded={expandedDatabases.has(dbKey)}
-                        onToggle={() => toggleDatabase(dbKey)}
+                        key={`conn-query-${query.id}`}
+                        level={2}
+                        icon={<FileCode className="w-4 h-4" />}
+                        label={query.name}
+                        toggleOnRowClick={false}
+                        canToggle={false}
+                        onDoubleClick={() => onSelectSavedQuery?.(query)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setContextMenu({
-                            visible: true,
-                            x: e.clientX,
-                            y: e.clientY,
-                            connectionId: connection.id,
-                            databaseName: database.name,
-                            type: "database",
-                          });
                         }}
                       >
-                        {supportsSchemaNode
-                          ? database.schemas.map((schemaNode) => {
-                              const schemaKey = getSchemaNodeKey(
-                                dbKey,
-                                schemaNode.name,
-                              );
-                              return (
-                                <TreeNode
-                                  key={schemaKey}
-                                  level={2}
-                                  icon={<FolderOpen className="w-4 h-4" />}
-                                  label={schemaNode.name}
-                                  isExpanded={expandedSchemas.has(schemaKey)}
-                                  onToggle={() => toggleSchema(schemaKey)}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setContextMenu({
-                                      visible: true,
-                                      x: e.clientX,
-                                      y: e.clientY,
-                                      connectionId: connection.id,
-                                      databaseName: database.name,
-                                      schemaName: schemaNode.name,
-                                      type: "schema",
-                                    });
+                        {null}
+                      </TreeNode>
+                    ))}
+                  </TreeNode>
+                ) : null}
+
+                {connection.connectState === "success"
+                  ? (showSavedQueriesInTree ? (
+                      <TreeNode
+                        level={1}
+                        icon={<Database className="w-4 h-4" />}
+                        label={t("connection.tree.database")}
+                        isExpanded={expandedDatabaseGroups.has(
+                          `${connection.id}::databases`,
+                        )}
+                        onToggle={() =>
+                          toggleDatabaseGroup(`${connection.id}::databases`)
+                        }
+                        forceShowToggle={visibleDatabases.length > 0}
+                        canToggle={visibleDatabases.length > 0}
+                      >
+                        {visibleDatabases.map((database) => {
+                          const databaseLevel = 2;
+                          const dbKey = `${connection.id}-${database.name}`;
+                          const supportsSchemaNode = supportsSchemaNodeForDriver(
+                            connection.type,
+                          );
+                          const renderTableNode = (table: TableInfo, level: number) => {
+                            const tableKey = getTableNodeKey(
+                              connection.id,
+                              database.name,
+                              table.schema,
+                              table.name,
+                            );
+                            return (
+                              <ContextMenu key={tableKey}>
+                                <ContextMenuTrigger asChild>
+                                  <div
+                                    ref={(el) => {
+                                      tableNodeRefs.current[tableKey] = el;
+                                    }}
+                                  >
+                                    <TreeNode
+                                      level={level}
+                                      icon={<Table className="w-4 h-4" />}
+                                      label={table.name}
+                                      isSelected={selectedTableKey === tableKey}
+                                      isExpanded={expandedTables.has(tableKey)}
+                                      toggleOnRowClick={false}
+                                      onToggle={() => {
+                                        toggleTable(
+                                          tableKey,
+                                          connection.id,
+                                          database.name,
+                                          table,
+                                        );
+                                      }}
+                                      onDoubleClick={() => {
+                                        handleTableClick(connection, database, table);
+                                      }}
+                                      actions={
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0"
+                                            onClick={() =>
+                                              handleTableClick(connection, database, table)
+                                            }
+                                          >
+                                            <Play className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      }
+                                    >
+                                      {table.columns.map((column) => (
+                                        <div
+                                          key={column.name}
+                                          className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
+                                          style={{
+                                            paddingLeft: `${(level + 1) * 12 + 8}px`,
+                                          }}
+                                        >
+                                          <span className="w-4" />
+                                          {column.isPrimaryKey ? (
+                                            <Key className="w-3 h-3 text-yellow-600 shrink-0" />
+                                          ) : (
+                                            <span className="w-3 shrink-0" />
+                                          )}
+                                          <span className="flex-1 truncate text-foreground">
+                                            {column.name}
+                                          </span>
+                                          <span className="text-muted-foreground text-xs shrink-0">
+                                            {column.type}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </TreeNode>
+                                  </div>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem
+                                    onClick={() =>
+                                      handleCreateQueryFromContext(
+                                        connection.id,
+                                        database.name,
+                                      )
+                                    }
+                                  >
+                                    <FileCode className="w-4 h-4 mr-2" />
+                                    {t("connection.menu.newQuery")}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() =>
+                                      void handleTableExport(
+                                        connection,
+                                        database,
+                                        table,
+                                        "csv",
+                                      )
+                                    }
+                                  >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    {t("connection.menu.exportCsv")}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() =>
+                                      void handleTableExport(
+                                        connection,
+                                        database,
+                                        table,
+                                        "json",
+                                      )
+                                    }
+                                  >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    {t("connection.menu.exportJson")}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() =>
+                                      void handleTableExport(
+                                        connection,
+                                        database,
+                                        table,
+                                        "sql",
+                                      )
+                                    }
+                                  >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    {t("connection.menu.exportSql")}
+                                  </ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
+                            );
+                          };
+                          return (
+                            <TreeNode
+                              key={dbKey}
+                              level={databaseLevel}
+                              icon={<Database className="w-4 h-4" />}
+                              label={
+                                (connection.type === "sqlite" ||
+                                  connection.type === "duckdb") &&
+                                database.name === "main"
+                                  ? t(
+                                      connection.type === "duckdb"
+                                        ? "connection.duckdbMainLabel"
+                                        : "connection.sqliteMainLabel",
+                                    )
+                                  : database.name
+                              }
+                              isExpanded={expandedDatabases.has(dbKey)}
+                              onToggle={() => toggleDatabase(dbKey)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setContextMenu({
+                                  visible: true,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  connectionId: connection.id,
+                                  databaseName: database.name,
+                                  type: "database",
+                                });
+                              }}
+                            >
+                              {supportsSchemaNode
+                                ? database.schemas.map((schemaNode) => {
+                                    const schemaKey = getSchemaNodeKey(
+                                      dbKey,
+                                      schemaNode.name,
+                                    );
+                                    return (
+                                      <TreeNode
+                                        key={schemaKey}
+                                        level={databaseLevel + 1}
+                                        icon={<FolderOpen className="w-4 h-4" />}
+                                        label={schemaNode.name}
+                                        isExpanded={expandedSchemas.has(schemaKey)}
+                                        onToggle={() => toggleSchema(schemaKey)}
+                                        onContextMenu={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setContextMenu({
+                                            visible: true,
+                                            x: e.clientX,
+                                            y: e.clientY,
+                                            connectionId: connection.id,
+                                            databaseName: database.name,
+                                            schemaName: schemaNode.name,
+                                            type: "schema",
+                                          });
+                                        }}
+                                      >
+                                        {schemaNode.tables.map((table) =>
+                                          renderTableNode(table, databaseLevel + 2),
+                                        )}
+                                      </TreeNode>
+                                    );
+                                  })
+                                : database.tables.map((table) =>
+                                    renderTableNode(table, databaseLevel + 1),
+                                  )}
+                            </TreeNode>
+                          );
+                        })}
+                      </TreeNode>
+                    ) : (
+                      visibleDatabases.map((database) => {
+                        const databaseLevel = 1;
+                        const dbKey = `${connection.id}-${database.name}`;
+                        const supportsSchemaNode = supportsSchemaNodeForDriver(
+                          connection.type,
+                        );
+                        const renderTableNode = (table: TableInfo, level: number) => {
+                          const tableKey = getTableNodeKey(
+                            connection.id,
+                            database.name,
+                            table.schema,
+                            table.name,
+                          );
+                          return (
+                            <ContextMenu key={tableKey}>
+                              <ContextMenuTrigger asChild>
+                                <div
+                                  ref={(el) => {
+                                    tableNodeRefs.current[tableKey] = el;
                                   }}
                                 >
-                                  {schemaNode.tables.map((table) =>
-                                    renderTableNode(table, 3),
-                                  )}
-                                </TreeNode>
-                              );
-                            })
-                          : database.tables.map((table) =>
-                              renderTableNode(table, 2),
-                            )}
-                      </TreeNode>
-                    );
-                  })}
+                                  <TreeNode
+                                    level={level}
+                                    icon={<Table className="w-4 h-4" />}
+                                    label={table.name}
+                                    isSelected={selectedTableKey === tableKey}
+                                    isExpanded={expandedTables.has(tableKey)}
+                                    toggleOnRowClick={false}
+                                    onToggle={() => {
+                                      toggleTable(
+                                        tableKey,
+                                        connection.id,
+                                        database.name,
+                                        table,
+                                      );
+                                    }}
+                                    onDoubleClick={() => {
+                                      handleTableClick(connection, database, table);
+                                    }}
+                                    actions={
+                                      <div onClick={(e) => e.stopPropagation()}>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 w-6 p-0"
+                                          onClick={() =>
+                                            handleTableClick(connection, database, table)
+                                          }
+                                        >
+                                          <Play className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    }
+                                  >
+                                    {table.columns.map((column) => (
+                                      <div
+                                        key={column.name}
+                                        className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
+                                        style={{
+                                          paddingLeft: `${(level + 1) * 12 + 8}px`,
+                                        }}
+                                      >
+                                        <span className="w-4" />
+                                        {column.isPrimaryKey ? (
+                                          <Key className="w-3 h-3 text-yellow-600 shrink-0" />
+                                        ) : (
+                                          <span className="w-3 shrink-0" />
+                                        )}
+                                        <span className="flex-1 truncate text-foreground">
+                                          {column.name}
+                                        </span>
+                                        <span className="text-muted-foreground text-xs shrink-0">
+                                          {column.type}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </TreeNode>
+                                </div>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    handleCreateQueryFromContext(
+                                      connection.id,
+                                      database.name,
+                                    )
+                                  }
+                                >
+                                  <FileCode className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.newQuery")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "csv",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportCsv")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "json",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportJson")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "sql",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportSql")}
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          );
+                        };
+                        return (
+                          <TreeNode
+                            key={dbKey}
+                            level={databaseLevel}
+                            icon={<Database className="w-4 h-4" />}
+                            label={
+                              (connection.type === "sqlite" ||
+                                connection.type === "duckdb") &&
+                              database.name === "main"
+                                ? t(
+                                    connection.type === "duckdb"
+                                      ? "connection.duckdbMainLabel"
+                                      : "connection.sqliteMainLabel",
+                                  )
+                                : database.name
+                            }
+                            isExpanded={expandedDatabases.has(dbKey)}
+                            onToggle={() => toggleDatabase(dbKey)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setContextMenu({
+                                visible: true,
+                                x: e.clientX,
+                                y: e.clientY,
+                                connectionId: connection.id,
+                                databaseName: database.name,
+                                type: "database",
+                              });
+                            }}
+                          >
+                            {supportsSchemaNode
+                              ? database.schemas.map((schemaNode) => {
+                                  const schemaKey = getSchemaNodeKey(
+                                    dbKey,
+                                    schemaNode.name,
+                                  );
+                                  return (
+                                    <TreeNode
+                                      key={schemaKey}
+                                      level={databaseLevel + 1}
+                                      icon={<FolderOpen className="w-4 h-4" />}
+                                      label={schemaNode.name}
+                                      isExpanded={expandedSchemas.has(schemaKey)}
+                                      onToggle={() => toggleSchema(schemaKey)}
+                                      onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setContextMenu({
+                                          visible: true,
+                                          x: e.clientX,
+                                          y: e.clientY,
+                                          connectionId: connection.id,
+                                          databaseName: database.name,
+                                          schemaName: schemaNode.name,
+                                          type: "schema",
+                                        });
+                                      }}
+                                    >
+                                      {schemaNode.tables.map((table) =>
+                                        renderTableNode(table, databaseLevel + 2),
+                                      )}
+                                    </TreeNode>
+                                  );
+                                })
+                              : database.tables.map((table) =>
+                                  renderTableNode(table, databaseLevel + 1),
+                                )}
+                          </TreeNode>
+                        );
+                      })
+                    ))
+                  : null}
               </>
-            ) : null}
-          </TreeNode>
-        ))}
+            </TreeNode>
+          );
+        })}
       </div>
 
       {contextMenu.visible && (

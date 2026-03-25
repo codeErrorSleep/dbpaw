@@ -42,7 +42,7 @@ const TabsTrigger = React.forwardRef<
     ref={ref}
     data-slot="tabs-trigger"
     className={cn(
-      "bg-transparent data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:border-b-2 data-[state=active]:border-b-primary text-muted-foreground inline-flex h-full items-center justify-center gap-2 px-4 text-xs font-medium whitespace-nowrap transition-colors hover:bg-muted/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 min-w-[120px] max-w-[200px] border-r border-transparent",
+      "bg-transparent data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:border-b-2 data-[state=active]:border-b-accent text-muted-foreground inline-flex h-full items-center justify-center gap-2 px-4 text-xs font-medium whitespace-nowrap transition-colors hover:bg-muted/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 min-w-[120px] max-w-[200px] border-r border-transparent",
       className,
     )}
     {...props}

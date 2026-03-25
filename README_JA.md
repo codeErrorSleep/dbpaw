@@ -125,7 +125,7 @@ _注: 現時点では Apple の notarization（公証）が未完了のため、
 
 ## 📄 ライセンス
 
-このプロジェクトは MIT ライセンスです。詳細は [LICENSE](LICENSE) を参照してください。
+このプロジェクトは Apache License 2.0 のもとで提供されています。詳細は [LICENSE](LICENSE) を参照してください。
 
 ## ❤️ Thanks
 

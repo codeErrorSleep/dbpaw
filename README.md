@@ -27,6 +27,8 @@ English | [简体中文](README_CN.md) | [日本語](README_JA.md)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-blue?style=flat-square&logo=tauri&logoColor=white)](https://v2.tauri.app/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/codeErrorSleep/dbpaw/pulls)
 
+</div>
+
 **DbPaw** helps you connect to PostgreSQL, MySQL, MariaDB (MySQL-compatible), TiDB (MySQL-compatible), SQLite, SQL Server, and ClickHouse (preview), write and run SQL efficiently, and inspect data in a clean desktop UI.
 
 ## ✅ What You Can Do
@@ -123,7 +125,7 @@ If your device is managed by an organization, you may need your IT admin to allo
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## ❤️ Thanks
 

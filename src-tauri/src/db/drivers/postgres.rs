@@ -1,4 +1,4 @@
-use super::DatabaseDriver;
+use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
@@ -117,6 +117,14 @@ fn build_dsn_with_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathB
 
 fn cleanup_ca_file(path: &Path) {
     let _ = fs::remove_file(path);
+}
+
+fn build_postgres_json_projection_query(describe_sql: &str) -> String {
+    let sanitized_describe_sql = strip_trailing_statement_terminator(describe_sql);
+    format!(
+        "SELECT to_jsonb(__dbpaw_row) AS __row_json FROM ({}) AS __dbpaw_row",
+        sanitized_describe_sql
+    )
 }
 
 fn cleanup_ca_file_opt(path: Option<&PathBuf>) {
@@ -936,10 +944,7 @@ impl DatabaseDriver for PostgresDriver {
         let (columns, data, row_count) = if is_json_projectable_statement(&describe_sql) {
             let columns = self.describe_query_columns(&describe_sql).await?;
             let high_precision_cols = collect_high_precision_query_columns(&columns);
-            let json_query = format!(
-                "SELECT to_jsonb(__dbpaw_row) AS __row_json FROM ({}) AS __dbpaw_row",
-                describe_sql
-            );
+            let json_query = build_postgres_json_projection_query(&describe_sql);
             let rows = sqlx::query(&json_query)
                 .fetch_all(&self.pool)
                 .await
@@ -1404,5 +1409,19 @@ CREATE TABLE pg_data_type_test (
         assert!(picked.contains("id"));
         assert!(picked.contains("amount"));
         assert!(!picked.contains("title"));
+    }
+
+    #[test]
+    fn test_build_postgres_json_projection_query_strips_trailing_semicolon() {
+        let sql = build_postgres_json_projection_query("SELECT * FROM t LIMIT 1000;");
+        assert!(sql.contains("FROM (SELECT * FROM t LIMIT 1000) AS __dbpaw_row"));
+        assert!(!sql.contains(";) AS __dbpaw_row"));
+    }
+
+    #[test]
+    fn test_build_postgres_json_projection_query_strips_multiple_trailing_semicolons() {
+        let sql = build_postgres_json_projection_query("SELECT * FROM t;;;");
+        assert!(sql.contains("FROM (SELECT * FROM t) AS __dbpaw_row"));
+        assert!(!sql.contains(";) AS __dbpaw_row"));
     }
 }

@@ -14,8 +14,6 @@ export const DEFAULT_FONT_SIZE_PX = 14;
 interface ThemeProviderState {
   theme: ThemeId;
   setTheme: (theme: ThemeId) => void;
-  accentColor: string;
-  setAccentColor: (color: string) => void;
   fontSizePx: number;
   setFontSizePx: (size: number) => void;
 }
@@ -23,21 +21,11 @@ interface ThemeProviderState {
 const initialState: ThemeProviderState = {
   theme: "default",
   setTheme: () => null,
-  accentColor: "Zinc",
-  setAccentColor: () => null,
   fontSizePx: DEFAULT_FONT_SIZE_PX,
   setFontSizePx: () => null,
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
-
-const THEME_COLORS_MAP: Record<string, { light: string; dark: string }> = {
-  Zinc: { light: "#09090b", dark: "#fafafa" },
-  Blue: { light: "#2563eb", dark: "#3b82f6" },
-  Violet: { light: "#7c3aed", dark: "#8b5cf6" },
-  Green: { light: "#16a34a", dark: "#22c55e" },
-  Orange: { light: "#ea580c", dark: "#f97316" },
-};
 
 export function ThemeProvider({
   children,
@@ -48,7 +36,6 @@ export function ThemeProvider({
   defaultTheme?: ThemeId;
 }) {
   const [theme, setThemeState] = useState<ThemeId>(defaultTheme);
-  const [accentColor, setAccentColorState] = useState<string>("Zinc");
   const [fontSizePx, setFontSizePxState] =
     useState<number>(DEFAULT_FONT_SIZE_PX);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -72,17 +59,6 @@ export function ThemeProvider({
     root.style.colorScheme = appearance;
   };
 
-  const applyAccentColor = (colorName: string, currentTheme: ThemeId) => {
-    const color = THEME_COLORS_MAP[colorName];
-    if (!color) return;
-
-    const root = document.documentElement;
-    const appearance = getThemeAppearance(currentTheme);
-    const colorValue = appearance === "dark" ? color.dark : color.light;
-    root.style.setProperty("--primary", colorValue);
-    root.style.setProperty("--ring", colorValue);
-  };
-
   const applyFontSizePx = (size: number) => {
     const root = document.documentElement;
     root.style.setProperty("--font-size", `${size}px`);
@@ -92,7 +68,6 @@ export function ThemeProvider({
     const loadSettings = async () => {
       const rawTheme = await getSetting<string>("theme", defaultTheme);
       const savedTheme = normalizeThemeId(rawTheme);
-      const savedAccent = await getSetting<string>("accentColor", "Zinc");
       const savedFontSize = await getSetting<number>(
         "fontSizePx",
         DEFAULT_FONT_SIZE_PX,
@@ -100,11 +75,9 @@ export function ThemeProvider({
       const normalizedFontSize = clampFontSize(savedFontSize);
 
       setThemeState(savedTheme);
-      setAccentColorState(savedAccent);
       setFontSizePxState(normalizedFontSize);
 
       applyTheme(savedTheme);
-      applyAccentColor(savedAccent, savedTheme);
       applyFontSizePx(normalizedFontSize);
 
       if (savedTheme !== rawTheme) {
@@ -120,14 +93,7 @@ export function ThemeProvider({
   const setTheme = (themeId: ThemeId) => {
     setThemeState(themeId);
     applyTheme(themeId);
-    applyAccentColor(accentColor, themeId);
     void saveSetting("theme", themeId);
-  };
-
-  const setAccentColor = (color: string) => {
-    setAccentColorState(color);
-    applyAccentColor(color, theme);
-    void saveSetting("accentColor", color);
   };
 
   const setFontSizePx = (size: number) => {
@@ -148,8 +114,6 @@ export function ThemeProvider({
   const value = {
     theme,
     setTheme,
-    accentColor,
-    setAccentColor,
     fontSizePx,
     setFontSizePx,
   };

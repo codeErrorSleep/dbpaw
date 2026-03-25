@@ -1,4 +1,4 @@
-use super::DatabaseDriver;
+use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
@@ -259,12 +259,7 @@ impl MysqlDriver {
         json_expr: &str,
         high_precision_cols: &HashSet<String>,
     ) -> Result<Vec<serde_json::Value>, String> {
-        let query = format!(
-            "SELECT {} AS __row_json FROM ({}) AS {}",
-            json_expr,
-            base_query,
-            quote_mysql_ident("__dbpaw_row")
-        );
+        let query = build_mysql_json_projection_query(base_query, json_expr);
 
         let mut q = sqlx::query(&query);
         for bind in binds {
@@ -283,6 +278,20 @@ impl MysqlDriver {
         }
         Ok(data)
     }
+}
+
+fn sanitize_mysql_subquery_sql(sql: &str) -> &str {
+    strip_trailing_statement_terminator(sql)
+}
+
+fn build_mysql_json_projection_query(base_query: &str, json_expr: &str) -> String {
+    let sanitized_base_query = sanitize_mysql_subquery_sql(base_query);
+    format!(
+        "SELECT {} AS __row_json FROM ({}) AS {}",
+        json_expr,
+        sanitized_base_query,
+        quote_mysql_ident("__dbpaw_row")
+    )
 }
 
 fn decode_mysql_text_cell(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, String> {
@@ -983,6 +992,22 @@ mod tests {
     use crate::models::ConnectionForm;
 
     #[test]
+    fn test_sanitize_mysql_subquery_sql_trims_trailing_semicolon() {
+        assert_eq!(
+            sanitize_mysql_subquery_sql("select * from t_business LIMIT 1000;"),
+            "select * from t_business LIMIT 1000"
+        );
+        assert_eq!(
+            sanitize_mysql_subquery_sql("select * from t_business LIMIT 1000;   "),
+            "select * from t_business LIMIT 1000"
+        );
+        assert_eq!(
+            sanitize_mysql_subquery_sql("select * from t_business"),
+            "select * from t_business"
+        );
+    }
+
+    #[test]
     fn test_conn_string_generation() {
         let form = ConnectionForm {
             driver: "mysql".to_string(),
@@ -1207,5 +1232,19 @@ mod tests {
         assert_eq!(row.get("amount").and_then(|v| v.as_str()), Some("1234.56"));
         assert_eq!(row.get("name").and_then(|v| v.as_str()), Some("demo"));
         assert!(row.get("nullable").unwrap().is_null());
+    }
+
+    #[test]
+    fn test_build_mysql_json_projection_query_strips_trailing_semicolon() {
+        let sql = build_mysql_json_projection_query("SELECT * FROM t LIMIT 1000;", "JSON_OBJECT()");
+        assert!(sql.contains("FROM (SELECT * FROM t LIMIT 1000) AS `__dbpaw_row`"));
+        assert!(!sql.contains(";) AS `__dbpaw_row`"));
+    }
+
+    #[test]
+    fn test_build_mysql_json_projection_query_strips_multiple_trailing_semicolons() {
+        let sql = build_mysql_json_projection_query("SELECT * FROM t;;;", "JSON_OBJECT()");
+        assert!(sql.contains("FROM (SELECT * FROM t) AS `__dbpaw_row`"));
+        assert!(!sql.contains(";) AS `__dbpaw_row`"));
     }
 }

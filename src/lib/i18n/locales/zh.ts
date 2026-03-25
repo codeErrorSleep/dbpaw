@@ -28,6 +28,7 @@ export const zh: Translations = {
       closeTab: "关闭标签页",
       closeOtherTabs: "关闭其他标签页",
       queryTitle: "查询（{{database}}）",
+      defaultDatabase: "默认",
       ddlTitle: "DDL: {{table}}",
     },
     dialog: {
@@ -56,12 +57,31 @@ export const zh: Translations = {
       connections: "连接",
       queries: "查询",
     },
+    queries: {
+      title: "已保存查询",
+      newQuery: "新建",
+      searchPlaceholder: "搜索查询...",
+      empty: "未找到已保存查询。",
+      open: "打开",
+      delete: "删除",
+      newQueryDialog: {
+        title: "新建查询",
+        connection: "连接",
+        connectionPlaceholder: "请选择连接",
+        databaseOptional: "数据库（可选）",
+        databasePlaceholder: "使用默认数据库",
+        databaseDefault: "使用连接默认值",
+        cancel: "取消",
+        confirm: "创建",
+      },
+    },
   },
   settings: {
     title: "设置",
     description: "管理应用外观与偏好。",
     sections: {
       general: "通用",
+      layout: "布局",
       ai: "AI",
       shortcuts: "快捷键",
       about: "关于",
@@ -80,7 +100,14 @@ export const zh: Translations = {
       selectTheme: "选择主题",
       fontSizeTitle: "字体大小",
       fontSizeDescription: "调整应用全局文字大小（范围：{{min}}-{{max}}px）",
-      accentColor: "主题色",
+
+    },
+    layout: {
+      title: "布局",
+      modeTitle: "侧边栏布局",
+      modeDescription: "选择连接与查询的展示方式。",
+      modeTabs: "标签式（连接/查询）",
+      modeTree: "树状（查询挂在连接下）",
     },
     updates: {
       title: "更新",
@@ -160,6 +187,10 @@ export const zh: Translations = {
       failed: "连接失败",
       connecting: "连接中",
       idle: "未连接",
+    },
+    tree: {
+      database: "数据库",
+      queries: "查询",
     },
     dialog: {
       editTitle: "编辑数据库连接",

@@ -8,8 +8,25 @@ import {
   Edit3,
   Search,
   Server,
+  Plus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useTranslation } from "react-i18next";
 import {
   siMysql,
   siPostgresql,
@@ -60,18 +77,44 @@ const getConnectionIcon = (driver?: Driver): React.ReactNode => {
 
 interface SavedQueriesListProps {
   onSelectQuery: (query: SavedQuery) => void;
+  onCreateQuery?: (
+    connectionId: number,
+    databaseName: string,
+    driver: string,
+  ) => void;
   lastUpdated?: number;
 }
 
+interface ConnectionOption {
+  id: number;
+  name: string;
+  dbType: Driver;
+  database?: string;
+}
+
+const DEFAULT_DATABASE_VALUE = "__default__";
+
 export function SavedQueriesList({
   onSelectQuery,
+  onCreateQuery,
   lastUpdated,
 }: SavedQueriesListProps) {
+  const { t } = useTranslation();
   const [queries, setQueries] = useState<SavedQuery[]>([]);
+  const [connectionOptions, setConnectionOptions] = useState<ConnectionOption[]>(
+    [],
+  );
   const [connections, setConnections] = useState<Record<number, string>>({});
   const [connectionTypes, setConnectionTypes] = useState<
     Record<number, Driver>
   >({});
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedConnectionId, setSelectedConnectionId] = useState("");
+  const [databaseOptions, setDatabaseOptions] = useState<string[]>([]);
+  const [selectedDatabase, setSelectedDatabase] = useState(
+    DEFAULT_DATABASE_VALUE,
+  );
+  const [loadingDatabases, setLoadingDatabases] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -94,12 +137,26 @@ export function SavedQueriesList({
 
       const connMap: Record<number, string> = {};
       const connTypeMap: Record<number, Driver> = {};
+      const normalizedConnections: ConnectionOption[] = [];
       connectionsData.forEach((c: any) => {
-        connMap[c.id] = c.name;
-        connTypeMap[c.id] = c.dbType;
+        const id = Number(c.id);
+        if (!Number.isFinite(id)) return;
+        const name =
+          typeof c.name === "string" && c.name.trim().length > 0
+            ? c.name
+            : `#${id}`;
+        const dbType = (c.dbType || c.driver || "postgres") as Driver;
+        const database =
+          typeof c.database === "string" && c.database.trim().length > 0
+            ? c.database
+            : undefined;
+        connMap[id] = name;
+        connTypeMap[id] = dbType;
+        normalizedConnections.push({ id, name, dbType, database });
       });
       setConnections(connMap);
       setConnectionTypes(connTypeMap);
+      setConnectionOptions(normalizedConnections);
     } catch (error) {
       console.error("Failed to fetch saved queries or connections:", error);
     }
@@ -123,6 +180,58 @@ export function SavedQueriesList({
     }
   };
 
+  const loadDatabasesForConnection = async (connectionId: number) => {
+    setLoadingDatabases(true);
+    try {
+      const data = await api.metadata.listDatabasesById(connectionId);
+      const normalized = Array.from(
+        new Set(
+          data
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter((item) => item.length > 0),
+        ),
+      );
+      setDatabaseOptions(normalized);
+    } catch (error) {
+      console.error("Failed to load databases for query creation:", error);
+      setDatabaseOptions([]);
+    } finally {
+      setLoadingDatabases(false);
+    }
+  };
+
+  const handleConnectionChange = (value: string) => {
+    setSelectedConnectionId(value);
+    setSelectedDatabase(DEFAULT_DATABASE_VALUE);
+    const connectionId = Number(value);
+    if (!Number.isFinite(connectionId)) {
+      setDatabaseOptions([]);
+      return;
+    }
+    void loadDatabasesForConnection(connectionId);
+  };
+
+  const handleCreateDialogOpenChange = (open: boolean) => {
+    setCreateDialogOpen(open);
+    if (open) return;
+    setSelectedConnectionId("");
+    setSelectedDatabase(DEFAULT_DATABASE_VALUE);
+    setDatabaseOptions([]);
+    setLoadingDatabases(false);
+  };
+
+  const handleCreate = () => {
+    if (!onCreateQuery || !selectedConnectionId) return;
+    const connectionId = Number(selectedConnectionId);
+    const connection = connectionOptions.find((item) => item.id === connectionId);
+    if (!connection) return;
+    const explicitDatabase =
+      selectedDatabase === DEFAULT_DATABASE_VALUE ? "" : selectedDatabase;
+    const resolvedDatabase = explicitDatabase || connection.database || "";
+    onCreateQuery(connection.id, resolvedDatabase, connection.dbType);
+    handleCreateDialogOpenChange(false);
+  };
+
   const filteredQueries = queries.filter((q) =>
     q.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -130,22 +239,34 @@ export function SavedQueriesList({
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
       <div className="px-2 py-1 border-b border-border flex items-center justify-between h-8">
-        <h2 className="font-semibold text-sm">Saved Queries</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0"
-          onClick={fetchQueriesAndConnections}
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-        </Button>
+        <h2 className="font-semibold text-sm">{t("sidebar.queries.title")}</h2>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 gap-1"
+            onClick={() => handleCreateDialogOpenChange(true)}
+            disabled={!onCreateQuery}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="text-xs">{t("sidebar.queries.newQuery")}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={fetchQueriesAndConnections}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="p-2 border-b border-border">
         <div className="relative">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search queries..."
+            placeholder={t("sidebar.queries.searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-8"
@@ -197,10 +318,92 @@ export function SavedQueriesList({
         ))}
         {filteredQueries.length === 0 && (
           <div className="p-4 text-center text-sm text-muted-foreground">
-            No saved queries found.
+            {t("sidebar.queries.empty")}
           </div>
         )}
       </div>
+
+      <Dialog open={createDialogOpen} onOpenChange={handleCreateDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("sidebar.queries.newQueryDialog.title")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="query-create-connection">
+                {t("sidebar.queries.newQueryDialog.connection")}
+              </Label>
+              <Select
+                value={selectedConnectionId}
+                onValueChange={handleConnectionChange}
+              >
+                <SelectTrigger id="query-create-connection">
+                  <SelectValue
+                    placeholder={t(
+                      "sidebar.queries.newQueryDialog.connectionPlaceholder",
+                    )}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {connectionOptions.map((connection) => (
+                    <SelectItem
+                      key={connection.id}
+                      value={String(connection.id)}
+                      className="text-sm"
+                    >
+                      {connection.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="query-create-database">
+                {t("sidebar.queries.newQueryDialog.databaseOptional")}
+              </Label>
+              <Select
+                value={selectedDatabase}
+                onValueChange={setSelectedDatabase}
+                disabled={!selectedConnectionId || loadingDatabases}
+              >
+                <SelectTrigger id="query-create-database">
+                  <SelectValue
+                    placeholder={t(
+                      "sidebar.queries.newQueryDialog.databasePlaceholder",
+                    )}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DEFAULT_DATABASE_VALUE}>
+                    {t("sidebar.queries.newQueryDialog.databaseDefault")}
+                  </SelectItem>
+                  {databaseOptions.map((database) => (
+                    <SelectItem key={database} value={database}>
+                      {database}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCreateDialogOpenChange(false)}
+            >
+              {t("sidebar.queries.newQueryDialog.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreate}
+              disabled={!selectedConnectionId}
+            >
+              {t("sidebar.queries.newQueryDialog.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {contextMenu.visible && (
         <div
@@ -218,7 +421,7 @@ export function SavedQueriesList({
             }}
           >
             <Edit3 className="w-4 h-4" />
-            Open
+            {t("sidebar.queries.open")}
           </button>
           <div className="h-px bg-border my-1" />
           <button
@@ -229,7 +432,7 @@ export function SavedQueriesList({
             }}
           >
             <Trash2 className="w-4 h-4" />
-            Delete
+            {t("sidebar.queries.delete")}
           </button>
         </div>
       )}

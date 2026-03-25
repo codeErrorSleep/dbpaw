@@ -17,6 +17,14 @@ pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
+pub(crate) fn strip_trailing_statement_terminator(sql: &str) -> &str {
+    let mut out = sql.trim_end();
+    while let Some(stripped) = out.strip_suffix(';') {
+        out = stripped.trim_end();
+    }
+    out
+}
+
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
     async fn test_connection(&self) -> Result<(), String>;
@@ -108,5 +116,28 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
             "[UNSUPPORTED] Driver {} not supported",
             form.driver
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_trailing_statement_terminator;
+
+    #[test]
+    fn strip_trailing_statement_terminator_removes_single_semicolon() {
+        assert_eq!(strip_trailing_statement_terminator("SELECT 1;"), "SELECT 1");
+    }
+
+    #[test]
+    fn strip_trailing_statement_terminator_removes_multiple_semicolons_and_spaces() {
+        assert_eq!(
+            strip_trailing_statement_terminator("SELECT 1;;;   "),
+            "SELECT 1"
+        );
+    }
+
+    #[test]
+    fn strip_trailing_statement_terminator_keeps_sql_without_semicolon() {
+        assert_eq!(strip_trailing_statement_terminator("SELECT 1"), "SELECT 1");
     }
 }

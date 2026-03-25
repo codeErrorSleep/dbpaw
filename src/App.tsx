@@ -63,6 +63,7 @@ import {
   normalizeDatabaseOptions,
   resolvePreferredDatabase,
 } from "@/lib/sqlEditorDatabase";
+import { getSetting } from "@/services/store";
 
 interface TabItem {
   id: string;
@@ -115,10 +116,12 @@ type ActiveTableTarget = {
   schema?: string;
 };
 
+type SidebarLayoutMode = "tabs" | "tree";
+
 const DEFAULT_SQL = "";
 
 const TAB_TRIGGER_CLASS =
-  "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-primary rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0 shrink-0";
+  "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-accent rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0 shrink-0";
 
 const SqlEditor = lazy(async () => {
   const mod = await import("@/components/business/Editor/SqlEditor");
@@ -203,9 +206,18 @@ export default function App() {
   );
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
   const [isCloseSaveDialogOpen, setIsCloseSaveDialogOpen] = useState(false);
+  const [sidebarLayout, setSidebarLayout] = useState<SidebarLayoutMode>("tabs");
   const closeSaveCompletedRef = useRef(false);
   const unsavedConfirmActionRef = useRef<"save" | "discard" | null>(null);
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    void getSetting<SidebarLayoutMode>("sidebarLayout", "tabs").then(
+      (layout) => {
+        setSidebarLayout(layout === "tree" ? "tree" : "tabs");
+      },
+    );
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -334,15 +346,22 @@ export default function App() {
     databaseName: string,
     driver: string,
   ) => {
-    const newTabId = `query-${connectionId}-${databaseName}-${Date.now()}`;
+    const normalizedDatabaseName = databaseName.trim();
+    const fallbackDatabaseLabel = t("app.tab.defaultDatabase");
+    const initialDatabase = normalizedDatabaseName || undefined;
+    const titleDatabase = normalizedDatabaseName || fallbackDatabaseLabel;
+    const newTabId = `query-${connectionId}-${titleDatabase}-${Date.now()}`;
     const newTab: TabItem = {
       id: newTabId,
       type: "editor",
-      title: t("app.tab.queryTitle", { database: databaseName }),
+      title: t("app.tab.queryTitle", { database: titleDatabase }),
       connectionId,
-      database: databaseName,
+      database: initialDatabase,
       driver,
-      availableDatabases: normalizeDatabaseOptions([databaseName], databaseName),
+      availableDatabases: normalizeDatabaseOptions(
+        initialDatabase ? [initialDatabase] : [],
+        initialDatabase,
+      ),
       sqlContent: DEFAULT_SQL,
       lastSavedSql: DEFAULT_SQL,
       isDirty: false,
@@ -352,8 +371,8 @@ export default function App() {
     setActiveTab(newTabId);
 
     Promise.allSettled([
-      fetchEditorDatabases(connectionId, databaseName),
-      fetchEditorSchemaOverview(connectionId, databaseName),
+      fetchEditorDatabases(connectionId, initialDatabase),
+      fetchEditorSchemaOverview(connectionId, initialDatabase),
     ])
       .then(([availableDatabasesResult, schemaOverviewResult]) => {
         if (availableDatabasesResult.status === "rejected") {
@@ -376,7 +395,10 @@ export default function App() {
         const availableDatabases =
           availableDatabasesResult.status === "fulfilled"
             ? availableDatabasesResult.value
-            : normalizeDatabaseOptions([databaseName], databaseName);
+            : normalizeDatabaseOptions(
+                initialDatabase ? [initialDatabase] : [],
+                initialDatabase,
+              );
         const schemaOverview =
           schemaOverviewResult.status === "fulfilled"
             ? schemaOverviewResult.value
@@ -388,8 +410,8 @@ export default function App() {
               ? {
                   ...t,
                   database: resolvePreferredDatabase({
-                    preferredDatabase: databaseName,
-                    connectionDatabase: databaseName,
+                    preferredDatabase: initialDatabase,
+                    connectionDatabase: initialDatabase,
                     availableDatabases,
                   }),
                   availableDatabases,
@@ -671,23 +693,23 @@ export default function App() {
         page: 1,
         limit: 100,
       });
-      let columns = resp.data.length > 0 ? Object.keys(resp.data[0]) : [];
-
-      // If data is empty, fetch columns from metadata
-      if (columns.length === 0) {
-        try {
-          const meta = await api.metadata.getTableMetadata(
-            connectionId,
-            database,
-            schema,
-            table,
-          );
-          if (meta && meta.columns) {
-            columns = meta.columns.map((c) => c.name);
-          }
-        } catch (e) {
-          console.warn("Failed to fetch metadata for empty table:", e);
+      let columns: string[] = [];
+      try {
+        const meta = await api.metadata.getTableMetadata(
+          connectionId,
+          database,
+          schema,
+          table,
+        );
+        if (meta && meta.columns) {
+          columns = meta.columns.map((c) => c.name);
         }
+      } catch (e) {
+        console.warn("Failed to fetch metadata for table columns:", e);
+      }
+
+      if (columns.length === 0) {
+        columns = resp.data.length > 0 ? Object.keys(resp.data[0]) : [];
       }
 
       const newTab: TabItem = {
@@ -1016,15 +1038,13 @@ export default function App() {
         orderBy: orderBy || undefined,
       });
 
-      const columns =
-        resp.data.length > 0 ? Object.keys(resp.data[0]) : tab.columns;
       setTabs((prev) =>
         prev.map((t) => {
           if (t.id !== tabId) return t;
           return {
             ...t,
             data: resp.data,
-            columns,
+            columns: t.columns,
             total: resp.total,
             page: resp.page,
             executionTimeMs: resp.executionTimeMs,
@@ -1388,6 +1408,7 @@ export default function App() {
               onSelectSavedQuery={handleOpenSavedQuery}
               lastUpdated={queriesLastUpdated}
               activeTableTarget={activeTableTarget}
+              layoutMode={sidebarLayout}
             />
           </ResizablePanel>
 
@@ -1443,9 +1464,9 @@ export default function App() {
                                   >
                                     <div className="relative inline-flex items-center gap-2 min-w-0">
                                       {tab.type === "table" ? (
-                                        <Table className="w-4 h-4 text-primary" />
+                                        <Table className="w-4 h-4 text-accent" />
                                       ) : (
-                                        <FileCode className="w-4 h-4 text-primary" />
+                                        <FileCode className="w-4 h-4 text-accent" />
                                       )}
                                       <span className="max-w-[120px] flex items-center">
                                         <span className="truncate">
@@ -1720,7 +1741,12 @@ export default function App() {
       />
       {openSettings && (
         <Suspense fallback={null}>
-          <SettingsDialog open={openSettings} onOpenChange={setOpenSettings} />
+          <SettingsDialog
+            open={openSettings}
+            onOpenChange={setOpenSettings}
+            sidebarLayout={sidebarLayout}
+            onSidebarLayoutChange={setSidebarLayout}
+          />
         </Suspense>
       )}
       <UpdaterChecker />

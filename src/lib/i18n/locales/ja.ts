@@ -28,6 +28,7 @@ export const ja: Translations = {
       closeTab: "タブを閉じる",
       closeOtherTabs: "他のタブを閉じる",
       queryTitle: "クエリ（{{database}}）",
+      defaultDatabase: "デフォルト",
       ddlTitle: "DDL: {{table}}",
     },
     dialog: {
@@ -57,12 +58,31 @@ export const ja: Translations = {
       connections: "接続",
       queries: "クエリ",
     },
+    queries: {
+      title: "保存済みクエリ",
+      newQuery: "新規",
+      searchPlaceholder: "クエリを検索...",
+      empty: "保存済みクエリが見つかりません。",
+      open: "開く",
+      delete: "削除",
+      newQueryDialog: {
+        title: "新しいクエリ",
+        connection: "接続",
+        connectionPlaceholder: "接続を選択",
+        databaseOptional: "データベース（任意）",
+        databasePlaceholder: "デフォルトデータベースを使用",
+        databaseDefault: "接続のデフォルトを使用",
+        cancel: "キャンセル",
+        confirm: "作成",
+      },
+    },
   },
   settings: {
     title: "設定",
     description: "アプリの外観と設定を管理します。",
     sections: {
       general: "一般",
+      layout: "レイアウト",
       ai: "AI",
       shortcuts: "ショートカット",
       about: "情報",
@@ -82,7 +102,13 @@ export const ja: Translations = {
       fontSizeTitle: "フォントサイズ",
       fontSizeDescription:
         "アプリ全体の文字サイズを調整します（範囲：{{min}}-{{max}}px）",
-      accentColor: "アクセントカラー",
+    },
+    layout: {
+      title: "レイアウト",
+      modeTitle: "サイドバー配置",
+      modeDescription: "接続とクエリの表示方法を選択します。",
+      modeTabs: "タブ（接続/クエリ）",
+      modeTree: "ツリー（接続配下にクエリ）",
     },
     updates: {
       title: "アップデート",
@@ -167,6 +193,10 @@ export const ja: Translations = {
       failed: "接続失敗",
       connecting: "接続中",
       idle: "未接続",
+    },
+    tree: {
+      database: "データベース",
+      queries: "クエリ",
     },
     dialog: {
       editTitle: "データベース接続を編集",
