@@ -95,7 +95,11 @@ describe("updater startBackgroundInstall", () => {
     };
 
     await waitForResolve();
-    resolveInstall?.();
+    const finishInstall = resolveInstall as (() => void) | null;
+    if (!finishInstall) {
+      throw new Error("downloadAndInstall resolver was not captured");
+    }
+    finishInstall();
     const completion = await updater.waitForInstallCompletion();
     expect(completion?.state).toBe("ready_to_restart");
   });
