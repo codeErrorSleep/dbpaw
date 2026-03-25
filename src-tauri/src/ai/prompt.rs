@@ -5,8 +5,8 @@ const MAX_TABLES: usize = 8;
 const MAX_COLUMNS: usize = 12;
 const MAX_SCHEMA_CHARS: usize = 6000;
 
-/// Build a minimal prompt bundle without restrictive rules.
-/// User input is passed directly to the AI with schema context attached.
+/// Build a minimal prompt bundle with system context only.
+/// User and assistant turns should come from persisted conversation history.
 pub fn build_prompt_bundle(
     _scenario: &str,
     input: &str,
@@ -15,17 +15,22 @@ pub fn build_prompt_bundle(
     let selected = select_tables(input, schema_overview);
     let schema_text = render_schema_summary(&selected);
 
-    // Simple user message with schema context attached
+    let mut content =
+        "Use the conversation history as the source of truth for user and assistant turns."
+            .to_string();
+
     let content = if schema_text.is_empty() || schema_text == "(No schema provided)" {
-        input.to_string()
+        content
     } else {
-        format!("{}\n\nDatabase schema:\n{}", input, schema_text)
+        content.push_str("\n\nDatabase schema:\n");
+        content.push_str(&schema_text);
+        content
     };
 
     AiPromptBundle {
         prompt_version: PROMPT_VERSION.to_string(),
         messages: vec![AiChatMessage {
-            role: "user".to_string(),
+            role: "system".to_string(),
             content,
         }],
     }
@@ -234,8 +239,10 @@ mod tests {
         let bundle = build_prompt_bundle("sql_generate", "List all users", Some(&overview));
 
         assert_eq!(bundle.messages.len(), 1);
-        assert_eq!(bundle.messages[0].role, "user");
-        assert!(bundle.messages[0].content.contains("List all users"));
+        assert_eq!(bundle.messages[0].role, "system");
+        assert!(bundle.messages[0]
+            .content
+            .contains("Use the conversation history as the source of truth"));
         assert!(bundle.messages[0].content.contains("Database schema:"));
         assert!(bundle.messages[0].content.contains("public.users"));
     }
@@ -245,7 +252,10 @@ mod tests {
         let bundle = build_prompt_bundle("sql_generate", "Hello", None);
 
         assert_eq!(bundle.messages.len(), 1);
-        assert_eq!(bundle.messages[0].role, "user");
-        assert_eq!(bundle.messages[0].content, "Hello");
+        assert_eq!(bundle.messages[0].role, "system");
+        assert_eq!(
+            bundle.messages[0].content,
+            "Use the conversation history as the source of truth for user and assistant turns."
+        );
     }
 }

@@ -95,6 +95,16 @@ fn map_history_load_error(conversation_id: i64, e: &str) -> String {
     "Failed to load conversation history".to_string()
 }
 
+fn assemble_final_messages(
+    bundle: &[AiChatMessage],
+    history: &[AiChatMessage],
+) -> Vec<AiChatMessage> {
+    let mut final_messages = Vec::with_capacity(bundle.len() + history.len());
+    final_messages.extend(bundle.iter().cloned());
+    final_messages.extend(history.iter().cloned());
+    final_messages
+}
+
 async fn get_db(state: &State<'_, AppState>) -> Result<Arc<crate::db::local::LocalDb>, String> {
     let local_db = {
         let lock = state.local_db.lock().await;
@@ -372,8 +382,7 @@ async fn run_chat(
         }
     }
 
-    let mut final_messages = bundle.messages.clone();
-    final_messages.extend(history);
+    let final_messages = assemble_final_messages(&bundle.messages, &history);
 
     let _ = app.emit(
         "ai/started",
@@ -476,9 +485,11 @@ pub async fn ai_delete_conversation(
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_provider_enabled, map_default_provider_error, map_history_load_error,
-        map_provider_lookup_error, normalize_provider_type, validate_conversation_requirement,
+        assemble_final_messages, ensure_provider_enabled, map_default_provider_error,
+        map_history_load_error, map_provider_lookup_error, normalize_provider_type,
+        validate_conversation_requirement,
     };
+    use crate::ai::types::AiChatMessage;
 
     #[test]
     fn normalize_provider_type_rejects_empty_value() {
@@ -550,5 +561,35 @@ mod tests {
             map_history_load_error(42, "[DB_ERROR] broken"),
             "Failed to load conversation history"
         );
+    }
+
+    #[test]
+    fn assemble_final_messages_keeps_context_before_history() {
+        let bundle = vec![AiChatMessage {
+            role: "system".to_string(),
+            content: "schema".to_string(),
+        }];
+        let history = vec![
+            AiChatMessage {
+                role: "user".to_string(),
+                content: "older question".to_string(),
+            },
+            AiChatMessage {
+                role: "assistant".to_string(),
+                content: "older answer".to_string(),
+            },
+            AiChatMessage {
+                role: "user".to_string(),
+                content: "latest question".to_string(),
+            },
+        ];
+
+        let final_messages = assemble_final_messages(&bundle, &history);
+
+        assert_eq!(final_messages.len(), 4);
+        assert_eq!(final_messages[0].role, "system");
+        assert_eq!(final_messages[1].content, "older question");
+        assert_eq!(final_messages[2].content, "older answer");
+        assert_eq!(final_messages[3].content, "latest question");
     }
 }
