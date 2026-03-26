@@ -17,6 +17,50 @@ pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
+/// Build a `[CONN_FAILED]` error message with a context-aware hint derived from the
+/// underlying error text, so users are not misled by a generic credential warning
+/// when the actual problem is TLS incompatibility, a network issue, etc.
+pub(crate) fn conn_failed_error(e: &dyn std::fmt::Display) -> String {
+    let raw = e.to_string();
+    let lower = raw.to_ascii_lowercase();
+
+    let hint = if lower.contains("handshake")
+        || lower.contains("fatal alert")
+        || lower.contains("tls")
+        || lower.contains("ssl")
+        || lower.contains("certificate")
+    {
+        "hint: TLS/SSL handshake failed — the server may use a TLS version or cipher suite \
+         incompatible with the client (TLS 1.2+ required); try disabling SSL in the connection settings"
+    } else if lower.contains("access denied")
+        || lower.contains("authentication")
+        || lower.contains("password")
+        || lower.contains("login failed")
+        || lower.contains("invalid password")
+        || lower.contains("1045")
+    {
+        "hint: authentication failed — verify the username/password are correct; \
+         if they contain special characters they must be URL-encoded"
+    } else if lower.contains("connection refused")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("broken pipe")
+        || lower.contains("network unreachable")
+    {
+        "hint: could not reach the server — check host, port, firewall rules, and SSH tunnel settings"
+    } else if lower.contains("name resolution")
+        || lower.contains("no such host")
+        || lower.contains("failed to lookup")
+        || lower.contains("dns")
+    {
+        "hint: hostname could not be resolved — check that the host address is correct"
+    } else {
+        "hint: check host, port, credentials, and SSL settings"
+    };
+
+    format!("[CONN_FAILED] {raw} ({hint})")
+}
+
 pub(crate) fn strip_trailing_statement_terminator(sql: &str) -> &str {
     let mut out = sql.trim_end();
     while let Some(stripped) = out.strip_suffix(';') {
@@ -121,7 +165,48 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
 
 #[cfg(test)]
 mod tests {
-    use super::strip_trailing_statement_terminator;
+    use super::{conn_failed_error, strip_trailing_statement_terminator};
+
+    #[test]
+    fn conn_failed_error_tls_hint() {
+        let msg = conn_failed_error(&"error communicating with database: received fatal alert: HandshakeFailure");
+        assert!(msg.starts_with("[CONN_FAILED]"));
+        assert!(msg.contains("TLS/SSL handshake failed"));
+        assert!(!msg.contains("username/password"));
+    }
+
+    #[test]
+    fn conn_failed_error_auth_hint() {
+        let msg = conn_failed_error(&"Access denied for user 'root'@'localhost'");
+        assert!(msg.contains("authentication failed"));
+        assert!(msg.contains("URL-encoded"));
+    }
+
+    #[test]
+    fn conn_failed_error_connection_refused_hint() {
+        let msg = conn_failed_error(&"Connection refused (os error 111)");
+        assert!(msg.contains("could not reach the server"));
+    }
+
+    #[test]
+    fn conn_failed_error_timeout_hint() {
+        let msg = conn_failed_error(&"connection timed out");
+        assert!(msg.contains("could not reach the server"));
+    }
+
+    #[test]
+    fn conn_failed_error_dns_hint() {
+        let msg = conn_failed_error(&"failed to lookup address information: no such host");
+        assert!(msg.contains("hostname could not be resolved"));
+    }
+
+    #[test]
+    fn conn_failed_error_generic_hint() {
+        let msg = conn_failed_error(&"some unknown database error");
+        assert!(msg.starts_with("[CONN_FAILED]"));
+        assert!(msg.contains("hint:"));
+        assert!(!msg.contains("username/password"));
+    }
 
     #[test]
     fn strip_trailing_statement_terminator_removes_single_semicolon() {

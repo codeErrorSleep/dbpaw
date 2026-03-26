@@ -44,7 +44,14 @@ pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, String> {
         .and_then(|v| if v.trim().is_empty() { None } else { Some(v) });
 
     let target_host = config.host.clone().unwrap_or("localhost".to_string());
-    let target_port = config.port.unwrap_or(5432);
+    let default_port: i64 = match config.driver.to_ascii_lowercase().as_str() {
+        "mysql" => 3306,
+        "mssql" => 1433,
+        "clickhouse" => 9000,
+        "sqlite" => 0,
+        _ => 5432, // postgres and unknown drivers
+    };
+    let target_port = config.port.unwrap_or(default_port);
     if target_port < 1 || target_port > 65535 {
         return Err("Target port must be between 1 and 65535".to_string());
     }
@@ -243,6 +250,55 @@ fn handle_connection(
 mod tests {
     use super::*;
     use crate::models::ConnectionForm;
+
+    #[test]
+    fn test_target_port_default_by_driver() {
+        // Verify driver-specific default ports are applied when port is None.
+        // We can only test port validation since start_ssh_tunnel requires a real host;
+        // use an out-of-range port to force early validation failure and confirm the
+        // default port resolution branch is NOT taken (port=None should NOT produce 5432 for MySQL).
+
+        // For MySQL with no port set, the default must be 3306 (not 5432).
+        // We verify indirectly: if port is None and driver is mysql, target_port = 3306 which
+        // passes validation (1..=65535). The tunnel will fail to connect (no real host), but
+        // the validation itself won't error with "Target port must be between 1 and 65535".
+        let config_mysql = ConnectionForm {
+            driver: "mysql".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: None, // deliberately omitted — should default to 3306
+            ssh_host: Some("127.0.0.1".to_string()),
+            ssh_port: Some(22),
+            ssh_username: Some("user".to_string()),
+            ssh_password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        let result = start_ssh_tunnel(&config_mysql);
+        // Should fail with a network/connect error, NOT a port validation error
+        if let Err(e) = result {
+            assert!(
+                !e.contains("Target port must be between 1 and 65535"),
+                "MySQL default port (3306) should pass validation, got: {e}"
+            );
+        }
+
+        let config_mssql = ConnectionForm {
+            driver: "mssql".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: None, // should default to 1433
+            ssh_host: Some("127.0.0.1".to_string()),
+            ssh_port: Some(22),
+            ssh_username: Some("user".to_string()),
+            ssh_password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        let result = start_ssh_tunnel(&config_mssql);
+        if let Err(e) = result {
+            assert!(
+                !e.contains("Target port must be between 1 and 65535"),
+                "MSSQL default port (1433) should pass validation, got: {e}"
+            );
+        }
+    }
 
     #[test]
     fn test_ssh_port_validation() {

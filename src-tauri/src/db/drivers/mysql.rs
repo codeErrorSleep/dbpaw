@@ -132,6 +132,10 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
         } else {
             dsn.push_str("?ssl-mode=REQUIRED");
         }
+    } else {
+        // Explicitly disable TLS to avoid HandshakeFailure on servers with TLS
+        // versions or cipher suites incompatible with rustls (TLS 1.2+ only).
+        dsn.push_str("?ssl-mode=DISABLED");
     }
 
     Ok((dsn, ca_cert_path))
@@ -189,11 +193,7 @@ impl MysqlDriver {
             .acquire_timeout(std::time::Duration::from_secs(3))
             .connect(&dsn)
             .await
-            .map_err(|e| {
-                format!(
-                    "[CONN_FAILED] {e} (hint: check if username/password contain special characters; they must be URL-encoded)"
-                )
-            })?;
+            .map_err(|e| super::conn_failed_error(&e))?;
 
         Ok(Self {
             pool,
@@ -1025,7 +1025,7 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://root:password@localhost:3306/test_db");
+        assert_eq!(conn_str, "mysql://root:password@localhost:3306/test_db?ssl-mode=DISABLED");
     }
 
     #[test]
@@ -1041,7 +1041,7 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://user:pass@127.0.0.1:3307");
+        assert_eq!(conn_str, "mysql://user:pass@127.0.0.1:3307?ssl-mode=DISABLED");
     }
 
     #[test]
@@ -1057,7 +1057,7 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://user:@127.0.0.1:3307");
+        assert_eq!(conn_str, "mysql://user:@127.0.0.1:3307?ssl-mode=DISABLED");
     }
 
     #[test]
@@ -1073,7 +1073,7 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://user:pass@127.0.0.1:3307");
+        assert_eq!(conn_str, "mysql://user:pass@127.0.0.1:3307?ssl-mode=DISABLED");
     }
 
     #[test]
@@ -1089,7 +1089,7 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://root:password@localhost:3308/test_db");
+        assert_eq!(conn_str, "mysql://root:password@localhost:3308/test_db?ssl-mode=DISABLED");
     }
 
     #[test]
@@ -1107,7 +1107,7 @@ mod tests {
         let conn_str = build_dsn(&form).unwrap();
         assert_eq!(
             conn_str,
-            "mysql://user%40name:p%40ss%3Aword%23%3F@localhost:3306/test_db"
+            "mysql://user%40name:p%40ss%3Aword%23%3F@localhost:3306/test_db?ssl-mode=DISABLED"
         );
     }
 
@@ -1135,7 +1135,7 @@ mod tests {
         let conn_str = build_dsn(&form).unwrap();
         assert_eq!(
             conn_str,
-            "mysql://user%40name:p%23ss%2A%40%29@127.0.0.1:4406/test_db"
+            "mysql://user%40name:p%23ss%2A%40%29@127.0.0.1:4406/test_db?ssl-mode=DISABLED"
         );
     }
 
@@ -1175,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    fn test_conn_string_with_ssl_false_does_not_explicitly_disable_tls() {
+    fn test_conn_string_with_ssl_false_explicitly_disables_tls() {
         let form = ConnectionForm {
             driver: "mysql".to_string(),
             host: Some("localhost".to_string()),
@@ -1188,9 +1188,11 @@ mod tests {
         };
 
         let conn_str = build_dsn(&form).unwrap();
-        assert_eq!(conn_str, "mysql://root:password@localhost:3306/test_db");
-        assert!(!conn_str.contains("ssl-mode="));
-        assert!(!conn_str.contains("DISABLED"));
+        assert_eq!(
+            conn_str,
+            "mysql://root:password@localhost:3306/test_db?ssl-mode=DISABLED"
+        );
+        assert!(conn_str.contains("ssl-mode=DISABLED"));
     }
 
     #[test]

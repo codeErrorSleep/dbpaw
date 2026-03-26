@@ -161,11 +161,7 @@ impl PostgresDriver {
             .acquire_timeout(std::time::Duration::from_secs(3))
             .connect(&dsn)
             .await
-            .map_err(|e| {
-                format!(
-                    "[CONN_FAILED] {e} (hint: check if username/password contain special characters; they must be URL-encoded)"
-                )
-            })?;
+            .map_err(|e| super::conn_failed_error(&e))?;
 
         Ok(Self {
             pool,
