@@ -34,6 +34,8 @@ reference
 .trae/documents/
 .cursor/plans/
 
+# skills
+.trae/skills/*
 
 # example
 githubworkflowexample/*
