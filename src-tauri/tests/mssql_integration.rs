@@ -515,3 +515,633 @@ async fn test_mssql_boolean_and_json_type_mapping_regression() {
         .await;
     driver.close().await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_execute_query_reports_affected_rows_for_update_delete() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_affected_rows_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name NVARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create affected_rows probe table failed");
+
+    let inserted = driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name) VALUES (1, N'a'), (2, N'b')",
+            qualified
+        ))
+        .await
+        .expect("insert affected_rows probe rows failed");
+    assert_eq!(inserted.row_count, 2);
+
+    let updated = driver
+        .execute_query(format!(
+            "UPDATE {} SET name = N'bb' WHERE id = 2",
+            qualified
+        ))
+        .await
+        .expect("update affected_rows probe row failed");
+    assert_eq!(updated.row_count, 1);
+
+    let deleted = driver
+        .execute_query(format!(
+            "DELETE FROM {} WHERE id IN (1, 2)",
+            qualified
+        ))
+        .await
+        .expect("delete affected_rows probe rows failed");
+    assert_eq!(deleted.row_count, 2);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_transaction_commit_and_rollback() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_txn_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name NVARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create mssql txn probe table failed");
+
+    driver
+        .execute_query("BEGIN TRANSACTION".to_string())
+        .await
+        .expect("begin transaction failed");
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name) VALUES (1, N'rolled_back')",
+            qualified
+        ))
+        .await
+        .expect("insert in rollback tx failed");
+    driver
+        .execute_query("ROLLBACK TRANSACTION".to_string())
+        .await
+        .expect("rollback failed");
+
+    let rolled_back = driver
+        .execute_query(format!(
+            "SELECT COUNT(*) AS c FROM {} WHERE id = 1",
+            qualified
+        ))
+        .await
+        .expect("count after rollback failed");
+    let rolled_back_count = rolled_back.data[0]["c"]
+        .as_str()
+        .expect("rollback count should be string")
+        .parse::<i64>()
+        .expect("rollback count should be numeric");
+    assert_eq!(rolled_back_count, 0);
+
+    driver
+        .execute_query("BEGIN TRANSACTION".to_string())
+        .await
+        .expect("begin transaction failed");
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name) VALUES (2, N'committed')",
+            qualified
+        ))
+        .await
+        .expect("insert in commit tx failed");
+    driver
+        .execute_query("COMMIT TRANSACTION".to_string())
+        .await
+        .expect("commit failed");
+
+    let committed = driver
+        .execute_query(format!(
+            "SELECT COUNT(*) AS c FROM {} WHERE id = 2",
+            qualified
+        ))
+        .await
+        .expect("count after commit failed");
+    let committed_count = committed.data[0]["c"]
+        .as_str()
+        .expect("commit count should be string")
+        .parse::<i64>()
+        .expect("commit count should be numeric");
+    assert_eq!(committed_count, 1);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_error_handling_for_sql_error() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let err = driver
+        .execute_query("SELECT * FROM __dbpaw_table_not_exists".to_string())
+        .await
+        .expect_err("invalid SQL should return query error");
+    assert!(
+        err.contains("[QUERY_ERROR]") || err.contains("Invalid object name"),
+        "unexpected error shape: {}",
+        err
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_connection_failure_with_wrong_password() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, mut form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    form.password = Some("dbpaw_wrong_password".to_string());
+
+    let err = match MssqlDriver::connect(&form).await {
+        Ok(_) => panic!("wrong password should fail"),
+        Err(err) => err,
+    };
+    assert!(
+        err.starts_with("[CONN_FAILED]"),
+        "unexpected error: {}",
+        err
+    );
+    assert!(!err.trim().is_empty(), "error message should not be empty");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_connection_timeout_or_unreachable_host_error() {
+    let form = dbpaw_lib::models::ConnectionForm {
+        driver: "mssql".to_string(),
+        host: Some("203.0.113.1".to_string()),
+        port: Some(1433),
+        username: Some("sa".to_string()),
+        password: Some("Password123".to_string()),
+        database: Some("master".to_string()),
+        ssl: Some(false),
+        ..Default::default()
+    };
+
+    let err = match MssqlDriver::connect(&form).await {
+        Ok(_) => panic!("unreachable host should fail"),
+        Err(err) => err,
+    };
+    assert!(
+        err.starts_with("[CONN_FAILED]"),
+        "unexpected error: {}",
+        err
+    );
+    assert!(
+        err.to_ascii_lowercase().contains("timed out")
+            || err.to_ascii_lowercase().contains("timeout")
+            || err.to_ascii_lowercase().contains("network")
+            || err.to_ascii_lowercase().contains("connection refused")
+            || err.to_ascii_lowercase().contains("host")
+            || err.to_ascii_lowercase().contains("unreachable"),
+        "unexpected timeout/unreachable error: {}",
+        err
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_batch_insert_and_batch_execute_flow() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_batch_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, category NVARCHAR(20), score INT)",
+            qualified
+        ))
+        .await
+        .expect("create batch probe table failed");
+
+    let value_rows: Vec<String> = (1..=50)
+        .map(|id| {
+            let category = if id <= 25 { "alpha" } else { "beta" };
+            format!("({}, N'{}, {})", id, category, id)
+        })
+        .collect();
+    let insert_sql = format!(
+        "INSERT INTO {} (id, category, score) VALUES {}",
+        qualified,
+        value_rows.join(", ")
+    );
+    let inserted = driver
+        .execute_query(insert_sql)
+        .await
+        .expect("batch insert failed");
+    assert_eq!(inserted.row_count, 50);
+
+    let batch_sqls = vec![
+        format!(
+            "UPDATE {} SET score = score + 100 WHERE id <= 10",
+            qualified
+        ),
+        format!(
+            "UPDATE {} SET category = N'gamma' WHERE id BETWEEN 30 AND 40",
+            qualified
+        ),
+        format!("DELETE FROM {} WHERE id IN (3, 6, 9, 12, 15)", qualified),
+    ];
+    let mut affected = Vec::new();
+    for sql in batch_sqls {
+        let result = driver
+            .execute_query(sql)
+            .await
+            .expect("batch execute statement failed");
+        affected.push(result.row_count);
+    }
+    assert_eq!(affected, vec![10, 11, 5]);
+
+    let check_total = driver
+        .execute_query(format!("SELECT COUNT(*) AS c FROM {}", qualified))
+        .await
+        .expect("count after batch execute failed");
+    let total = check_total.data[0]["c"]
+        .as_str()
+        .expect("count should be string")
+        .parse::<i64>()
+        .expect("count should be numeric");
+    assert_eq!(total, 45);
+
+    let check_gamma = driver
+        .execute_query(format!(
+            "SELECT COUNT(*) AS c FROM {} WHERE category = N'gamma'",
+            qualified
+        ))
+        .await
+        .expect("count gamma rows failed");
+    let gamma = check_gamma.data[0]["c"]
+        .as_str()
+        .expect("gamma count should be string")
+        .parse::<i64>()
+        .expect("gamma count should be numeric");
+    assert_eq!(gamma, 11);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_large_text_and_blob_round_trip() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_large_field_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, body NVARCHAR(MAX), payload VARBINARY(MAX))",
+            qualified
+        ))
+        .await
+        .expect("create large field probe table failed");
+
+    let large_text = "x".repeat(70000);
+    let blob_data: Vec<u8> = (0..4096).map(|i| (i % 256) as u8).collect();
+
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, body, payload) VALUES (1, N'{}', 0x{})",
+            qualified,
+            large_text,
+            blob_data.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        ))
+        .await
+        .expect("insert large field probe row failed");
+
+    let result = driver
+        .execute_query(format!(
+            "SELECT body, payload FROM {} WHERE id = 1",
+            qualified
+        ))
+        .await
+        .expect("select large field probe row failed");
+    assert_eq!(result.row_count, 1);
+    let row = result.data.first().expect("large field row should exist");
+    let body = row
+        .get("body")
+        .and_then(|v| v.as_str())
+        .expect("body should be string");
+    assert_eq!(body.len(), 70000);
+    assert!(row.get("payload").is_some(), "payload should exist");
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_concurrent_connections_can_query() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_concurrent_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT, value NVARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create concurrent probe table failed");
+    driver
+        .execute_query(format!("INSERT INTO {} VALUES (1, N'test')", qualified))
+        .await
+        .expect("insert concurrent probe row failed");
+    driver.close().await;
+
+    let mut handles = Vec::new();
+
+    for _ in 0..8 {
+        let task_form = form.clone();
+        handles.push(tokio::spawn(async move {
+            let task_driver =
+                mssql_context::connect_with_retry(|| MssqlDriver::connect(&task_form)).await;
+            let result = task_driver.execute_query("SELECT 1 AS ok".to_string()).await;
+            task_driver.close().await;
+            result
+        }));
+    }
+
+    for handle in handles {
+        let result = handle.await.expect("concurrent mssql task panicked");
+        let data = result.expect("concurrent mssql query failed");
+        assert_eq!(data.row_count, 1);
+        let ok = &data.data[0]["ok"];
+        let matches = ok == "1" || *ok == serde_json::Value::Number(1.into());
+        assert!(matches, "ok should be 1, got {}", ok);
+    }
+
+    let cleanup_driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+    let _ = cleanup_driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    cleanup_driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_view_can_be_listed_and_queried() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let base_table = "dbpaw_mssql_view_base_probe";
+    let view_name = "dbpaw_mssql_view_probe_v";
+    let qualified_table = format!("[dbo].[{}]", base_table);
+    let qualified_view = format!("[dbo].[{}]", view_name);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'V') IS NOT NULL DROP VIEW {};",
+            view_name, qualified_view
+        ))
+        .await;
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            base_table, qualified_table
+        ))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name NVARCHAR(50), score INT)",
+            qualified_table
+        ))
+        .await
+        .expect("create base table for view failed");
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name, score) VALUES (1, N'alice', 10), (2, N'bob', 20)",
+            qualified_table
+        ))
+        .await
+        .expect("insert base rows for view failed");
+    driver
+        .execute_query(format!(
+            "CREATE VIEW {} AS SELECT id, name FROM {} WHERE score >= 20",
+            qualified_view, qualified_table
+        ))
+        .await
+        .expect("create view failed");
+
+    let tables = driver
+        .list_tables(Some("dbo".to_string()))
+        .await
+        .expect("list_tables failed");
+    assert!(
+        tables
+            .iter()
+            .any(|t| t.name == base_table && t.r#type == "table"),
+        "list_tables should include base table"
+    );
+    assert!(
+        tables
+            .iter()
+            .any(|t| t.name == view_name && t.r#type == "view"),
+        "list_tables should include view with type=view"
+    );
+
+    let view_rows = driver
+        .execute_query(format!(
+            "SELECT id, name FROM {} ORDER BY id",
+            qualified_view
+        ))
+        .await
+        .expect("select from view failed");
+    assert_eq!(view_rows.row_count, 1);
+    let row = view_rows.data.first().expect("view row should exist");
+    let id_matches = row["id"] == serde_json::Value::Number(2.into())
+        || row["id"] == serde_json::Value::String("2".to_string());
+    assert!(id_matches, "unexpected id payload: {}", row["id"]);
+    assert_eq!(
+        row["name"],
+        serde_json::Value::String("bob".to_string())
+    );
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'V') IS NOT NULL DROP VIEW {};",
+            view_name, qualified_view
+        ))
+        .await;
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            base_table, qualified_table
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_prepared_statements_prepare_execute_and_deallocate() {
+    let docker = (!mssql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mssql_context::mssql_form_from_test_context(docker.as_ref());
+    let driver: MssqlDriver =
+        mssql_context::connect_with_retry(|| MssqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mssql_prepared_stmt_probe";
+    let qualified = format!("[dbo].[{}]", table_name);
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name NVARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create prepared stmt probe table failed");
+
+    let prepared_insert_sql = format!("INSERT INTO {} (id, name) VALUES (@P1, @P2)", qualified);
+    let inserted_a = driver
+        .execute_query(format!(
+            "EXEC sp_executesql N'{}', N'@P1 INT, @P2 NVARCHAR(50)', @P1 = 1, @P2 = N'alice'",
+            prepared_insert_sql.replace("'", "''")
+        ))
+        .await
+        .expect("prepared insert alice failed");
+    assert_eq!(inserted_a.row_count, 1);
+
+    let inserted_b = driver
+        .execute_query(format!(
+            "EXEC sp_executesql N'{}', N'@P1 INT, @P2 NVARCHAR(50)', @P1 = 2, @P2 = N'bob'",
+            prepared_insert_sql.replace("'", "''")
+        ))
+        .await
+        .expect("prepared insert bob failed");
+    assert_eq!(inserted_b.row_count, 1);
+
+    let prepared_update_sql = format!("UPDATE {} SET name = @P1 WHERE id = @P2", qualified);
+    let updated = driver
+        .execute_query(format!(
+            "EXEC sp_executesql N'{}', N'@P1 NVARCHAR(50), @P2 INT', @P1 = N'alice-updated', @P2 = 1",
+            prepared_update_sql.replace("'", "''")
+        ))
+        .await
+        .expect("prepared update failed");
+    assert_eq!(updated.row_count, 1);
+
+    let prepared_select_sql = format!("SELECT name FROM {} WHERE id = @P1", qualified);
+    let selected = driver
+        .execute_query(format!(
+            "EXEC sp_executesql N'{}', N'@P1 INT', @P1 = 1",
+            prepared_select_sql.replace("'", "''")
+        ))
+        .await
+        .expect("prepared select failed");
+    assert_eq!(selected.row_count, 1);
+    assert_eq!(
+        selected.data[0]["name"],
+        serde_json::Value::String("alice-updated".to_string())
+    );
+
+    let verify = driver
+        .execute_query(format!("SELECT COUNT(*) AS c FROM {}", qualified))
+        .await
+        .expect("verify prepared writes failed");
+    let total = verify.data[0]["c"]
+        .as_str()
+        .expect("verify count should be string")
+        .parse::<i64>()
+        .expect("verify count should parse");
+    assert_eq!(total, 2);
+
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
