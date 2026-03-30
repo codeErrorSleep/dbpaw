@@ -472,10 +472,17 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn test_connection(&self) -> Result<(), String> {
-        sqlx::query("SELECT 1")
-            .execute(&self.pool)
-            .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        if let Err(e) = sqlx::query("SELECT 1").execute(&self.pool).await {
+            let error_text = e.to_string();
+            if is_prepared_protocol_unsupported_error(&error_text) {
+                sqlx::raw_sql("SELECT 1")
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
+            } else {
+                return Err(format!("[QUERY_ERROR] {e}"));
+            }
+        }
         Ok(())
     }
 

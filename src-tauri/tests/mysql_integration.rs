@@ -3,6 +3,7 @@ mod mysql_context;
 
 use dbpaw_lib::db::drivers::mysql::MysqlDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
+use std::env;
 use testcontainers::clients::Cli;
 
 #[tokio::test]
@@ -1050,6 +1051,48 @@ async fn test_mysql_connection_timeout_or_unreachable_host_error() {
         "unexpected timeout/unreachable error: {}",
         err
     );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_test_connection_fallback_when_prepare_unsupported() {
+    let docker = (!mysql_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = mysql_context::mysql_form_from_test_context(docker.as_ref());
+    let driver: MysqlDriver =
+        mysql_context::connect_with_retry(|| MysqlDriver::connect(&form)).await;
+
+    let expect_prepare_unsupported =
+        env::var("MYSQL_EXPECT_PREPARED_UNSUPPORTED").unwrap_or_default() == "1";
+
+    let mut conn = driver
+        .pool
+        .acquire()
+        .await
+        .expect("acquire mysql pooled connection failed");
+    let prepare_probe = sqlx::query("SELECT 1").execute(&mut *conn).await;
+
+    match prepare_probe {
+        Ok(_) => {
+            assert!(
+                !expect_prepare_unsupported,
+                "expected prepared protocol unsupported but probe succeeded"
+            );
+        }
+        Err(err) => {
+            let err_text = err.to_string().to_ascii_lowercase();
+            assert!(
+                err_text.contains("1295")
+                    || err_text.contains("prepare does not support sql")
+                    || err_text.contains("prepared statement protocol"),
+                "unexpected prepare probe error: {}",
+                err
+            );
+            driver
+                .test_connection()
+                .await
+                .expect("test_connection should fallback to raw_sql when prepare is unsupported");
+        }
+    }
 }
 
 #[tokio::test]
