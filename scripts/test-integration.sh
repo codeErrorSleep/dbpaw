@@ -41,6 +41,7 @@ case "${it_db}" in
     ;;
   mariadb)
     run_integration_test "mariadb_integration"
+    run_integration_test "mariadb_command_integration"
     ;;
   postgres)
     run_integration_test "postgres_integration"
@@ -49,28 +50,37 @@ case "${it_db}" in
     ;;
   clickhouse)
     run_integration_test "clickhouse_integration"
+    run_integration_test "clickhouse_command_integration"
     ;;
   mssql)
     run_integration_test "mssql_integration"
+    run_integration_test "mssql_command_integration"
     ;;
   duckdb)
     run_integration_test "duckdb_integration"
+    run_integration_test "duckdb_command_integration"
     ;;
   sqlite)
     run_integration_test "sqlite_integration"
+    run_integration_test "sqlite_command_integration"
     ;;
   all)
     run_integration_test "mysql_integration"
     run_integration_test "mysql_command_integration"
     run_integration_test "mysql_stateful_command_integration"
     run_integration_test "mariadb_integration"
+    run_integration_test "mariadb_command_integration"
     run_integration_test "postgres_integration"
     run_integration_test "postgres_command_integration"
     run_integration_test "postgres_stateful_command_integration"
     run_integration_test "clickhouse_integration"
+    run_integration_test "clickhouse_command_integration"
     run_integration_test "mssql_integration"
+    run_integration_test "mssql_command_integration"
     run_integration_test "duckdb_integration"
+    run_integration_test "duckdb_command_integration"
     run_integration_test "sqlite_integration"
+    run_integration_test "sqlite_command_integration"
     ;;
   *)
     echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|all"
