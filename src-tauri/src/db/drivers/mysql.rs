@@ -167,8 +167,11 @@ fn cleanup_ca_file_opt(path: Option<&PathBuf>) {
 
 fn is_prepared_protocol_unsupported_error(err: &str) -> bool {
     let lower = err.to_ascii_lowercase();
-    lower.contains("1295") || lower.contains("prepared statement protocol")
+    lower.contains("1295")
+        || lower.contains("prepared statement protocol")
+        || lower.contains("preparedoes not support") // PolarDB-X
 }
+
 
 impl Drop for MysqlDriver {
     fn drop(&mut self) {
@@ -1363,6 +1366,9 @@ mod tests {
         ));
         assert!(is_prepared_protocol_unsupported_error(
             "prepared statement protocol is unsupported"
+        ));
+        assert!(is_prepared_protocol_unsupported_error(
+            "error returned from database: 0 (HYo00):[1b6d607a89402000][10.233.70.102:3306][polardbx]Preparedoes not support sql: SELECT 1"
         ));
         assert!(!is_prepared_protocol_unsupported_error(
             "syntax error near ...",
