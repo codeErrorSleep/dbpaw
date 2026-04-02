@@ -1,15 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, SavedQuery, Driver } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import {
-  Database,
-  RefreshCw,
-  Trash2,
-  Edit3,
-  Search,
-  Server,
-  Plus,
-} from "lucide-react";
+import { RefreshCw, Trash2, Edit3, Search, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -27,53 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "react-i18next";
-import {
-  siMysql,
-  siPostgresql,
-  siSqlite,
-  siDuckdb,
-  type SimpleIcon,
-} from "simple-icons";
-
-const renderSimpleIcon = (icon: SimpleIcon) => (
-  <svg
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    aria-hidden="true"
-    className="shrink-0"
-    role="img"
-  >
-    <path d={icon.path} fill="currentColor" />
-  </svg>
-);
-
-const getConnectionIcon = (driver?: Driver): React.ReactNode => {
-  const normalized = String(driver || "")
-    .trim()
-    .toLowerCase();
-
-  switch (normalized) {
-    case "postgres":
-    case "postgresql":
-    case "pgsql":
-      return renderSimpleIcon(siPostgresql);
-    case "mysql":
-    case "tidb":
-    case "mariadb":
-      return renderSimpleIcon(siMysql);
-    case "sqlite":
-    case "sqlite3":
-      return renderSimpleIcon(siSqlite);
-    case "duckdb":
-      return renderSimpleIcon(siDuckdb);
-    case "clickhouse":
-    case "mssql":
-      return <Database className="w-4 h-4" />;
-    default:
-      return <Server className="w-4 h-4" />;
-  }
-};
+import { getConnectionIcon } from "@/lib/driver-registry";
 
 interface SavedQueriesListProps {
   onSelectQuery: (query: SavedQuery) => void;

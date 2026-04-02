@@ -61,20 +61,12 @@ export interface SqlExecutionLog {
   executedAt: string;
 }
 
-export type Driver =
-  | "postgres"
-  | "sqlite"
-  | "duckdb"
-  | "mysql"
-  | "tidb"
-  | "mariadb"
-  | "clickhouse"
-  | "mssql";
-
-export type ImportDriverCapability =
-  | "supported"
-  | "read_only_not_supported"
-  | "unsupported";
+import {
+  DRIVER_REGISTRY,
+  type Driver,
+  type ImportDriverCapability,
+} from "@/lib/driver-registry";
+export type { Driver, ImportDriverCapability } from "@/lib/driver-registry";
 
 export const normalizeImportDriver = (driver: string): string => {
   const normalized = (driver || "").trim().toLowerCase();
@@ -88,21 +80,8 @@ export const getImportDriverCapability = (
   driver: string,
 ): ImportDriverCapability => {
   const normalized = normalizeImportDriver(driver);
-  if (normalized === "clickhouse") {
-    return "read_only_not_supported";
-  }
-  if (
-    normalized === "postgres" ||
-    normalized === "mysql" ||
-    normalized === "mariadb" ||
-    normalized === "tidb" ||
-    normalized === "sqlite" ||
-    normalized === "duckdb" ||
-    normalized === "mssql"
-  ) {
-    return "supported";
-  }
-  return "unsupported";
+  const config = DRIVER_REGISTRY.find((d) => d.id === normalized);
+  return config?.importCapability ?? "unsupported";
 };
 export interface ConnectionForm {
   driver: Driver;

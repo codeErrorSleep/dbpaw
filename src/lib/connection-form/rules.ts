@@ -1,13 +1,10 @@
 import type { ConnectionForm, Driver } from "@/services/api";
+import {
+  isMysqlFamilyDriver,
+  isFileBasedDriver,
+} from "@/lib/driver-registry";
 
-const mysqlFamilyDrivers: Driver[] = ["mysql", "mariadb", "tidb"];
-const fileBasedDrivers: Driver[] = ["sqlite", "duckdb"];
-
-export const isMysqlFamilyDriver = (driver: Driver) =>
-  mysqlFamilyDrivers.includes(driver);
-
-export const isFileBasedDriver = (driver: Driver) =>
-  fileBasedDrivers.includes(driver);
+export { isMysqlFamilyDriver, isFileBasedDriver };
 
 export const allowsHostWithPort = (driver: Driver) =>
   isMysqlFamilyDriver(driver);

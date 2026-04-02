@@ -1,67 +1,11 @@
-import type { ReactNode } from "react";
-import {
-  Database,
-  Server,
-  CircleDot,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-} from "lucide-react";
-import {
-  siMysql,
-  siPostgresql,
-  siSqlite,
-  siClickhouse,
-  siDuckdb,
-  type SimpleIcon,
-} from "simple-icons";
-import type { Driver } from "@/services/api";
+import { CircleDot, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+
+export { getConnectionIcon } from "@/lib/driver-registry";
 
 export interface ConnectionStatusLike {
   connectState: "idle" | "connecting" | "success" | "error";
   connectError?: string;
 }
-
-const renderSimpleIcon = (icon: SimpleIcon) => (
-  <svg
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    aria-hidden="true"
-    className="shrink-0"
-    role="img"
-  >
-    <path d={icon.path} fill="currentColor" />
-  </svg>
-);
-
-export const getConnectionIcon = (driver: Driver | string): ReactNode => {
-  const normalized = String(driver || "")
-    .trim()
-    .toLowerCase();
-
-  switch (normalized) {
-    case "postgres":
-    case "postgresql":
-    case "pgsql":
-      return renderSimpleIcon(siPostgresql);
-    case "mysql":
-    case "tidb":
-    case "mariadb":
-      return renderSimpleIcon(siMysql);
-    case "sqlite":
-    case "sqlite3":
-      return renderSimpleIcon(siSqlite);
-    case "duckdb":
-      return renderSimpleIcon(siDuckdb);
-    case "clickhouse":
-      return renderSimpleIcon(siClickhouse);
-    case "mssql":
-      return <Database className="w-4 h-4" />;
-    default:
-      return <Server className="w-4 h-4" />;
-  }
-};
 
 export const sanitizeConnectionErrorMessage = (message: string) =>
   message.replace(/^(?:\s*\[[^\]]+\])+\s*/g, "").trim();

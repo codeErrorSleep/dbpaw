@@ -61,10 +61,19 @@ import type {
   Driver,
   SavedQuery,
 } from "@/services/api";
+import {
+  DRIVER_REGISTRY,
+  getConnectionIcon,
+  getDefaultPort,
+  isFileBasedDriver,
+  supportsSSLCA,
+  isMysqlFamilyDriver,
+  supportsCreateDatabase,
+  supportsSchemaBrowsing,
+} from "@/lib/driver-registry";
 import { toast } from "sonner";
 import { TreeNode } from "./connection-list/TreeNode";
 import {
-  getConnectionIcon,
   getExportDefaultName,
   getExportFilter,
   renderConnectionStatusIndicator,
@@ -149,14 +158,6 @@ const defaultForm: ConnectionForm = {
   sshUsername: "",
 };
 
-const createDatabaseSupportedDrivers: Driver[] = [
-  "postgres",
-  "mysql",
-  "mariadb",
-  "tidb",
-  "clickhouse",
-  "mssql",
-];
 
 const defaultCreateDatabaseForm: CreateDatabaseForm = {
   name: "",
@@ -190,7 +191,6 @@ const mssqlCollationOptions = [
   "Chinese_PRC_CI_AS",
   "Japanese_CI_AS",
 ];
-const schemaNodeDrivers: Driver[] = ["postgres", "mssql"];
 interface ConnectionListProps {
   onTableSelect?: (
     connection: string,
@@ -321,9 +321,9 @@ export function ConnectionList({
   const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
   const supportsCreateDatabaseForDriver = (driver: Driver) =>
-    createDatabaseSupportedDrivers.includes(driver);
+    supportsCreateDatabase(driver);
   const supportsSchemaNodeForDriver = (driver: Driver) =>
-    schemaNodeDrivers.includes(driver);
+    supportsSchemaBrowsing(driver);
   const getSchemaNodeKey = (databaseKey: string, schema: string) =>
     `${databaseKey}::${schema}`;
   const getTableNodeKey = (
@@ -501,20 +501,13 @@ export function ConnectionList({
     [],
   );
 
-  const isFileBased = form.driver === "sqlite" || form.driver === "duckdb";
-  const supportsSslCa =
-    form.driver === "postgres" ||
-    form.driver === "mysql" ||
-    form.driver === "tidb" ||
-    form.driver === "mariadb";
-  const isPasswordRequiredOnCreate = useMemo(() => {
+  const isFileBased = isFileBasedDriver(form.driver);
+  const supportsSslCa = supportsSSLCA(form.driver);
+  const isPasswordRequiredOnCreate = useMemo(
     // MySQL-compatible engines (including TiDB and MariaDB) can be configured without password.
-    return (
-      form.driver !== "mysql" &&
-      form.driver !== "tidb" &&
-      form.driver !== "mariadb"
-    );
-  }, [form.driver]);
+    () => !isMysqlFamilyDriver(form.driver),
+    [form.driver],
+  );
   const normalizedForm = useMemo(
     () => normalizeConnectionFormInput(form),
     [form],
@@ -1780,20 +1773,7 @@ export function ConnectionList({
                         setForm((f) => ({
                           ...f,
                           driver: v,
-                          port:
-                            v === "postgres"
-                              ? 5432
-                              : v === "mysql"
-                                ? 3306
-                                : v === "mariadb"
-                                  ? 3306
-                                  : v === "tidb"
-                                    ? 4000
-                                    : v === "clickhouse"
-                                      ? 8123
-                                      : v === "mssql"
-                                        ? 1433
-                                        : f.port,
+                          port: getDefaultPort(v) ?? f.port,
                         }))
                       }
                     >
@@ -1805,14 +1785,11 @@ export function ConnectionList({
                         />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="postgres">PostgreSQL</SelectItem>
-                        <SelectItem value="mysql">MySQL</SelectItem>
-                        <SelectItem value="mariadb">MariaDB</SelectItem>
-                        <SelectItem value="tidb">TiDB</SelectItem>
-                        <SelectItem value="sqlite">SQLite</SelectItem>
-                        <SelectItem value="duckdb">DuckDB</SelectItem>
-                        <SelectItem value="clickhouse">ClickHouse</SelectItem>
-                        <SelectItem value="mssql">SQL Server</SelectItem>
+                        {DRIVER_REGISTRY.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1851,19 +1828,9 @@ export function ConnectionList({
                           </Label>
                           <Input
                             id="port"
-                            placeholder={
-                              form.driver === "postgres"
-                                ? "5432"
-                                : form.driver === "mysql"
-                                  ? "3306"
-                                  : form.driver === "mariadb"
-                                    ? "3306"
-                                    : form.driver === "tidb"
-                                      ? "4000"
-                                      : form.driver === "mssql"
-                                        ? "1433"
-                                        : "8123"
-                            }
+                            placeholder={String(
+                              getDefaultPort(form.driver) ?? "",
+                            )}
                             value={String(form.port || "")}
                             onChange={(e) =>
                               setForm((f) => ({
