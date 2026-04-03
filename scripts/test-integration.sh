@@ -64,6 +64,10 @@ case "${it_db}" in
     run_integration_test "sqlite_integration"
     run_integration_test "sqlite_command_integration"
     ;;
+  oracle)
+    run_integration_test "oracle_integration"
+    run_integration_test "oracle_command_integration"
+    ;;
   all)
     run_integration_test "mysql_integration"
     run_integration_test "mysql_command_integration"
@@ -81,9 +85,11 @@ case "${it_db}" in
     run_integration_test "duckdb_command_integration"
     run_integration_test "sqlite_integration"
     run_integration_test "sqlite_command_integration"
+    run_integration_test "oracle_integration"
+    run_integration_test "oracle_command_integration"
     ;;
   *)
-    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|all"
+    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|oracle|all"
     exit 1
     ;;
 esac
