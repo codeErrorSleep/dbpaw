@@ -12,6 +12,10 @@ interface ActiveTableTarget {
   schema?: string;
 }
 
+interface SidebarRevealRequest extends ActiveTableTarget {
+  id: number;
+}
+
 interface SidebarProps {
   onTableSelect?: (
     connection: string,
@@ -41,6 +45,7 @@ interface SidebarProps {
   onSelectSavedQuery: (query: SavedQuery) => void;
   lastUpdated?: number;
   activeTableTarget?: ActiveTableTarget;
+  sidebarRevealRequest?: SidebarRevealRequest;
   layoutMode?: "tabs" | "tree";
 }
 
@@ -52,6 +57,7 @@ export function Sidebar({
   onSelectSavedQuery,
   lastUpdated,
   activeTableTarget,
+  sidebarRevealRequest,
   layoutMode = "tabs",
 }: SidebarProps) {
   const { t } = useTranslation();
@@ -60,9 +66,9 @@ export function Sidebar({
   );
 
   useEffect(() => {
-    if (!activeTableTarget) return;
+    if (!sidebarRevealRequest) return;
     setSidebarTab("connections");
-  }, [activeTableTarget]);
+  }, [sidebarRevealRequest]);
 
   if (layoutMode === "tree") {
     return (
@@ -73,6 +79,7 @@ export function Sidebar({
           onCreateQuery={onCreateQuery}
           onExportTable={onExportTable}
           activeTableTarget={activeTableTarget}
+          sidebarRevealRequest={sidebarRevealRequest}
           onSelectSavedQuery={onSelectSavedQuery}
           lastUpdated={lastUpdated}
           showSavedQueriesInTree
@@ -110,6 +117,7 @@ export function Sidebar({
               onCreateQuery={onCreateQuery}
               onExportTable={onExportTable}
               activeTableTarget={activeTableTarget}
+              sidebarRevealRequest={sidebarRevealRequest}
             />
           </TabsContent>
           <TabsContent

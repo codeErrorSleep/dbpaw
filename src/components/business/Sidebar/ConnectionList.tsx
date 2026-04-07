@@ -141,6 +141,14 @@ interface CreateDatabaseForm {
   lcCtype: string;
 }
 
+type SelectedTableNode = {
+  key: string;
+  connectionId: number;
+  database: string;
+  table: string;
+  schema: string;
+};
+
 const defaultForm: ConnectionForm = {
   driver: "postgres",
   name: "",
@@ -223,6 +231,13 @@ interface ConnectionListProps {
     table: string;
     schema?: string;
   };
+  sidebarRevealRequest?: {
+    id: number;
+    connectionId: number;
+    database: string;
+    table: string;
+    schema?: string;
+  };
   onSelectSavedQuery?: (query: SavedQuery) => void;
   lastUpdated?: number;
   showSavedQueriesInTree?: boolean;
@@ -234,17 +249,14 @@ export function ConnectionList({
   onCreateQuery,
   onExportTable,
   activeTableTarget,
+  sidebarRevealRequest,
   onSelectSavedQuery,
   lastUpdated,
   showSavedQueriesInTree = false,
 }: ConnectionListProps) {
-  const AUTO_SCROLL_IDLE_DELAY_MS = 1200;
   const { t } = useTranslation();
   const tableNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const autoScrollReqIdRef = useRef(0);
-  const userInteractionUntilRef = useRef(0);
-  const interactionIdleTimerRef = useRef<number | null>(null);
-  const pendingAutoScrollKeyRef = useRef<string | null>(null);
+  const handledRevealRequestIdRef = useRef<number | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(
     new Set(["1"]),
@@ -262,7 +274,9 @@ export function ConnectionList({
     new Set(),
   );
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
-  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
+  const [selectedTableNode, setSelectedTableNode] =
+    useState<SelectedTableNode | null>(null);
+  const selectedTableKey = selectedTableNode?.key ?? null;
   const [autoScrollRequest, setAutoScrollRequest] = useState<{
     key: string;
     id: number;
@@ -341,35 +355,6 @@ export function ConnectionList({
     schemaName: string,
     tableName: string,
   ) => `${connectionId}-${databaseName}-${schemaName}-${tableName}`;
-  const isSidebarInteracting = () =>
-    Date.now() < userInteractionUntilRef.current;
-  const requestAutoScroll = (tableKey: string) => {
-    if (isSidebarInteracting()) {
-      pendingAutoScrollKeyRef.current = tableKey;
-      return;
-    }
-    pendingAutoScrollKeyRef.current = null;
-    setAutoScrollRequest({
-      key: tableKey,
-      id: ++autoScrollReqIdRef.current,
-    });
-  };
-  const markSidebarInteraction = () => {
-    userInteractionUntilRef.current = Date.now() + AUTO_SCROLL_IDLE_DELAY_MS;
-    if (interactionIdleTimerRef.current) {
-      window.clearTimeout(interactionIdleTimerRef.current);
-    }
-    interactionIdleTimerRef.current = window.setTimeout(() => {
-      interactionIdleTimerRef.current = null;
-      const pendingKey = pendingAutoScrollKeyRef.current;
-      if (!pendingKey) return;
-      pendingAutoScrollKeyRef.current = null;
-      setAutoScrollRequest({
-        key: pendingKey,
-        id: ++autoScrollReqIdRef.current,
-      });
-    }, AUTO_SCROLL_IDLE_DELAY_MS);
-  };
 
   const createDbTargetConnection = useMemo(
     () => connections.find((conn) => conn.id === createDbConnectionId) || null,
@@ -500,15 +485,6 @@ export function ConnectionList({
       }
     }
   }, [searchTerm, filteredConnections, showSavedQueriesInTree]);
-
-  useEffect(
-    () => () => {
-      if (interactionIdleTimerRef.current) {
-        window.clearTimeout(interactionIdleTimerRef.current);
-      }
-    },
-    [],
-  );
 
   const isFileBased = isFileBasedDriver(form.driver);
   const supportsSslCa = supportsSSLCA(form.driver);
@@ -879,30 +855,10 @@ export function ConnectionList({
     }
   };
 
-  // Effect 1: Register scroll intent when active target changes
+  // Sync UI state (expansion, selection) and load data if needed.
   useEffect(() => {
     if (!activeTableTarget) {
-      return;
-    }
-
-    const connectionId = String(activeTableTarget.connectionId);
-    const databaseName = activeTableTarget.database;
-    const tableName = activeTableTarget.table;
-    const schemaName = activeTableTarget.schema || "";
-    const nextTableKey = getTableNodeKey(
-      connectionId,
-      databaseName,
-      schemaName,
-      tableName,
-    );
-
-    requestAutoScroll(nextTableKey);
-  }, [activeTableTarget]);
-
-  // Effect 2: Sync UI state (expansion, selection) and load data if needed
-  useEffect(() => {
-    if (!activeTableTarget) {
-      setSelectedTableKey(null);
+      setSelectedTableNode(null);
       return;
     }
 
@@ -963,8 +919,13 @@ export function ConnectionList({
         resolvedSchema,
         tableName,
       );
-      setSelectedTableKey(resolvedTableKey);
-      requestAutoScroll(resolvedTableKey);
+      setSelectedTableNode({
+        key: resolvedTableKey,
+        connectionId: activeTableTarget.connectionId,
+        database: databaseName,
+        table: tableName,
+        schema: resolvedSchema,
+      });
     };
 
     void ensureDatabaseTablesLoaded();
@@ -972,6 +933,38 @@ export function ConnectionList({
       cancelled = true;
     };
   }, [activeTableTarget, connections]);
+
+  useEffect(() => {
+    if (!sidebarRevealRequest || !activeTableTarget || !selectedTableNode)
+      return;
+    if (handledRevealRequestIdRef.current === sidebarRevealRequest.id) return;
+    if (
+      sidebarRevealRequest.connectionId !== activeTableTarget.connectionId ||
+      sidebarRevealRequest.database !== activeTableTarget.database ||
+      sidebarRevealRequest.table !== activeTableTarget.table
+    ) {
+      return;
+    }
+    if (
+      selectedTableNode.connectionId !== sidebarRevealRequest.connectionId ||
+      selectedTableNode.database !== sidebarRevealRequest.database ||
+      selectedTableNode.table !== sidebarRevealRequest.table
+    ) {
+      return;
+    }
+    if (
+      sidebarRevealRequest.schema &&
+      sidebarRevealRequest.schema !== selectedTableNode.schema
+    ) {
+      return;
+    }
+
+    handledRevealRequestIdRef.current = sidebarRevealRequest.id;
+    setAutoScrollRequest({
+      key: selectedTableNode.key,
+      id: sidebarRevealRequest.id,
+    });
+  }, [activeTableTarget, selectedTableNode, sidebarRevealRequest]);
 
   useEffect(() => {
     if (!autoScrollRequest) return;
@@ -989,7 +982,7 @@ export function ConnectionList({
             target.scrollIntoView({
               block: "center",
               inline: "nearest",
-              behavior: "smooth",
+              behavior: "auto",
             });
             setAutoScrollRequest((prev) =>
               prev?.id === autoScrollRequest.id ? null : prev,
@@ -2282,9 +2275,7 @@ export function ConnectionList({
           <Input
             placeholder={t("connection.searchTables")}
             value={searchTerm}
-            onFocus={markSidebarInteraction}
             onChange={(e) => {
-              markSidebarInteraction();
               setSearchTerm(e.target.value);
             }}
             className="pl-8"
@@ -2293,8 +2284,6 @@ export function ConnectionList({
       </div>
       <div
         className="flex-1 overflow-auto"
-        onPointerDown={markSidebarInteraction}
-        onWheel={markSidebarInteraction}
         onClick={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
       >
         {filteredConnections.map((connection) => {

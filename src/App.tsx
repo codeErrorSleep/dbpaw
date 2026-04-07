@@ -117,6 +117,10 @@ type ActiveTableTarget = {
   schema?: string;
 };
 
+type SidebarRevealRequest = ActiveTableTarget & {
+  id: number;
+};
+
 type SidebarLayoutMode = "tabs" | "tree";
 
 const DEFAULT_SQL = "";
@@ -153,6 +157,25 @@ function LazyPanelFallback({
       {label}
     </div>
   );
+}
+
+function getTableTargetFromTab(tab?: TabItem): ActiveTableTarget | undefined {
+  if (
+    tab &&
+    (tab.type === "table" || tab.type === "ddl") &&
+    tab.connectionId &&
+    tab.database &&
+    tab.tableName
+  ) {
+    return {
+      connectionId: tab.connectionId,
+      database: tab.database,
+      table: tab.tableName,
+      schema: tab.schema,
+    };
+  }
+
+  return undefined;
 }
 
 export default function App() {
@@ -198,6 +221,8 @@ export default function App() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
   const [aiVisible, setAiVisible] = useState(false);
+  const [sidebarRevealRequest, setSidebarRevealRequest] =
+    useState<SidebarRevealRequest>();
   const [openSettings, setOpenSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isDefaultQueryTitle = (title?: string) =>
@@ -213,6 +238,30 @@ export default function App() {
   const closeSaveCompletedRef = useRef(false);
   const unsavedConfirmActionRef = useRef<"save" | "discard" | null>(null);
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
+  const sidebarRevealRequestIdRef = useRef(0);
+
+  const revealSidebarForTab = useCallback(
+    (tabId: string, sourceTabs = tabs) => {
+      const target = getTableTargetFromTab(
+        sourceTabs.find((tab) => tab.id === tabId),
+      );
+      if (!target) return;
+
+      setSidebarRevealRequest({
+        ...target,
+        id: ++sidebarRevealRequestIdRef.current,
+      });
+    },
+    [tabs],
+  );
+
+  const handleMainTabChange = useCallback(
+    (tabId: string) => {
+      setActiveTab(tabId);
+      revealSidebarForTab(tabId);
+    },
+    [revealSidebarForTab],
+  );
 
   useEffect(() => {
     void getSetting<SidebarLayoutMode>("sidebarLayout", "tabs").then(
@@ -1101,16 +1150,21 @@ export default function App() {
     unsavedConfirmActionRef.current = null;
   }, []);
 
-  const closeTabNow = useCallback((tabId: string) => {
-    setTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== tabId);
-      setActiveTab((currentActiveTab) => {
-        if (currentActiveTab !== tabId) return currentActiveTab;
-        return newTabs[newTabs.length - 1]?.id || "";
+  const closeTabNow = useCallback(
+    (tabId: string) => {
+      setTabs((prev) => {
+        const newTabs = prev.filter((t) => t.id !== tabId);
+        setActiveTab((currentActiveTab) => {
+          if (currentActiveTab !== tabId) return currentActiveTab;
+          const nextActiveTab = newTabs[newTabs.length - 1]?.id || "";
+          if (nextActiveTab) revealSidebarForTab(nextActiveTab, newTabs);
+          return nextActiveTab;
+        });
+        return newTabs;
       });
-      return newTabs;
-    });
-  }, []);
+    },
+    [revealSidebarForTab],
+  );
 
   const saveEditorTab = useCallback(
     async (tab: TabItem, name: string, description: string) => {
@@ -1206,8 +1260,9 @@ export default function App() {
     (tabId: string) => {
       requestCloseTabs(tabs.filter((t) => t.id !== tabId).map((t) => t.id));
       setActiveTab(tabId);
+      revealSidebarForTab(tabId);
     },
-    [requestCloseTabs, tabs],
+    [requestCloseTabs, revealSidebarForTab, tabs],
   );
 
   const handleUnsavedCloseCancel = useCallback(() => {
@@ -1301,7 +1356,9 @@ export default function App() {
     const currentIndex = tabs.findIndex((t) => t.id === activeTab);
     const startIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = (startIndex + direction + tabs.length) % tabs.length;
-    setActiveTab(tabs[nextIndex].id);
+    const nextTabId = tabs[nextIndex].id;
+    setActiveTab(nextTabId);
+    revealSidebarForTab(nextTabId, tabs);
   };
 
   // Global Keyboard Shortcuts
@@ -1364,23 +1421,7 @@ export default function App() {
 
   const activeTabItem = tabs.find((t) => t.id === activeTab);
   const activeTableTarget = useMemo<ActiveTableTarget | undefined>(() => {
-    if (!activeTabItem) return undefined;
-
-    if (
-      (activeTabItem.type === "table" || activeTabItem.type === "ddl") &&
-      activeTabItem.connectionId &&
-      activeTabItem.database &&
-      activeTabItem.tableName
-    ) {
-      return {
-        connectionId: activeTabItem.connectionId,
-        database: activeTabItem.database,
-        table: activeTabItem.tableName,
-        schema: activeTabItem.schema,
-      };
-    }
-
-    return undefined;
+    return getTableTargetFromTab(activeTabItem);
   }, [activeTabItem]);
   const tableTabTitleCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1438,6 +1479,7 @@ export default function App() {
               onSelectSavedQuery={handleOpenSavedQuery}
               lastUpdated={queriesLastUpdated}
               activeTableTarget={activeTableTarget}
+              sidebarRevealRequest={sidebarRevealRequest}
               layoutMode={sidebarLayout}
             />
           </ResizablePanel>
@@ -1453,7 +1495,7 @@ export default function App() {
           >
             <Tabs
               value={activeTab}
-              onValueChange={setActiveTab}
+              onValueChange={handleMainTabChange}
               className="h-full flex flex-col"
             >
               <div className="bg-background border-b border-border flex items-center h-9">
