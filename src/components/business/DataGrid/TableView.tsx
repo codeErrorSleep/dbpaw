@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -145,6 +146,7 @@ interface TableViewProps {
     table: string;
     driver: string;
   };
+  isLoading?: boolean;
 }
 
 export function TableView({
@@ -167,6 +169,7 @@ export function TableView({
   onDataRefresh,
   onCreateQuery,
   tableContext,
+  isLoading,
 }: TableViewProps) {
   const { t } = useTranslation();
   const PAGE_SIZE_OPTIONS = ["10", "50", "100", "200", "500", "1000"] as const;
@@ -1495,6 +1498,18 @@ export function TableView({
     getSelectedCellCopyText,
     handleCopy,
   ]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-6 w-3/4" />
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="h-full flex flex-col bg-background">

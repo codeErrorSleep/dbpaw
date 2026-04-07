@@ -35,6 +35,7 @@ import {
   Download,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from "lucide-react";
 import { TableView } from "@/components/business/DataGrid/TableView";
 import { useTheme } from "@/components/theme-provider";
@@ -237,6 +238,7 @@ interface SqlEditorProps {
   initialName?: string;
   initialDescription?: string;
   onSaveSuccess?: (savedQuery: SavedQuery) => void;
+  isExecuting?: boolean;
 }
 
 export function SqlEditor({
@@ -255,6 +257,7 @@ export function SqlEditor({
   initialName,
   initialDescription,
   onSaveSuccess,
+  isExecuting,
 }: SqlEditorProps) {
   const { t } = useTranslation();
   const [internalSql, setInternalSql] = useState("");
@@ -755,8 +758,13 @@ export function SqlEditor({
                     size="icon"
                     variant="outline"
                     className="h-8 w-8"
+                    disabled={isExecuting}
                   >
-                    <Play className="w-4 h-4" />
+                    {isExecuting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>

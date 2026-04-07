@@ -100,6 +100,7 @@ interface TabItem {
   savedQueryId?: number;
   savedQueryDescription?: string;
   availableDatabases?: string[];
+  isLoading?: boolean;
 }
 
 type TableRefreshOverrides = {
@@ -685,6 +686,23 @@ export default function App() {
       setActiveTab(tabId);
       return;
     }
+
+    // Immediately create a placeholder tab and switch to it for instant feedback
+    setTabs((prev) => [
+      ...prev,
+      {
+        id: tabId,
+        type: "table",
+        title: table,
+        connection,
+        database,
+        connectionId,
+        driver,
+        isLoading: true,
+      },
+    ]);
+    setActiveTab(tabId);
+
     try {
       const { schema, dbParam } = resolveTableScope(
         driver,
@@ -719,28 +737,30 @@ export default function App() {
         columns = resp.data.length > 0 ? Object.keys(resp.data[0]) : [];
       }
 
-      const newTab: TabItem = {
-        id: tabId,
-        type: "table",
-        title: table,
-        connection,
-        database,
-        schema,
-        tableName: table,
-        data: resp.data,
-        columns,
-        total: resp.total,
-        page: resp.page,
-        pageSize: resp.limit,
-        executionTimeMs: resp.executionTimeMs,
-        connectionId,
-        driver,
-      };
-      setTabs([...tabs, newTab]);
-      setActiveTab(tabId);
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isLoading: false,
+                schema,
+                tableName: table,
+                data: resp.data,
+                columns,
+                total: resp.total,
+                page: resp.page,
+                pageSize: resp.limit,
+                executionTimeMs: resp.executionTimeMs,
+              }
+            : t,
+        ),
+      );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       console.error("get_table_data failed", errorMessage);
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, isLoading: false } : t)),
+      );
       toast.error(t("app.error.loadTableData"), {
         description: errorMessage,
       });
@@ -1572,6 +1592,7 @@ export default function App() {
                                   )
                                 : Promise.resolve(false)
                             }
+                            isExecuting={!!tab.activeQueryId}
                             queryResults={tab.queryResults}
                             value={tab.sqlContent}
                             onChange={(sql) => handleSqlChange(tab.id, sql)}
@@ -1610,6 +1631,7 @@ export default function App() {
                         </Suspense>
                       ) : tab.type === "table" ? (
                         <TableView
+                          isLoading={tab.isLoading}
                           data={tab.data}
                           columns={tab.columns}
                           total={tab.total}

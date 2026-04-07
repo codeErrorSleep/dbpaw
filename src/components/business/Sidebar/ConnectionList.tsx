@@ -281,6 +281,15 @@ export function ConnectionList({
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
     null,
   );
+  const [loadingDatabaseKeys, setLoadingDatabaseKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [loadingTableKeys, setLoadingTableKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const loadingSpinner = (
+    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+  );
   const [isTesting, setIsTesting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -1053,7 +1062,14 @@ export function ConnectionList({
             ? db.schemas.length === 0
             : db.tables.length === 0)
         ) {
-          fetchAndSetTables(connId, dbName);
+          setLoadingDatabaseKeys((prev) => new Set(prev).add(key));
+          fetchAndSetTables(connId, dbName).finally(() => {
+            setLoadingDatabaseKeys((prev) => {
+              const next = new Set(prev);
+              next.delete(key);
+              return next;
+            });
+          });
         }
       }
     }
@@ -1172,12 +1188,19 @@ export function ConnectionList({
       newExpanded.add(tableKey);
       // Load column info on first expand
       if (table.columns.length === 0) {
+        setLoadingTableKeys((prev) => new Set(prev).add(tableKey));
         fetchAndSetTableColumns(
           connectionId,
           databaseName,
           table.schema,
           table.name,
-        );
+        ).finally(() => {
+          setLoadingTableKeys((prev) => {
+            const next = new Set(prev);
+            next.delete(tableKey);
+            return next;
+          });
+        });
       }
     }
     setExpandedTables(newExpanded);
@@ -2419,6 +2442,11 @@ export function ConnectionList({
                                         table,
                                       );
                                     }}
+                                    statusIndicator={
+                                      loadingTableKeys.has(tableKey)
+                                        ? loadingSpinner
+                                        : undefined
+                                    }
                                     actions={
                                       <div onClick={(e) => e.stopPropagation()}>
                                         <Button
@@ -2536,6 +2564,11 @@ export function ConnectionList({
                             }
                             isExpanded={expandedDatabases.has(dbKey)}
                             onToggle={() => toggleDatabase(dbKey)}
+                            statusIndicator={
+                              loadingDatabaseKeys.has(dbKey)
+                                ? loadingSpinner
+                                : undefined
+                            }
                             onContextMenu={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -2642,6 +2675,11 @@ export function ConnectionList({
                                       table,
                                     );
                                   }}
+                                  statusIndicator={
+                                    loadingTableKeys.has(tableKey) ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                    ) : undefined
+                                  }
                                   actions={
                                     <div onClick={(e) => e.stopPropagation()}>
                                       <Button
@@ -2759,6 +2797,11 @@ export function ConnectionList({
                           }
                           isExpanded={expandedDatabases.has(dbKey)}
                           onToggle={() => toggleDatabase(dbKey)}
+                          statusIndicator={
+                            loadingDatabaseKeys.has(dbKey) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : undefined
+                          }
                           onContextMenu={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
