@@ -235,7 +235,7 @@ export function ComplexValueViewer({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={[
-                  "relative px-5 h-9 text-xs font-medium transition-colors",
+                  "relative flex-1 px-5 h-9 text-xs font-medium transition-colors",
                   "border-r border-r-border/40 last:border-r-0",
                   active
                     ? "bg-background text-foreground"

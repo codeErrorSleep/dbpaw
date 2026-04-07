@@ -98,10 +98,10 @@ export function Sidebar({
         className="h-full flex flex-col"
       >
         <TabsList className="w-full grid grid-cols-2 overflow-hidden">
-          <TabsTrigger value="connections" className="min-w-0 truncate">
+          <TabsTrigger value="connections" className="min-w-0 max-w-none truncate">
             {t("sidebar.tabs.connections")}
           </TabsTrigger>
-          <TabsTrigger value="queries" className="min-w-0 truncate">
+          <TabsTrigger value="queries" className="min-w-0 max-w-none truncate">
             {t("sidebar.tabs.queries")}
           </TabsTrigger>
         </TabsList>
