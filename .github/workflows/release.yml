@@ -31,30 +31,18 @@ jobs:
         env:
           OUTPUT: CHANGELOG.md
 
-      - name: Generate Changelog (Chinese)
-        uses: orhun/git-cliff-action@v4
-        id: git_cliff_zh
-        with:
-          config: cliff.zh.toml
-          args: --verbose --latest --strip header
-        env:
-          OUTPUT: CHANGELOG_CN.md
-
       - name: Create or Update Draft Release
         uses: actions/github-script@v8
         env:
           TAG_NAME: ${{ inputs.tag || github.ref_name }}
-          RELEASE_BODY_EN: ${{ steps.git_cliff_en.outputs.content || 'See the assets to download this version and install.' }}
-          RELEASE_BODY_ZH: ${{ steps.git_cliff_zh.outputs.content || '请下载附件安装此版本。' }}
+          RELEASE_BODY: ${{ steps.git_cliff_en.outputs.content || 'See the assets to download this version and install.' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const tag = process.env.TAG_NAME;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const bodyEn = process.env.RELEASE_BODY_EN;
-            const bodyZh = process.env.RELEASE_BODY_ZH;
-            const body = bodyEn + "\n\n---\n\n**中文版**\n\n" + bodyZh;
+            const body = process.env.RELEASE_BODY;
             const releaseName = `DbPaw ${tag}`;
             const manualTag = context.payload?.inputs?.tag;
 
