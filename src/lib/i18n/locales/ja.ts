@@ -295,7 +295,9 @@ export const ja: Translations = {
       importSqlReadOnly: "SQL をインポート（読み取り専用で未対応）",
       exportCsv: "CSV としてエクスポート",
       exportJson: "JSON としてエクスポート",
-      exportSql: "SQL としてエクスポート",
+      exportSqlDml: "DML をエクスポート (INSERT)",
+      exportSqlDdl: "DDL をエクスポート (CREATE)",
+      exportSqlFull: "DML & DDL をエクスポート",
     },
     importDialog: {
       title: "SQL をインポート",

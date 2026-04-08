@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   sanitizeConnectionErrorMessage,
+  getExportDefaultName,
   getExportFilter,
   getConnectionStatusLabel,
 } from "./helpers";
@@ -39,6 +40,38 @@ describe("sanitizeConnectionErrorMessage", () => {
   });
 });
 
+describe("getExportDefaultName", () => {
+  test("uses .csv extension for csv format", () => {
+    const name = getExportDefaultName("users", "csv");
+    expect(name).toMatch(/^users_.*\.csv$/);
+  });
+
+  test("uses .json extension for json format", () => {
+    const name = getExportDefaultName("orders", "json");
+    expect(name).toMatch(/^orders_.*\.json$/);
+  });
+
+  test("uses .sql extension for sql_dml format", () => {
+    const name = getExportDefaultName("users", "sql_dml");
+    expect(name).toMatch(/^users_.*\.sql$/);
+  });
+
+  test("uses .sql extension for sql_ddl format", () => {
+    const name = getExportDefaultName("users", "sql_ddl");
+    expect(name).toMatch(/^users_.*\.sql$/);
+  });
+
+  test("uses .sql extension for sql_full format", () => {
+    const name = getExportDefaultName("users", "sql_full");
+    expect(name).toMatch(/^users_.*\.sql$/);
+  });
+
+  test("includes table name as prefix", () => {
+    const name = getExportDefaultName("my_table", "sql_dml");
+    expect(name.startsWith("my_table_")).toBe(true);
+  });
+});
+
 describe("getExportFilter", () => {
   test("returns csv filter for csv format", () => {
     const filter = getExportFilter("csv");
@@ -50,8 +83,18 @@ describe("getExportFilter", () => {
     expect(filter).toEqual([{ name: "JSON", extensions: ["json"] }]);
   });
 
-  test("returns sql filter for sql format", () => {
-    const filter = getExportFilter("sql");
+  test("returns sql filter for sql_dml format", () => {
+    const filter = getExportFilter("sql_dml");
+    expect(filter).toEqual([{ name: "SQL", extensions: ["sql"] }]);
+  });
+
+  test("returns sql filter for sql_ddl format", () => {
+    const filter = getExportFilter("sql_ddl");
+    expect(filter).toEqual([{ name: "SQL", extensions: ["sql"] }]);
+  });
+
+  test("returns sql filter for sql_full format", () => {
+    const filter = getExportFilter("sql_full");
     expect(filter).toEqual([{ name: "SQL", extensions: ["sql"] }]);
   });
 });

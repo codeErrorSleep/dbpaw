@@ -299,7 +299,7 @@ export interface AIChatResponse {
   assistantMessageId: number;
 }
 
-export type TransferFormat = "csv" | "json" | "sql";
+export type TransferFormat = "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full";
 export type ExportScope =
   | "current_page"
   | "filtered"

@@ -292,7 +292,9 @@ export const en = {
       importSqlReadOnly: "Import SQL (Read-only, unsupported)",
       exportCsv: "Export as CSV",
       exportJson: "Export as JSON",
-      exportSql: "Export as SQL",
+      exportSqlDml: "Export DML (INSERT)",
+      exportSqlDdl: "Export DDL (CREATE)",
+      exportSqlFull: "Export DML & DDL",
     },
     importDialog: {
       title: "Import SQL",

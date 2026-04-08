@@ -309,7 +309,7 @@ interface ConnectionListProps {
       table: string;
       driver: string;
     },
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
     filePath: string,
   ) => void;
   activeTableTarget?: {
@@ -1731,7 +1731,7 @@ export function ConnectionList({
     connection: Connection,
     database: DatabaseInfo,
     table: TableInfo,
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
   ) => {
     if (!onExportTable) return;
     if (!isTauri()) {
@@ -2642,12 +2642,38 @@ export function ConnectionList({
                                       connection,
                                       database,
                                       table,
-                                      "sql",
+                                      "sql_dml",
                                     )
                                   }
                                 >
                                   <Download className="w-4 h-4 mr-2" />
-                                  {t("connection.menu.exportSql")}
+                                  {t("connection.menu.exportSqlDml")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "sql_ddl",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportSqlDdl")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "sql_full",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportSqlFull")}
                                 </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
@@ -2875,12 +2901,38 @@ export function ConnectionList({
                                     connection,
                                     database,
                                     table,
-                                    "sql",
+                                    "sql_dml",
                                   )
                                 }
                               >
                                 <Download className="w-4 h-4 mr-2" />
-                                {t("connection.menu.exportSql")}
+                                {t("connection.menu.exportSqlDml")}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() =>
+                                  void handleTableExport(
+                                    connection,
+                                    database,
+                                    table,
+                                    "sql_ddl",
+                                  )
+                                }
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                {t("connection.menu.exportSqlDdl")}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() =>
+                                  void handleTableExport(
+                                    connection,
+                                    database,
+                                    table,
+                                    "sql_full",
+                                  )
+                                }
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                {t("connection.menu.exportSqlFull")}
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>

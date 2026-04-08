@@ -15,7 +15,9 @@ const MAX_IMPORT_STATEMENTS: usize = 50_000;
 pub enum ExportFormat {
     Csv,
     Json,
-    Sql,
+    SqlDml,
+    SqlDdl,
+    SqlFull,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,65 +109,30 @@ pub async fn export_table_data(
                 ExportWriter::new(output_path.clone(), format.clone(), columns.clone())?;
             let mut exported = 0i64;
 
-            match scope {
-                ExportScope::CurrentPage => {
-                    let use_page = page.unwrap_or(1).max(1);
-                    let use_limit = limit.unwrap_or(50).max(1);
-                    let resp = db_driver
-                        .get_table_data_chunk(
-                            schema.clone(),
-                            table.clone(),
-                            use_page,
-                            use_limit,
-                            sort_column.clone(),
-                            sort_direction.clone(),
-                            filter.clone(),
-                            order_by.clone(),
-                        )
-                        .await?;
-                    exported +=
-                        writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
-                }
-                ExportScope::Filtered | ExportScope::FullTable => {
-                    let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        filter.clone()
-                    } else {
-                        None
-                    };
-                    let order_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        order_by.clone()
-                    } else {
-                        None
-                    };
-                    let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_column.clone()
-                    } else {
-                        None
-                    };
-                    let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_direction.clone()
-                    } else {
-                        None
-                    };
+            if matches!(format, ExportFormat::SqlDdl | ExportFormat::SqlFull) {
+                let ddl = db_driver
+                    .get_table_ddl(schema.clone(), table.clone())
+                    .await?;
+                writer.write_ddl(&ddl)?;
+            }
 
-                    let mut current_page = 1;
-                    loop {
+            if !matches!(format, ExportFormat::SqlDdl) {
+                match scope {
+                    ExportScope::CurrentPage => {
+                        let use_page = page.unwrap_or(1).max(1);
+                        let use_limit = limit.unwrap_or(50).max(1);
                         let resp = db_driver
                             .get_table_data_chunk(
                                 schema.clone(),
                                 table.clone(),
-                                current_page,
-                                chunk,
-                                sort_col_for_scope.clone(),
-                                sort_dir_for_scope.clone(),
-                                filter_for_scope.clone(),
-                                order_for_scope.clone(),
+                                use_page,
+                                use_limit,
+                                sort_column.clone(),
+                                sort_direction.clone(),
+                                filter.clone(),
+                                order_by.clone(),
                             )
                             .await?;
-                        if resp.data.is_empty() {
-                            break;
-                        }
-
                         exported += writer.write_rows(
                             &resp.data,
                             &columns,
@@ -173,10 +140,59 @@ pub async fn export_table_data(
                             &table,
                             &driver,
                         )?;
-                        if exported >= resp.total {
-                            break;
+                    }
+                    ExportScope::Filtered | ExportScope::FullTable => {
+                        let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            filter.clone()
+                        } else {
+                            None
+                        };
+                        let order_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            order_by.clone()
+                        } else {
+                            None
+                        };
+                        let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            sort_column.clone()
+                        } else {
+                            None
+                        };
+                        let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            sort_direction.clone()
+                        } else {
+                            None
+                        };
+
+                        let mut current_page = 1;
+                        loop {
+                            let resp = db_driver
+                                .get_table_data_chunk(
+                                    schema.clone(),
+                                    table.clone(),
+                                    current_page,
+                                    chunk,
+                                    sort_col_for_scope.clone(),
+                                    sort_dir_for_scope.clone(),
+                                    filter_for_scope.clone(),
+                                    order_for_scope.clone(),
+                                )
+                                .await?;
+                            if resp.data.is_empty() {
+                                break;
+                            }
+
+                            exported += writer.write_rows(
+                                &resp.data,
+                                &columns,
+                                Some(&schema),
+                                &table,
+                                &driver,
+                            )?;
+                            if exported >= resp.total {
+                                break;
+                            }
+                            current_page += 1;
                         }
-                        current_page += 1;
                     }
                 }
             }
@@ -236,65 +252,30 @@ pub async fn export_table_data_direct(
                 ExportWriter::new(output_path.clone(), format.clone(), columns.clone())?;
             let mut exported = 0i64;
 
-            match scope {
-                ExportScope::CurrentPage => {
-                    let use_page = page.unwrap_or(1).max(1);
-                    let use_limit = limit.unwrap_or(50).max(1);
-                    let resp = db_driver
-                        .get_table_data_chunk(
-                            schema.clone(),
-                            table.clone(),
-                            use_page,
-                            use_limit,
-                            sort_column.clone(),
-                            sort_direction.clone(),
-                            filter.clone(),
-                            order_by.clone(),
-                        )
-                        .await?;
-                    exported +=
-                        writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
-                }
-                ExportScope::Filtered | ExportScope::FullTable => {
-                    let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        filter.clone()
-                    } else {
-                        None
-                    };
-                    let order_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        order_by.clone()
-                    } else {
-                        None
-                    };
-                    let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_column.clone()
-                    } else {
-                        None
-                    };
-                    let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_direction.clone()
-                    } else {
-                        None
-                    };
+            if matches!(format, ExportFormat::SqlDdl | ExportFormat::SqlFull) {
+                let ddl = db_driver
+                    .get_table_ddl(schema.clone(), table.clone())
+                    .await?;
+                writer.write_ddl(&ddl)?;
+            }
 
-                    let mut current_page = 1;
-                    loop {
+            if !matches!(format, ExportFormat::SqlDdl) {
+                match scope {
+                    ExportScope::CurrentPage => {
+                        let use_page = page.unwrap_or(1).max(1);
+                        let use_limit = limit.unwrap_or(50).max(1);
                         let resp = db_driver
                             .get_table_data_chunk(
                                 schema.clone(),
                                 table.clone(),
-                                current_page,
-                                chunk,
-                                sort_col_for_scope.clone(),
-                                sort_dir_for_scope.clone(),
-                                filter_for_scope.clone(),
-                                order_for_scope.clone(),
+                                use_page,
+                                use_limit,
+                                sort_column.clone(),
+                                sort_direction.clone(),
+                                filter.clone(),
+                                order_by.clone(),
                             )
                             .await?;
-                        if resp.data.is_empty() {
-                            break;
-                        }
-
                         exported += writer.write_rows(
                             &resp.data,
                             &columns,
@@ -302,10 +283,59 @@ pub async fn export_table_data_direct(
                             &table,
                             &driver,
                         )?;
-                        if exported >= resp.total {
-                            break;
+                    }
+                    ExportScope::Filtered | ExportScope::FullTable => {
+                        let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            filter.clone()
+                        } else {
+                            None
+                        };
+                        let order_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            order_by.clone()
+                        } else {
+                            None
+                        };
+                        let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            sort_column.clone()
+                        } else {
+                            None
+                        };
+                        let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
+                            sort_direction.clone()
+                        } else {
+                            None
+                        };
+
+                        let mut current_page = 1;
+                        loop {
+                            let resp = db_driver
+                                .get_table_data_chunk(
+                                    schema.clone(),
+                                    table.clone(),
+                                    current_page,
+                                    chunk,
+                                    sort_col_for_scope.clone(),
+                                    sort_dir_for_scope.clone(),
+                                    filter_for_scope.clone(),
+                                    order_for_scope.clone(),
+                                )
+                                .await?;
+                            if resp.data.is_empty() {
+                                break;
+                            }
+
+                            exported += writer.write_rows(
+                                &resp.data,
+                                &columns,
+                                Some(&schema),
+                                &table,
+                                &driver,
+                            )?;
+                            if exported >= resp.total {
+                                break;
+                            }
+                            current_page += 1;
                         }
-                        current_page += 1;
                     }
                 }
             }
@@ -906,7 +936,7 @@ fn extension_for_format(format: &ExportFormat) -> &'static str {
     match format {
         ExportFormat::Csv => "csv",
         ExportFormat::Json => "json",
-        ExportFormat::Sql => "sql",
+        ExportFormat::SqlDml | ExportFormat::SqlDdl | ExportFormat::SqlFull => "sql",
     }
 }
 
@@ -1254,7 +1284,7 @@ impl ExportWriter {
                     .write_all(b"[\n")
                     .map_err(|e| format!("[EXPORT_ERROR] write json header failed: {e}"))?;
             }
-            ExportFormat::Sql => {}
+            ExportFormat::SqlDml | ExportFormat::SqlDdl | ExportFormat::SqlFull => {}
         }
 
         Ok(Self {
@@ -1315,7 +1345,7 @@ impl ExportWriter {
                     .write_all(text.as_bytes())
                     .map_err(|e| format!("[EXPORT_ERROR] write json row failed: {e}"))?;
             }
-            ExportFormat::Sql => {
+            ExportFormat::SqlDml | ExportFormat::SqlFull => {
                 let quoted_cols = columns
                     .iter()
                     .map(|c| quote_ident(c, driver))
@@ -1340,7 +1370,18 @@ impl ExportWriter {
                     .write_all(statement.as_bytes())
                     .map_err(|e| format!("[EXPORT_ERROR] write sql row failed: {e}"))?;
             }
+            ExportFormat::SqlDdl => {
+                // DDL-only mode: rows are not written
+            }
         }
+        Ok(())
+    }
+
+    fn write_ddl(&mut self, ddl: &str) -> Result<(), String> {
+        let content = format!("{}\n\n", ddl.trim_end());
+        self.writer
+            .write_all(content.as_bytes())
+            .map_err(|e| format!("[EXPORT_ERROR] write ddl failed: {e}"))?;
         Ok(())
     }
 
@@ -1693,5 +1734,100 @@ mod tests {
         let truncated = truncate_error_message(&source);
         assert!(truncated.len() <= 503);
         assert!(truncated.ends_with("..."));
+    }
+
+    fn tmp_path(suffix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("dbpaw-transfer-test-{unique}-{suffix}"))
+    }
+
+    fn make_row(pairs: &[(&str, Value)]) -> Value {
+        let mut map = serde_json::Map::new();
+        for (k, v) in pairs {
+            map.insert(k.to_string(), v.clone());
+        }
+        Value::Object(map)
+    }
+
+    #[test]
+    fn extension_for_format_sql_variants_all_return_sql() {
+        assert_eq!(extension_for_format(&ExportFormat::SqlDml), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::SqlDdl), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::SqlFull), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::Csv), "csv");
+        assert_eq!(extension_for_format(&ExportFormat::Json), "json");
+    }
+
+    #[test]
+    fn export_writer_sql_dml_writes_insert_statements() {
+        let path = tmp_path("sql_dml.sql");
+        let cols = vec!["id".to_string(), "name".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDml, cols.clone()).unwrap();
+        let rows = vec![
+            make_row(&[("id", Value::Number(1.into())), ("name", Value::String("alice".to_string()))]),
+            make_row(&[("id", Value::Number(2.into())), ("name", Value::Null)]),
+        ];
+        let count = writer.write_rows(&rows, &cols, Some("public"), "users", "postgres").unwrap();
+        writer.finish().unwrap();
+        assert_eq!(count, 2);
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("INSERT INTO \"public\".\"users\""));
+        assert!(content.contains("VALUES (1, 'alice')"));
+        assert!(content.contains("VALUES (2, NULL)"));
+        assert!(!content.contains("CREATE TABLE"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_writer_sql_ddl_writes_ddl_and_no_rows() {
+        let path = tmp_path("sql_ddl.sql");
+        let cols = vec!["id".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDdl, cols.clone()).unwrap();
+        writer.write_ddl("CREATE TABLE users (id INTEGER);").unwrap();
+        // In DDL-only mode write_rows is a no-op, but we test write_ddl here
+        let rows = vec![make_row(&[("id", Value::Number(1.into()))])];
+        let count = writer.write_rows(&rows, &cols, Some("public"), "users", "postgres").unwrap();
+        writer.finish().unwrap();
+        assert_eq!(count, 1); // write_rows counts rows even if they produce no output
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("CREATE TABLE users (id INTEGER);"));
+        assert!(!content.contains("INSERT INTO"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_writer_sql_full_writes_ddl_then_inserts() {
+        let path = tmp_path("sql_full.sql");
+        let cols = vec!["id".to_string(), "val".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlFull, cols.clone()).unwrap();
+        writer.write_ddl("CREATE TABLE t (id INT, val TEXT);").unwrap();
+        let rows = vec![make_row(&[
+            ("id", Value::Number(1.into())),
+            ("val", Value::String("x".to_string())),
+        ])];
+        let count = writer.write_rows(&rows, &cols, None, "t", "postgres").unwrap();
+        writer.finish().unwrap();
+        assert_eq!(count, 1);
+        let content = fs::read_to_string(&path).unwrap();
+        let ddl_pos = content.find("CREATE TABLE").unwrap();
+        let dml_pos = content.find("INSERT INTO").unwrap();
+        assert!(ddl_pos < dml_pos, "DDL should appear before DML");
+        assert!(content.contains("VALUES (1, 'x')"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_ddl_trims_trailing_whitespace_and_adds_blank_line() {
+        let path = tmp_path("ddl_trim.sql");
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDdl, vec![]).unwrap();
+        writer.write_ddl("CREATE TABLE t (id INT);   \n\n").unwrap();
+        writer.finish().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("CREATE TABLE t (id INT);"));
+        assert!(content.ends_with("\n\n"));
+        let _ = fs::remove_file(path);
     }
 }

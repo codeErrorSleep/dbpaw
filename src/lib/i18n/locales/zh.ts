@@ -287,7 +287,9 @@ export const zh: Translations = {
       importSqlReadOnly: "导入 SQL（只读，不支持）",
       exportCsv: "导出为 CSV",
       exportJson: "导出为 JSON",
-      exportSql: "导出为 SQL",
+      exportSqlDml: "导出 DML (INSERT)",
+      exportSqlDdl: "导出 DDL (CREATE)",
+      exportSqlFull: "导出 DML & DDL",
     },
     importDialog: {
       title: "导入 SQL",

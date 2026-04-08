@@ -1792,7 +1792,7 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("current_page", "sql")}
+                        onClick={() => void handleExport("current_page", "sql_dml")}
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1814,7 +1814,7 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("filtered", "sql")}
+                        onClick={() => void handleExport("filtered", "sql_dml")}
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1836,7 +1836,7 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("full_table", "sql")}
+                        onClick={() => void handleExport("full_table", "sql_dml")}
                       >
                         SQL
                       </DropdownMenuItem>

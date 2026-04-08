@@ -39,7 +39,7 @@ interface SidebarProps {
       table: string;
       driver: string;
     },
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
     filePath: string,
   ) => void;
   onSelectSavedQuery: (query: SavedQuery) => void;
