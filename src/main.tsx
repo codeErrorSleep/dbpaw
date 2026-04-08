@@ -5,6 +5,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import "./lib/i18n";
 import { initI18nFromStore } from "./lib/i18n";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const renderApp = async () => {
   await initI18nFromStore();
@@ -20,10 +21,12 @@ const renderApp = async () => {
     });
   }
   createRoot(document.getElementById("root")!).render(
-    <ThemeProvider defaultTheme="default">
-      <App />
-      <Toaster />
-    </ThemeProvider>,
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="default">
+        <App />
+        <Toaster />
+      </ThemeProvider>
+    </ErrorBoundary>,
   );
 };
 

@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sidebar } from "@/components/business/Sidebar/Sidebar";
 import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
 import { TableView } from "@/components/business/DataGrid/TableView";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TableMetadataView } from "@/components/business/Metadata/TableMetadataView";
 import { SqlExecutionLogsDropdown } from "@/components/business/SqlLogs/SqlExecutionLogsDialog";
 import { FileCode, Table, X, Settings, Sparkles } from "lucide-react";
@@ -1616,7 +1617,8 @@ export default function App() {
                       value={tab.id}
                       className="h-full m-0"
                     >
-                      {tab.type === "editor" ? (
+                      <ErrorBoundary>
+                        {tab.type === "editor" ? (
                         <Suspense
                           fallback={
                             <LazyPanelFallback label={t("common.loading")} />
@@ -1734,7 +1736,8 @@ export default function App() {
                           schema={tab.schema}
                           table={tab.tableName}
                         />
-                      ) : null}
+                        ) : null}
+                      </ErrorBoundary>
                     </TabsContent>
                   ))
                 )}

@@ -178,6 +178,8 @@ export function TableView({
   const [pageInput, setPageInput] = useState(String(page));
   const [pageSizeInput, setPageSizeInput] = useState(String(pageSize));
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const columnWidthsRef = useRef<Record<string, number>>({});
+  columnWidthsRef.current = columnWidths;
 
   // Reset column widths when columns definition changes (e.g. switching tables)
   const prevColumnsRef = useRef<string>("");
@@ -189,19 +191,20 @@ export function TableView({
     }
   }, [columns]);
 
-  // Auto-calculate column widths based on content
+  // Auto-calculate column widths based on content.
+  // Read columnWidths via ref to avoid re-triggering the effect on every width update.
   useEffect(() => {
     const newWidths = calculateAutoColumnWidths({
       data,
       columns,
-      columnWidths,
+      columnWidths: columnWidthsRef.current,
     });
     const hasChanges = Object.keys(newWidths).length > 0;
 
     if (hasChanges) {
       setColumnWidths((prev) => ({ ...prev, ...newWidths }));
     }
-  }, [data, columns, columnWidths]);
+  }, [data, columns]);
 
   useEffect(() => {
     setWhereInput(controlledFilter || "");
@@ -1977,6 +1980,7 @@ export function TableView({
           </thead>
           <tbody>
             {currentData.map((row, rowIndex) => {
+              if (!row || typeof row !== "object") return null;
               const isEditing = (col: string) =>
                 editingCell?.row === rowIndex && editingCell?.col === col;
               const isSelected = (col: string) =>
