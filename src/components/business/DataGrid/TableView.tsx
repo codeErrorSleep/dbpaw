@@ -1711,22 +1711,35 @@ export function TableView({
 
             <div className="flex items-center gap-1.5">
               {tableContext && onCreateQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
-                  onClick={() =>
-                    onCreateQuery(
-                      tableContext.connectionId,
-                      tableContext.database,
-                      tableContext.driver,
-                    )
-                  }
-                  title={t("connection.menu.newQuery")}
-                >
-                  <SquareTerminal className="w-3.5 h-3.5" />
-                  {t("connection.menu.newQuery")}
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
+                    onClick={() =>
+                      onCreateQuery(
+                        tableContext.connectionId,
+                        tableContext.database,
+                        tableContext.driver,
+                      )
+                    }
+                    title={t("connection.menu.newQuery")}
+                  >
+                    <SquareTerminal className="w-3.5 h-3.5" />
+                    {t("connection.menu.newQuery")}
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 hover:bg-muted/60"
+                    onClick={handleShowDDL}
+                    title="View Table Structure (DDL)"
+                  >
+                    <FileCode className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium leading-none">ddl</span>
+                  </Button>
+                </>
               )}
               {(canInsert || canUpdateDelete) && (
                 <>
@@ -1734,20 +1747,19 @@ export function TableView({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
+                      className="h-6 w-6 p-0 hover:bg-muted/60"
                       onClick={handleAddDraftRow}
                       disabled={isSaving || isDeleting}
                       title="Add a new row draft"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Add
                     </Button>
                   )}
                   {canUpdateDelete && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 gap-1 px-2 text-xs hover:bg-destructive/10 text-destructive disabled:text-muted-foreground"
+                      className="h-6 w-6 p-0 hover:bg-destructive/10 text-destructive disabled:text-muted-foreground"
                       onClick={() => setDeleteDialogOpen(true)}
                       disabled={!selectedRows.size || isSaving || isDeleting}
                       title={
@@ -1757,7 +1769,6 @@ export function TableView({
                       }
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Delete
                     </Button>
                   )}
                 </>
@@ -1880,18 +1891,6 @@ export function TableView({
                   </DropdownMenuSub>
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              {tableContext && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 hover:bg-muted/60"
-                  onClick={handleShowDDL}
-                  title="View Table Structure (DDL)"
-                >
-                  <FileCode className="w-3.5 h-3.5" />
-                </Button>
-              )}
             </div>
           </div>
 
