@@ -1204,19 +1204,21 @@ fn oracle_plsql_state(sql: &str) -> (bool, bool) {
                         let second = tokens.get(1).map(String::as_str);
                         let third = tokens.get(2).map(String::as_str);
                         let fourth = tokens.get(3).map(String::as_str);
-                        is_oracle_block =
-                            matches!(tokens.first().map(String::as_str), Some("declare") | Some("begin"))
-                                || (tokens.first().map(String::as_str) == Some("create")
-                                    && second == Some("or")
-                                    && third == Some("replace")
-                                    && matches!(
-                                        fourth,
-                                        Some("function")
-                                            | Some("procedure")
-                                            | Some("trigger")
-                                            | Some("package")
-                                            | Some("type")
-                                    ));
+                        is_oracle_block = matches!(
+                            tokens.first().map(String::as_str),
+                            Some("declare") | Some("begin")
+                        ) || (tokens.first().map(String::as_str)
+                            == Some("create")
+                            && second == Some("or")
+                            && third == Some("replace")
+                            && matches!(
+                                fourth,
+                                Some("function")
+                                    | Some("procedure")
+                                    | Some("trigger")
+                                    | Some("package")
+                                    | Some("type")
+                            ));
                     }
 
                     if is_oracle_block {
@@ -1293,8 +1295,10 @@ fn oracle_plsql_state(sql: &str) -> (bool, bool) {
         }
     }
 
-    let ready_to_terminate =
-        is_oracle_block && block_depth == 0 && case_depth == 0 && last_word.as_deref() == Some("end");
+    let ready_to_terminate = is_oracle_block
+        && block_depth == 0
+        && case_depth == 0
+        && last_word.as_deref() == Some("end");
     (is_oracle_block, ready_to_terminate)
 }
 
@@ -1343,7 +1347,8 @@ fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> 
         match &state {
             SqlScanState::Normal => {
                 if mysql_style_delimiter {
-                    if let Some((next_delimiter, next_idx)) = parse_mysql_delimiter_command(&chars, i)
+                    if let Some((next_delimiter, next_idx)) =
+                        parse_mysql_delimiter_command(&chars, i)
                     {
                         delimiter = next_delimiter;
                         i = next_idx;

@@ -216,9 +216,7 @@ async fn test_oracle_command_execute_insert_affects_rows() {
         .expect("CREATE TABLE");
     driver.close().await;
 
-    let sql = format!(
-        "INSERT INTO \"{schema}\".\"{table}\" (id, name) VALUES (1, 'alpha')"
-    );
+    let sql = format!("INSERT INTO \"{schema}\".\"{table}\" (id, name) VALUES (1, 'alpha')");
     let result = query::execute_by_conn_direct(form.clone(), sql)
         .await
         .expect("INSERT should succeed");
@@ -266,14 +264,12 @@ async fn test_oracle_command_get_table_data_pagination_works() {
     }
     driver.close().await;
 
-    let page1 =
-        query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 1, 2)
-            .await
-            .expect("page 1 should succeed");
-    let page2 =
-        query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 2, 2)
-            .await
-            .expect("page 2 should succeed");
+    let page1 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 1, 2)
+        .await
+        .expect("page 1 should succeed");
+    let page2 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 2, 2)
+        .await
+        .expect("page 2 should succeed");
 
     assert_eq!(page1.total, 3);
     assert_eq!(page1.limit, 2);
@@ -341,7 +337,11 @@ END;
         .expect("verify oracle imported procedure should succeed");
     let count = verify.data[0]["C"]
         .as_i64()
-        .or_else(|| verify.data[0]["C"].as_str().and_then(|v| v.parse::<i64>().ok()))
+        .or_else(|| {
+            verify.data[0]["C"]
+                .as_str()
+                .and_then(|v| v.parse::<i64>().ok())
+        })
         .expect("oracle count should be numeric");
     assert_eq!(count, 1);
 

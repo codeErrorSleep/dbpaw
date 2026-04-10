@@ -15,8 +15,7 @@ export const getExportDefaultName = (
   format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
 ) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const ext =
-    format === "csv" ? "csv" : format === "json" ? "json" : "sql";
+  const ext = format === "csv" ? "csv" : format === "json" ? "json" : "sql";
   return `${tableName}_${timestamp}.${ext}`;
 };
 

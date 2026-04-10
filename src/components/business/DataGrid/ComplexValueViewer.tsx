@@ -25,7 +25,8 @@ function TreeNode({
   depth?: number;
 }) {
   const [expanded, setExpanded] = useState(depth < 2);
-  const isComplex = value !== null && value !== undefined && typeof value === "object";
+  const isComplex =
+    value !== null && value !== undefined && typeof value === "object";
   const isArr = Array.isArray(value);
 
   if (!isComplex) {
@@ -38,7 +39,9 @@ function TreeNode({
         className="flex items-baseline py-[2px] text-xs font-mono leading-5"
         style={{ paddingLeft: depth * 14 + 18 }}
       >
-        <span className="text-blue-500 dark:text-blue-400 mr-1 shrink-0">{label}</span>
+        <span className="text-blue-500 dark:text-blue-400 mr-1 shrink-0">
+          {label}
+        </span>
         <span className="text-muted-foreground mr-1 shrink-0">:</span>
         <span
           className={
@@ -98,7 +101,10 @@ function TableView({ value }: { value: unknown }) {
     const arr = value as unknown[];
     const allObjects =
       arr.length > 0 &&
-      arr.every((item) => item !== null && typeof item === "object" && !Array.isArray(item));
+      arr.every(
+        (item) =>
+          item !== null && typeof item === "object" && !Array.isArray(item),
+      );
 
     const keys = allObjects
       ? Array.from(new Set(arr.flatMap((item) => Object.keys(item as object))))
@@ -110,21 +116,31 @@ function TableView({ value }: { value: unknown }) {
           <tr className="border-b border-border bg-muted/60">
             {keys ? (
               keys.map((k) => (
-                <th key={k} className="text-left px-3 py-1.5 text-muted-foreground font-medium">
+                <th
+                  key={k}
+                  className="text-left px-3 py-1.5 text-muted-foreground font-medium"
+                >
                   {k}
                 </th>
               ))
             ) : (
               <>
-                <th className="text-left px-3 py-1.5 text-muted-foreground font-medium w-14">#</th>
-                <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">value</th>
+                <th className="text-left px-3 py-1.5 text-muted-foreground font-medium w-14">
+                  #
+                </th>
+                <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
+                  value
+                </th>
               </>
             )}
           </tr>
         </thead>
         <tbody>
           {arr.map((row, i) => (
-            <tr key={i} className="border-b border-border/40 hover:bg-muted/40 transition-colors">
+            <tr
+              key={i}
+              className="border-b border-border/40 hover:bg-muted/40 transition-colors"
+            >
               {keys ? (
                 keys.map((k) => {
                   const v = (row as Record<string, unknown>)[k];
@@ -140,7 +156,9 @@ function TableView({ value }: { value: unknown }) {
               ) : (
                 <>
                   <td className="px-3 py-1.5 text-muted-foreground">{i}</td>
-                  <td className={`px-3 py-1.5 ${row === null ? "text-muted-foreground italic" : ""}`}>
+                  <td
+                    className={`px-3 py-1.5 ${row === null ? "text-muted-foreground italic" : ""}`}
+                  >
                     {cellText(row)}
                   </td>
                 </>
@@ -157,15 +175,26 @@ function TableView({ value }: { value: unknown }) {
       <table className="text-xs font-mono w-full border-collapse">
         <thead>
           <tr className="border-b border-border bg-muted/60">
-            <th className="text-left px-3 py-1.5 text-muted-foreground font-medium w-2/5">key</th>
-            <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">value</th>
+            <th className="text-left px-3 py-1.5 text-muted-foreground font-medium w-2/5">
+              key
+            </th>
+            <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
+              value
+            </th>
           </tr>
         </thead>
         <tbody>
           {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
-            <tr key={k} className="border-b border-border/40 hover:bg-muted/40 transition-colors">
-              <td className="px-3 py-1.5 text-blue-500 dark:text-blue-400">{k}</td>
-              <td className={`px-3 py-1.5 ${v === null ? "text-muted-foreground italic" : ""}`}>
+            <tr
+              key={k}
+              className="border-b border-border/40 hover:bg-muted/40 transition-colors"
+            >
+              <td className="px-3 py-1.5 text-blue-500 dark:text-blue-400">
+                {k}
+              </td>
+              <td
+                className={`px-3 py-1.5 ${v === null ? "text-muted-foreground italic" : ""}`}
+              >
                 {cellText(v)}
               </td>
             </tr>
@@ -211,7 +240,9 @@ export function ComplexValueViewer({
 
         {/* Header */}
         <div className="flex items-center gap-2 px-4 h-11 border-b shrink-0 pr-12">
-          <span className="font-mono text-sm font-medium truncate min-w-0">{columnName}</span>
+          <span className="font-mono text-sm font-medium truncate min-w-0">
+            {columnName}
+          </span>
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
             {typeLabel}
           </span>

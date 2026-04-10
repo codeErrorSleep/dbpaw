@@ -577,7 +577,9 @@ export function TableView({
       // Check if there's a pending change for this cell
       const key = `${rowIndex}_${col}`;
       const pending = pendingChanges.get(key);
-      const value = pending ? pending.newValue : cellValueToString(currentValue);
+      const value = pending
+        ? pending.newValue
+        : cellValueToString(currentValue);
       setEditingCell({ row: rowIndex, col });
       setEditValue(value);
       setSelectedCell({ row: rowIndex, col });
@@ -1739,7 +1741,9 @@ export function TableView({
                     title="View Table Structure (DDL)"
                   >
                     <FileCode className="w-3.5 h-3.5" />
-                    <span className="text-xs font-medium leading-none">ddl</span>
+                    <span className="text-xs font-medium leading-none">
+                      ddl
+                    </span>
                   </Button>
                 </>
               )}
@@ -1841,7 +1845,9 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("current_page", "sql_dml")}
+                        onClick={() =>
+                          void handleExport("current_page", "sql_dml")
+                        }
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1885,7 +1891,9 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("full_table", "sql_dml")}
+                        onClick={() =>
+                          void handleExport("full_table", "sql_dml")
+                        }
                       >
                         SQL
                       </DropdownMenuItem>
@@ -2149,7 +2157,11 @@ export function TableView({
                                 {displayValue !== null &&
                                 displayValue !== undefined ? (
                                   <span
-                                    className={modified ? "text-orange-600 dark:text-orange-400" : ""}
+                                    className={
+                                      modified
+                                        ? "text-orange-600 dark:text-orange-400"
+                                        : ""
+                                    }
                                   >
                                     {formatCellValue(displayValue)}
                                   </span>
@@ -2165,10 +2177,22 @@ export function TableView({
                                     onMouseDown={(e) => e.stopPropagation()}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setComplexViewer({ value: displayValue, columnName: column });
+                                      setComplexViewer({
+                                        value: displayValue,
+                                        columnName: column,
+                                      });
                                     }}
                                   >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
                                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                                     </svg>
                                   </button>
@@ -2371,7 +2395,9 @@ export function TableView({
           value={complexViewer.value}
           columnName={complexViewer.columnName}
           open={true}
-          onOpenChange={(open) => { if (!open) setComplexViewer(null); }}
+          onOpenChange={(open) => {
+            if (!open) setComplexViewer(null);
+          }}
         />
       )}
 

@@ -830,10 +830,16 @@ DELIMITER ;
         .execute_query(format!("DROP PROCEDURE IF EXISTS `{}`", proc_name))
         .await;
     let _ = driver
-        .execute_query(format!("DROP TABLE IF EXISTS `{}`.`{}`", schema, proc_table))
+        .execute_query(format!(
+            "DROP TABLE IF EXISTS `{}`.`{}`",
+            schema, proc_table
+        ))
         .await;
     let _ = driver
-        .execute_query(format!("DROP TABLE IF EXISTS `{}`.`{}`", schema, audit_table))
+        .execute_query(format!(
+            "DROP TABLE IF EXISTS `{}`.`{}`",
+            schema, audit_table
+        ))
         .await;
     driver.close().await;
 
@@ -977,10 +983,7 @@ async fn test_mysql_command_get_charsets_by_id_returns_standard_charsets() {
         charsets.iter().any(|c| c == "utf8mb4"),
         "utf8mb4 must be present"
     );
-    assert!(
-        charsets.iter().any(|c| c == "utf8"),
-        "utf8 must be present"
-    );
+    assert!(charsets.iter().any(|c| c == "utf8"), "utf8 must be present");
     assert!(
         charsets.iter().any(|c| c == "latin1"),
         "latin1 must be present"
@@ -1043,18 +1046,17 @@ async fn test_mysql_command_get_collations_by_id_with_charset_returns_only_match
     let (_mysql_container, form) = mysql_context::mysql_form_from_test_context(docker.as_ref());
     wait_until_mysql_ready(&form).await;
     let state = init_state_with_local_db().await;
-    let conn_id =
-        create_mysql_connection_for_state(&state, &form, "get-collations-filtered").await;
+    let conn_id = create_mysql_connection_for_state(&state, &form, "get-collations-filtered").await;
 
-    let collations = connection::get_mysql_collations_by_id_direct(
-        &state,
-        conn_id,
-        Some("utf8mb4".to_string()),
-    )
-    .await
-    .expect("get_mysql_collations_by_id should succeed with charset filter");
+    let collations =
+        connection::get_mysql_collations_by_id_direct(&state, conn_id, Some("utf8mb4".to_string()))
+            .await
+            .expect("get_mysql_collations_by_id should succeed with charset filter");
 
-    assert!(!collations.is_empty(), "utf8mb4 collation list must not be empty");
+    assert!(
+        !collations.is_empty(),
+        "utf8mb4 collation list must not be empty"
+    );
     assert!(
         collations.iter().any(|c| c == "utf8mb4_general_ci"),
         "utf8mb4_general_ci must be present"

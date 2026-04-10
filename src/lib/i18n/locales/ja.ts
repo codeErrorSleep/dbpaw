@@ -398,8 +398,7 @@ export const ja: Translations = {
   },
   tableView: {
     header: {
-      actionHint:
-        "{{column}} をクリックで列名コピー、ダブルクリックで並び替え",
+      actionHint: "{{column}} をクリックで列名コピー、ダブルクリックで並び替え",
     },
     toast: {
       columnNameCopied: "列名をコピーしました: {{column}}",

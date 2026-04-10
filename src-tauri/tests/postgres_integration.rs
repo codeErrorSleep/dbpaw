@@ -872,8 +872,14 @@ async fn test_postgres_array_types_decoded_as_json_arrays() {
 
     let floats8 = r1["floats8"].as_array().expect("floats8 should be array");
     assert_eq!(floats8.len(), 2);
-    assert!(floats8[0].as_f64().map(|v| (v - 3.14).abs() < 0.01).unwrap_or(false),
-        "floats8[0] should be ~3.14, got {:?}", floats8[0]);
+    assert!(
+        floats8[0]
+            .as_f64()
+            .map(|v| (v - 3.14).abs() < 0.01)
+            .unwrap_or(false),
+        "floats8[0] should be ~3.14, got {:?}",
+        floats8[0]
+    );
 
     let texts = r1["texts"].as_array().expect("texts should be array");
     assert_eq!(texts.len(), 2);
@@ -894,22 +900,42 @@ async fn test_postgres_array_types_decoded_as_json_arrays() {
     let r2 = &result.data[1];
 
     let ints2_null = r2["ints2"].as_array().expect("ints2 row2 should be array");
-    assert_eq!(ints2_null[0], serde_json::Value::Null, "first element should be NULL");
+    assert_eq!(
+        ints2_null[0],
+        serde_json::Value::Null,
+        "first element should be NULL"
+    );
     assert_eq!(ints2_null[1].as_i64().unwrap_or(-1), 5);
 
     let ints4_null = r2["ints4"].as_array().expect("ints4 row2 should be array");
-    assert_eq!(ints4_null[0], serde_json::Value::Null, "first int4 element should be NULL");
+    assert_eq!(
+        ints4_null[0],
+        serde_json::Value::Null,
+        "first int4 element should be NULL"
+    );
 
     let texts_null = r2["texts"].as_array().expect("texts row2 should be array");
     assert_eq!(texts_null[0].as_str().unwrap_or(""), "x");
-    assert_eq!(texts_null[1], serde_json::Value::Null, "middle text element should be NULL");
+    assert_eq!(
+        texts_null[1],
+        serde_json::Value::Null,
+        "middle text element should be NULL"
+    );
     assert_eq!(texts_null[2].as_str().unwrap_or(""), "z");
 
     let bools_null = r2["bools"].as_array().expect("bools row2 should be array");
-    assert_eq!(bools_null[0], serde_json::Value::Null, "bool element should be NULL");
+    assert_eq!(
+        bools_null[0],
+        serde_json::Value::Null,
+        "bool element should be NULL"
+    );
 
     // column-level NULL (entire array is NULL)
-    assert_eq!(r2["ints8"], serde_json::Value::Null, "whole ints8 column should be NULL");
+    assert_eq!(
+        r2["ints8"],
+        serde_json::Value::Null,
+        "whole ints8 column should be NULL"
+    );
 
     // ---- row 3: empty arrays ----
     let r3 = &result.data[2];

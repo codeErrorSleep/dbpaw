@@ -364,8 +364,14 @@ async fn test_mariadb_show_character_set_returns_standard_charsets() {
         .collect();
 
     assert!(!charsets.is_empty(), "charset list must not be empty");
-    assert!(charsets.iter().any(|c| c == "utf8mb4"), "utf8mb4 must be present");
-    assert!(charsets.iter().any(|c| c == "latin1"), "latin1 must be present");
+    assert!(
+        charsets.iter().any(|c| c == "utf8mb4"),
+        "utf8mb4 must be present"
+    );
+    assert!(
+        charsets.iter().any(|c| c == "latin1"),
+        "latin1 must be present"
+    );
     assert!(
         charsets.iter().all(|c| !c.trim().is_empty()),
         "all charset names must be non-empty"
@@ -401,7 +407,10 @@ async fn test_mariadb_show_collation_for_utf8mb4_returns_matching_collations() {
         })
         .collect();
 
-    assert!(!collations.is_empty(), "utf8mb4 collation list must not be empty");
+    assert!(
+        !collations.is_empty(),
+        "utf8mb4 collation list must not be empty"
+    );
     assert!(
         collations.iter().any(|c| c == "utf8mb4_general_ci"),
         "utf8mb4_general_ci must be present"

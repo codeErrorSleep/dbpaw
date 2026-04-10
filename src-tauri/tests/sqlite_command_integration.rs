@@ -351,7 +351,11 @@ END;
         .expect("verify sqlite trigger should succeed");
     let count = verify.data[0]["c"]
         .as_i64()
-        .or_else(|| verify.data[0]["c"].as_str().and_then(|v| v.parse::<i64>().ok()))
+        .or_else(|| {
+            verify.data[0]["c"]
+                .as_str()
+                .and_then(|v| v.parse::<i64>().ok())
+        })
         .expect("audit count should be numeric");
     assert_eq!(count, 1);
 

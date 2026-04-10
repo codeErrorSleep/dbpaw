@@ -1301,7 +1301,9 @@ mod tests {
         );
         assert_eq!(tokens.first().map(String::as_str), Some("create"));
         assert!(tokens.contains(&"function".to_string()));
-        assert!(!tokens.iter().any(|token| token == "begin" || token == "end"));
+        assert!(!tokens
+            .iter()
+            .any(|token| token == "begin" || token == "end"));
     }
 
     #[test]

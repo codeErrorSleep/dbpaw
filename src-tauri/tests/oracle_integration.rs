@@ -96,7 +96,10 @@ async fn test_oracle_integration_flow() {
         "structure should have columns"
     );
     assert!(
-        structure.columns.iter().any(|c| c.name == "ID" && c.primary_key),
+        structure
+            .columns
+            .iter()
+            .any(|c| c.name == "ID" && c.primary_key),
         "ID column should be marked as primary key"
     );
     assert!(
@@ -126,16 +129,7 @@ async fn test_oracle_integration_flow() {
 
     // get_table_data
     let result = driver
-        .get_table_data(
-            schema.clone(),
-            table.clone(),
-            1,
-            10,
-            None,
-            None,
-            None,
-            None,
-        )
+        .get_table_data(schema.clone(), table.clone(), 1, 10, None, None, None, None)
         .await
         .expect("get_table_data should succeed");
     assert_eq!(result.total, 1, "total should be 1");
@@ -148,9 +142,7 @@ async fn test_oracle_integration_flow() {
 
     // execute_query SELECT
     let qr = driver
-        .execute_query(format!(
-            "SELECT id, name FROM \"{schema}\".\"{table}\""
-        ))
+        .execute_query(format!("SELECT id, name FROM \"{schema}\".\"{table}\""))
         .await
         .expect("execute_query SELECT should succeed");
     assert!(qr.success);
@@ -250,5 +242,8 @@ async fn test_oracle_integration_connection_failure() {
     let result = OracleDriver::connect(&form).await;
     assert!(result.is_err(), "wrong password should fail");
     let err = result.err().expect("should have an error");
-    assert!(err.contains("[CONN_FAILED]"), "error should be tagged CONN_FAILED");
+    assert!(
+        err.contains("[CONN_FAILED]"),
+        "error should be tagged CONN_FAILED"
+    );
 }
