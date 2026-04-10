@@ -234,6 +234,7 @@ export default function App() {
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
   const [isCloseSaveDialogOpen, setIsCloseSaveDialogOpen] = useState(false);
   const [sidebarLayout, setSidebarLayout] = useState<SidebarLayoutMode>("tabs");
+  const [showColumnComments, setShowColumnComments] = useState(false);
   const closeSaveCompletedRef = useRef(false);
   const unsavedConfirmActionRef = useRef<"save" | "discard" | null>(null);
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
@@ -268,6 +269,7 @@ export default function App() {
         setSidebarLayout(layout === "tree" ? "tree" : "tabs");
       },
     );
+    void getSetting("showColumnComments", false).then(setShowColumnComments);
   }, []);
 
   const sensors = useSensors(
@@ -1726,6 +1728,7 @@ export default function App() {
                                   }
                                 : undefined
                             }
+                            showColumnComments={showColumnComments}
                           />
                         ) : tab.connectionId &&
                           tab.database &&
@@ -1821,6 +1824,8 @@ export default function App() {
             onOpenChange={setOpenSettings}
             sidebarLayout={sidebarLayout}
             onSidebarLayoutChange={setSidebarLayout}
+            showColumnComments={showColumnComments}
+            onShowColumnCommentsChange={setShowColumnComments}
           />
         </Suspense>
       )}

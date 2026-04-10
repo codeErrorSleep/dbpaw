@@ -101,6 +101,12 @@ export const en = {
       fontSizeDescription:
         "Adjust global text size across the app (Range: {{min}}-{{max}}px)",
     },
+    dataGrid: {
+      title: "Data Grid",
+      showColumnComments: "Show Column Comments",
+      showColumnCommentsDescription:
+        "Display column comments in small text below the column name in table headers",
+    },
     layout: {
       title: "Layout",
       modeTitle: "Sidebar Layout",

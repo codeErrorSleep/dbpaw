@@ -103,6 +103,12 @@ export const ja: Translations = {
       fontSizeDescription:
         "アプリ全体の文字サイズを調整します（範囲：{{min}}-{{max}}px）",
     },
+    dataGrid: {
+      title: "データグリッド",
+      showColumnComments: "カラムコメントを表示",
+      showColumnCommentsDescription:
+        "テーブルヘッダーの列名の下に小さなテキストでカラムコメントを表示します",
+    },
     layout: {
       title: "レイアウト",
       modeTitle: "サイドバー配置",

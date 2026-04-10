@@ -148,6 +148,7 @@ interface TableViewProps {
     driver: string;
   };
   isLoading?: boolean;
+  showColumnComments?: boolean;
 }
 
 export function TableView({
@@ -171,6 +172,7 @@ export function TableView({
   onCreateQuery,
   tableContext,
   isLoading,
+  showColumnComments = false,
 }: TableViewProps) {
   const { t } = useTranslation();
   const PAGE_SIZE_OPTIONS = ["10", "50", "100", "200", "500", "1000"] as const;
@@ -1996,26 +1998,33 @@ export function TableView({
                     <div className="flex items-center justify-between pr-2">
                       <button
                         type="button"
-                        className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1"
+                        className="flex flex-col items-start cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1 overflow-hidden"
                         title={`${headerTooltip}\n${headerActionLabel}`}
                         aria-label={headerActionLabel}
                         onClick={headerInteraction.handleClick}
                         onDoubleClick={headerInteraction.handleDoubleClick}
                       >
-                        <span className="truncate" title={headerTooltip}>
-                          {column}
-                        </span>
-                        <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                          {isSorted ? (
-                            direction === "asc" ? (
-                              <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                        <div className="flex items-center gap-1 w-full">
+                          <span className="truncate" title={headerTooltip}>
+                            {column}
+                          </span>
+                          <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                            {isSorted ? (
+                              direction === "asc" ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-primary" />
+                              )
                             ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-primary" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </span>
+                              <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </span>
+                        </div>
+                        {showColumnComments && comment && (
+                          <span className="block truncate text-[10px] text-muted-foreground/60 leading-tight font-normal">
+                            {comment}
+                          </span>
+                        )}
                       </button>
                       <div
                         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"

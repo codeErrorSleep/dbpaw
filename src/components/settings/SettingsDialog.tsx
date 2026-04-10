@@ -60,6 +60,8 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   sidebarLayout?: "tabs" | "tree";
   onSidebarLayoutChange?: (layout: "tabs" | "tree") => void;
+  showColumnComments?: boolean;
+  onShowColumnCommentsChange?: (v: boolean) => void;
 }
 
 type SettingsSection = "general" | "layout" | "ai" | "shortcuts" | "about";
@@ -229,12 +231,15 @@ export function SettingsDialog({
   onOpenChange,
   sidebarLayout = "tabs",
   onSidebarLayoutChange,
+  showColumnComments: showColumnCommentsProp = false,
+  onShowColumnCommentsChange,
 }: SettingsDialogProps) {
   const { t } = useTranslation();
   const { theme, setTheme, fontSizePx, setFontSizePx } = useTheme();
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("general");
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [showColumnComments, setShowColumnComments] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateTaskState, setUpdateTaskState] = useState<UpdateTaskState>(
     getUpdateTaskSnapshot().state,
@@ -274,6 +279,7 @@ export function SettingsDialog({
       setActiveSection("general");
       setFontSizeInput(String(fontSizePx));
       setLayoutMode(sidebarLayout);
+      setShowColumnComments(showColumnCommentsProp);
       getSetting("autoUpdate", true).then(setAutoUpdate);
       api.ai.providers
         .list()
@@ -291,7 +297,7 @@ export function SettingsDialog({
           toast.error(t("settings.aiProviders.loadFailed"));
         });
     }
-  }, [fontSizePx, open, sidebarLayout, t]);
+  }, [fontSizePx, open, showColumnCommentsProp, sidebarLayout, t]);
 
   useEffect(() => {
     setFontSizeInput(String(fontSizePx));
@@ -371,6 +377,12 @@ export function SettingsDialog({
   const toggleAutoUpdate = async (checked: boolean) => {
     setAutoUpdate(checked);
     await saveSetting("autoUpdate", checked);
+  };
+
+  const toggleShowColumnComments = async (checked: boolean) => {
+    setShowColumnComments(checked);
+    await saveSetting("showColumnComments", checked);
+    onShowColumnCommentsChange?.(checked);
   };
 
   const handleSaveProvider = async () => {
@@ -622,6 +634,21 @@ export function SettingsDialog({
                       />
                       <span className="text-sm text-muted-foreground">px</span>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label className="text-base">
+                        {t("settings.dataGrid.showColumnComments")}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t("settings.dataGrid.showColumnCommentsDescription")}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={showColumnComments}
+                      onCheckedChange={toggleShowColumnComments}
+                    />
                   </div>
                 </div>
 
