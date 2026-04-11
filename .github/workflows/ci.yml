@@ -65,7 +65,7 @@ jobs:
           workspaces: src-tauri -> src-tauri/target
 
       - name: Run rust check
-        run: bun run rust:check
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
 
   # Parallel database integration tests
   integration:
