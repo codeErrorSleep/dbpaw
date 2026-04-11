@@ -39,7 +39,7 @@ interface SidebarProps {
       table: string;
       driver: string;
     },
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
     filePath: string,
   ) => void;
   onSelectSavedQuery: (query: SavedQuery) => void;
@@ -98,7 +98,10 @@ export function Sidebar({
         className="h-full flex flex-col"
       >
         <TabsList className="w-full grid grid-cols-2 overflow-hidden">
-          <TabsTrigger value="connections" className="min-w-0 max-w-none truncate">
+          <TabsTrigger
+            value="connections"
+            className="min-w-0 max-w-none truncate"
+          >
             {t("sidebar.tabs.connections")}
           </TabsTrigger>
           <TabsTrigger value="queries" className="min-w-0 max-w-none truncate">

@@ -267,7 +267,7 @@ pub async fn create_database_by_id(
     }
 
     let exec_res = match driver.as_str() {
-        "mysql" | "mariadb" | "tidb" => {
+        driver if crate::db::drivers::is_mysql_family_driver(driver) => {
             let sql = build_mysql_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry(&state, id, None, |driver| {
                 let sql_clone = sql.clone();
@@ -348,7 +348,7 @@ pub async fn create_database_by_id_direct(
     }
 
     let exec_res = match driver.as_str() {
-        "mysql" | "mariadb" | "tidb" => {
+        driver if crate::db::drivers::is_mysql_family_driver(driver) => {
             let sql = build_mysql_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry_from_app_state(state, id, None, |driver| {
                 let sql_clone = sql.clone();
@@ -417,6 +417,122 @@ pub async fn test_connection_ephemeral(
         message: "Connection successful".to_string(),
         latency_ms: Some(elapsed),
     })
+}
+
+#[tauri::command]
+pub async fn get_mysql_charsets_by_id(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<String>, String> {
+    super::execute_with_retry(&state, id, None, |driver| async move {
+        let result = driver
+            .execute_query("SHOW CHARACTER SET".to_string())
+            .await?;
+        let mut charsets: Vec<String> = result
+            .data
+            .iter()
+            .filter_map(|row| {
+                row.get("Charset")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+        charsets.sort();
+        Ok(charsets)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_mysql_collations_by_id(
+    state: State<'_, AppState>,
+    id: i64,
+    charset: Option<String>,
+) -> Result<Vec<String>, String> {
+    let sql = match &charset {
+        Some(cs) if is_safe_option_token(cs) => {
+            format!("SHOW COLLATION WHERE Charset = '{}'", cs)
+        }
+        Some(cs) => {
+            return Err(format!("[VALIDATION_ERROR] Invalid charset: {}", cs));
+        }
+        None => "SHOW COLLATION".to_string(),
+    };
+    super::execute_with_retry(&state, id, None, |driver| {
+        let sql = sql.clone();
+        async move {
+            let result = driver.execute_query(sql).await?;
+            let mut collations: Vec<String> = result
+                .data
+                .iter()
+                .filter_map(|row| {
+                    row.get("Collation")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .collect();
+            collations.sort();
+            Ok(collations)
+        }
+    })
+    .await
+}
+
+pub async fn get_mysql_charsets_by_id_direct(
+    state: &AppState,
+    id: i64,
+) -> Result<Vec<String>, String> {
+    super::execute_with_retry_from_app_state(state, id, None, |driver| async move {
+        let result = driver
+            .execute_query("SHOW CHARACTER SET".to_string())
+            .await?;
+        let mut charsets: Vec<String> = result
+            .data
+            .iter()
+            .filter_map(|row| {
+                row.get("Charset")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+        charsets.sort();
+        Ok(charsets)
+    })
+    .await
+}
+
+pub async fn get_mysql_collations_by_id_direct(
+    state: &AppState,
+    id: i64,
+    charset: Option<String>,
+) -> Result<Vec<String>, String> {
+    let sql = match &charset {
+        Some(cs) if is_safe_option_token(cs) => {
+            format!("SHOW COLLATION WHERE Charset = '{}'", cs)
+        }
+        Some(cs) => {
+            return Err(format!("[VALIDATION_ERROR] Invalid charset: {}", cs));
+        }
+        None => "SHOW COLLATION".to_string(),
+    };
+    super::execute_with_retry_from_app_state(state, id, None, |driver| {
+        let sql = sql.clone();
+        async move {
+            let result = driver.execute_query(sql).await?;
+            let mut collations: Vec<String> = result
+                .data
+                .iter()
+                .filter_map(|row| {
+                    row.get("Collation")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .collect();
+            collations.sort();
+            Ok(collations)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -553,8 +669,8 @@ mod tests {
         validate_database_name, CreateDatabasePayload,
     };
     use super::{
-        normalize_create_database_error, normalize_option_token, quote_clickhouse_ident,
-        quote_mssql_ident, quote_mysql_ident, quote_pg_ident,
+        is_safe_option_token, normalize_create_database_error, normalize_option_token,
+        quote_clickhouse_ident, quote_mssql_ident, quote_mysql_ident, quote_pg_ident,
     };
     use crate::connection_input::normalize_connection_form;
     use crate::models::ConnectionForm;
@@ -733,5 +849,53 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("does not support charset option"));
+    }
+
+    #[test]
+    fn get_mysql_collations_charset_validation_rejects_unsafe_tokens() {
+        // Verify the validation logic used by get_mysql_collations_by_id/_direct.
+        // A charset with spaces or semicolons must be rejected.
+        assert!(!is_safe_option_token("utf8 mb4"));
+        assert!(!is_safe_option_token("utf8;drop"));
+        assert!(!is_safe_option_token(""));
+    }
+
+    #[test]
+    fn get_mysql_collations_charset_validation_accepts_valid_charsets() {
+        // All standard MySQL charset names must pass the token check.
+        let valid = [
+            "utf8mb4",
+            "utf8",
+            "latin1",
+            "gbk",
+            "gb18030",
+            "ascii",
+            "binary",
+            "utf8mb4_0900_ai_ci",
+        ];
+        for cs in valid {
+            assert!(is_safe_option_token(cs), "expected '{}' to be accepted", cs);
+        }
+    }
+
+    #[test]
+    fn mysql_create_database_sql_is_reusable_for_starrocks_connections() {
+        assert!(crate::db::drivers::is_mysql_family_driver("starrocks"));
+
+        let sql = build_mysql_create_database_sql(
+            &CreateDatabasePayload {
+                name: "analytics".to_string(),
+                if_not_exists: Some(true),
+                charset: None,
+                collation: None,
+                encoding: None,
+                lc_collate: None,
+                lc_ctype: None,
+            },
+            "analytics",
+        )
+        .unwrap();
+
+        assert_eq!(sql, "CREATE DATABASE IF NOT EXISTS `analytics`");
     }
 }

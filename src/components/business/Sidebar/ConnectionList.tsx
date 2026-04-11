@@ -166,7 +166,6 @@ const defaultForm: ConnectionForm = {
   sshUsername: "",
 };
 
-
 const defaultCreateDatabaseForm: CreateDatabaseForm = {
   name: "",
   ifNotExists: true,
@@ -178,14 +177,50 @@ const defaultCreateDatabaseForm: CreateDatabaseForm = {
 };
 
 const createDbNoneOption = "__none__";
-const mysqlCharsetOptions = ["utf8mb4", "utf8", "latin1"];
-const mysqlCollationOptions = [
-  "utf8mb4_general_ci",
-  "utf8mb4_unicode_ci",
-  "utf8_general_ci",
-  "latin1_swedish_ci",
+const postgresEncodingOptions = [
+  "UTF8",
+  "SQL_ASCII",
+  "BIG5",
+  "EUC_CN",
+  "EUC_JP",
+  "EUC_JIS_2004",
+  "EUC_KR",
+  "EUC_TW",
+  "GB18030",
+  "GBK",
+  "ISO_8859_5",
+  "ISO_8859_6",
+  "ISO_8859_7",
+  "ISO_8859_8",
+  "JOHAB",
+  "KOI8R",
+  "KOI8U",
+  "LATIN1",
+  "LATIN2",
+  "LATIN3",
+  "LATIN4",
+  "LATIN5",
+  "LATIN6",
+  "LATIN7",
+  "LATIN8",
+  "LATIN9",
+  "LATIN10",
+  "MULE_INTERNAL",
+  "SHIFT_JIS_2004",
+  "SJIS",
+  "UHC",
+  "WIN866",
+  "WIN874",
+  "WIN1250",
+  "WIN1251",
+  "WIN1252",
+  "WIN1253",
+  "WIN1254",
+  "WIN1255",
+  "WIN1256",
+  "WIN1257",
+  "WIN1258",
 ];
-const postgresEncodingOptions = ["UTF8", "LATIN1", "SQL_ASCII"];
 const postgresLocaleOptions = [
   "en_US.UTF-8",
   "C",
@@ -195,9 +230,60 @@ const postgresLocaleOptions = [
 ];
 const mssqlCollationOptions = [
   "SQL_Latin1_General_CP1_CI_AS",
+  "SQL_Latin1_General_CP1_CS_AS",
+  "SQL_Latin1_General_CP1_CI_AI",
+  "SQL_Latin1_General_CP1_CS_AI",
+  "Latin1_General_CI_AS",
+  "Latin1_General_CS_AS",
+  "Latin1_General_BIN",
+  "Latin1_General_BIN2",
+  "Latin1_General_100_CI_AS",
+  "Latin1_General_100_CS_AS",
+  "Latin1_General_100_CI_AI",
+  "Latin1_General_100_BIN2",
   "Latin1_General_100_CI_AS_SC",
+  "Latin1_General_100_CS_AS_SC",
+  "Latin1_General_100_CI_AI_SC",
+  "Latin1_General_100_BIN2_UTF8",
+  "Latin1_General_100_CI_AS_SC_UTF8",
+  "Latin1_General_100_CI_AI_SC_UTF8",
+  "SQL_Latin1_General_CP850_CI_AS",
+  "Modern_Spanish_CI_AS",
+  "Modern_Spanish_100_CI_AS",
+  "French_CI_AS",
+  "French_100_CI_AS",
+  "German_PhoneBook_CI_AS",
+  "German_PhoneBook_100_CI_AS",
+  "Turkish_CI_AS",
+  "Turkish_100_CI_AS",
+  "Cyrillic_General_CI_AS",
+  "Cyrillic_General_100_CI_AS",
   "Chinese_PRC_CI_AS",
+  "Chinese_PRC_CS_AS",
+  "Chinese_PRC_100_CI_AS",
+  "Chinese_PRC_100_CS_AS",
+  "Chinese_PRC_100_BIN2",
+  "Chinese_PRC_100_CI_AS_SC",
+  "Chinese_PRC_100_CI_AS_SC_UTF8",
+  "Chinese_Simplified_Pinyin_100_CI_AS",
+  "Chinese_Simplified_Pinyin_100_CS_AS",
+  "Chinese_Traditional_Stroke_Order_100_CI_AS",
   "Japanese_CI_AS",
+  "Japanese_CS_AS",
+  "Japanese_BIN2",
+  "Japanese_XJIS_100_CI_AS",
+  "Japanese_XJIS_100_CS_AS",
+  "Japanese_XJIS_100_BIN2",
+  "Japanese_XJIS_140_CI_AS",
+  "Japanese_XJIS_140_CI_AS_KS_WS",
+  "Japanese_Bushu_Kakusu_100_CI_AS",
+  "Japanese_Bushu_Kakusu_140_CI_AS",
+  "Korean_Wansung_CI_AS",
+  "Korean_Wansung_100_CI_AS",
+  "Korean_Wansung_140_CI_AS",
+  "Korean_Unicode_CI_AS",
+  "Korean_Unicode_100_CI_AS",
+  "Korean_Unicode_140_CI_AS",
 ];
 interface ConnectionListProps {
   onTableSelect?: (
@@ -222,7 +308,7 @@ interface ConnectionListProps {
       table: string;
       driver: string;
     },
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
     filePath: string,
   ) => void;
   activeTableTarget?: {
@@ -324,6 +410,9 @@ export function ConnectionList({
   const [createDbForm, setCreateDbForm] = useState<CreateDatabaseForm>(
     defaultCreateDatabaseForm,
   );
+  const [mysqlCharsets, setMysqlCharsets] = useState<string[]>([]);
+  const [mysqlCollations, setMysqlCollations] = useState<string[]>([]);
+  const [loadingMysqlOptions, setLoadingMysqlOptions] = useState(false);
   const [testMsg, setTestMsg] = useState<{
     ok: boolean;
     text: string;
@@ -361,12 +450,47 @@ export function ConnectionList({
     [connections, createDbConnectionId],
   );
   const createDbTargetDriver = createDbTargetConnection?.type;
-  const isMySqlFamilyCreateDb =
-    createDbTargetDriver === "mysql" ||
-    createDbTargetDriver === "mariadb" ||
-    createDbTargetDriver === "tidb";
+  const isMySqlFamilyCreateDb = createDbTargetDriver
+    ? isMysqlFamilyDriver(createDbTargetDriver as any)
+    : false;
   const isPostgresCreateDb = createDbTargetDriver === "postgres";
   const isMssqlCreateDb = createDbTargetDriver === "mssql";
+
+  useEffect(() => {
+    if (
+      !isCreateDbDialogOpen ||
+      !isMySqlFamilyCreateDb ||
+      !createDbConnectionId
+    )
+      return;
+    setLoadingMysqlOptions(true);
+    api.connections
+      .getMysqlCharsets(Number(createDbConnectionId))
+      .then(setMysqlCharsets)
+      .catch(() => setMysqlCharsets(["utf8mb4", "utf8", "latin1"]))
+      .finally(() => setLoadingMysqlOptions(false));
+  }, [isCreateDbDialogOpen, isMySqlFamilyCreateDb, createDbConnectionId]);
+
+  useEffect(() => {
+    if (
+      !isCreateDbDialogOpen ||
+      !isMySqlFamilyCreateDb ||
+      !createDbConnectionId
+    )
+      return;
+    api.connections
+      .getMysqlCollations(
+        Number(createDbConnectionId),
+        createDbForm.charset || undefined,
+      )
+      .then(setMysqlCollations)
+      .catch(() => setMysqlCollations([]));
+  }, [
+    isCreateDbDialogOpen,
+    isMySqlFamilyCreateDb,
+    createDbConnectionId,
+    createDbForm.charset,
+  ]);
 
   const getConnectionStatusLabel = (connection: Connection) => {
     if (connection.connectState === "success") {
@@ -1613,7 +1737,7 @@ export function ConnectionList({
     connection: Connection,
     database: DatabaseInfo,
     table: TableInfo,
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
   ) => {
     if (!onExportTable) return;
     if (!isTauri()) {
@@ -2524,12 +2648,38 @@ export function ConnectionList({
                                       connection,
                                       database,
                                       table,
-                                      "sql",
+                                      "sql_dml",
                                     )
                                   }
                                 >
                                   <Download className="w-4 h-4 mr-2" />
-                                  {t("connection.menu.exportSql")}
+                                  {t("connection.menu.exportSqlDml")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "sql_ddl",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportSqlDdl")}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onClick={() =>
+                                    void handleTableExport(
+                                      connection,
+                                      database,
+                                      table,
+                                      "sql_full",
+                                    )
+                                  }
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {t("connection.menu.exportSqlFull")}
                                 </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
@@ -2757,12 +2907,38 @@ export function ConnectionList({
                                     connection,
                                     database,
                                     table,
-                                    "sql",
+                                    "sql_dml",
                                   )
                                 }
                               >
                                 <Download className="w-4 h-4 mr-2" />
-                                {t("connection.menu.exportSql")}
+                                {t("connection.menu.exportSqlDml")}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() =>
+                                  void handleTableExport(
+                                    connection,
+                                    database,
+                                    table,
+                                    "sql_ddl",
+                                  )
+                                }
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                {t("connection.menu.exportSqlDdl")}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() =>
+                                  void handleTableExport(
+                                    connection,
+                                    database,
+                                    table,
+                                    "sql_full",
+                                  )
+                                }
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                {t("connection.menu.exportSqlFull")}
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>
@@ -3034,6 +3210,8 @@ export function ConnectionList({
             setCreateDbConnectionId(null);
             setShowCreateDbAdvanced(false);
             setCreateDbForm(defaultCreateDatabaseForm);
+            setMysqlCharsets([]);
+            setMysqlCollations([]);
           }
         }}
       >
@@ -3093,25 +3271,31 @@ export function ConnectionList({
                       </Label>
                       <Select
                         value={createDbForm.charset || createDbNoneOption}
+                        disabled={loadingMysqlOptions}
                         onValueChange={(v) =>
                           setCreateDbForm((prev) => ({
                             ...prev,
                             charset: v === createDbNoneOption ? "" : v,
+                            collation: "",
                           }))
                         }
                       >
                         <SelectTrigger id="create-db-charset">
                           <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.charset",
-                            )}
+                            placeholder={
+                              loadingMysqlOptions
+                                ? t("common.loading")
+                                : t(
+                                    "connection.createDbDialog.placeholders.charset",
+                                  )
+                            }
                           />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value={createDbNoneOption}>
                             {t("connection.createDbDialog.defaultOption")}
                           </SelectItem>
-                          {mysqlCharsetOptions.map((opt) => (
+                          {mysqlCharsets.map((opt) => (
                             <SelectItem key={opt} value={opt}>
                               {opt}
                             </SelectItem>
@@ -3143,7 +3327,7 @@ export function ConnectionList({
                           <SelectItem value={createDbNoneOption}>
                             {t("connection.createDbDialog.defaultOption")}
                           </SelectItem>
-                          {mysqlCollationOptions.map((opt) => (
+                          {mysqlCollations.map((opt) => (
                             <SelectItem key={opt} value={opt}>
                               {opt}
                             </SelectItem>

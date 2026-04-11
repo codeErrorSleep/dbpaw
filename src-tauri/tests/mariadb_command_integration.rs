@@ -335,3 +335,93 @@ async fn test_mariadb_command_get_table_data_by_conn_invalid_pagination_returns_
 
     cleanup_table(&form, &table).await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mariadb_show_character_set_returns_standard_charsets() {
+    let docker = (!mariadb_context::should_reuse_local_db()).then(Cli::default);
+    let (_mariadb_container, form) =
+        mariadb_context::mariadb_form_from_test_context(docker.as_ref());
+    wait_until_mariadb_ready(&form).await;
+
+    let driver = MysqlDriver::connect(&form)
+        .await
+        .expect("failed to connect mariadb driver");
+
+    let result = driver
+        .execute_query("SHOW CHARACTER SET".to_string())
+        .await
+        .expect("SHOW CHARACTER SET should succeed");
+
+    let charsets: Vec<String> = result
+        .data
+        .iter()
+        .filter_map(|row| {
+            row.get("Charset")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    assert!(!charsets.is_empty(), "charset list must not be empty");
+    assert!(
+        charsets.iter().any(|c| c == "utf8mb4"),
+        "utf8mb4 must be present"
+    );
+    assert!(
+        charsets.iter().any(|c| c == "latin1"),
+        "latin1 must be present"
+    );
+    assert!(
+        charsets.iter().all(|c| !c.trim().is_empty()),
+        "all charset names must be non-empty"
+    );
+
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mariadb_show_collation_for_utf8mb4_returns_matching_collations() {
+    let docker = (!mariadb_context::should_reuse_local_db()).then(Cli::default);
+    let (_mariadb_container, form) =
+        mariadb_context::mariadb_form_from_test_context(docker.as_ref());
+    wait_until_mariadb_ready(&form).await;
+
+    let driver = MysqlDriver::connect(&form)
+        .await
+        .expect("failed to connect mariadb driver");
+
+    let result = driver
+        .execute_query("SHOW COLLATION WHERE Charset = 'utf8mb4'".to_string())
+        .await
+        .expect("SHOW COLLATION should succeed");
+
+    let collations: Vec<String> = result
+        .data
+        .iter()
+        .filter_map(|row| {
+            row.get("Collation")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    assert!(
+        !collations.is_empty(),
+        "utf8mb4 collation list must not be empty"
+    );
+    assert!(
+        collations.iter().any(|c| c == "utf8mb4_general_ci"),
+        "utf8mb4_general_ci must be present"
+    );
+    for col in &collations {
+        assert!(
+            col.starts_with("utf8mb4"),
+            "collation '{}' does not belong to utf8mb4",
+            col
+        );
+    }
+
+    driver.close().await;
+}

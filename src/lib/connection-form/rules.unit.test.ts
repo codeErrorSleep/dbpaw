@@ -15,6 +15,7 @@ describe("isMysqlFamilyDriver", () => {
     expect(isMysqlFamilyDriver("mysql")).toBe(true);
     expect(isMysqlFamilyDriver("mariadb")).toBe(true);
     expect(isMysqlFamilyDriver("tidb")).toBe(true);
+    expect(isMysqlFamilyDriver("starrocks")).toBe(true);
   });
 
   test("rejects non-mysql drivers", () => {
@@ -38,12 +39,14 @@ describe("isFileBasedDriver", () => {
 describe("allowsHostWithPort / requiresPasswordOnCreate", () => {
   test("only mysql family allows host:port notation", () => {
     expect(allowsHostWithPort("mysql")).toBe(true);
+    expect(allowsHostWithPort("starrocks")).toBe(true);
     expect(allowsHostWithPort("postgres")).toBe(false);
   });
 
   test("non-mysql drivers require password on create", () => {
     expect(requiresPasswordOnCreate("postgres")).toBe(true);
     expect(requiresPasswordOnCreate("mysql")).toBe(false);
+    expect(requiresPasswordOnCreate("starrocks")).toBe(false);
   });
 });
 
@@ -144,14 +147,14 @@ describe("normalizeConnectionFormInput", () => {
 
   test("uses embedded host port even when a default port is already set", () => {
     const normalized = normalizeConnectionFormInput({
-      driver: "mysql",
-      host: " db:3307 ",
-      port: 3306,
+      driver: "starrocks",
+      host: " db:9031 ",
+      port: 9030,
       password: "",
     } as any);
 
     expect(normalized.host).toBe("db");
-    expect(normalized.port).toBe(3307);
+    expect(normalized.port).toBe(9031);
   });
 
   test("does not split host:port for non-mysql drivers", () => {

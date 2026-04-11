@@ -1,3 +1,5 @@
+import { isMysqlFamilyDriver } from "@/lib/driver-registry";
+
 export interface SearchMatch {
   row: number;
   col: string;
@@ -10,6 +12,42 @@ export interface InsertColumnMeta {
   nullable: boolean;
   defaultValue?: string | null;
   primaryKey?: boolean;
+}
+
+export interface HeaderInteractionState {
+  timerId: ReturnType<typeof setTimeout> | null;
+}
+
+export function createSingleAndDoubleClickHandler(
+  state: HeaderInteractionState,
+  onSingleClick: () => void,
+  onDoubleClick: () => void,
+  delayMs = 250,
+) {
+  return {
+    handleClick() {
+      if (state.timerId) {
+        clearTimeout(state.timerId);
+      }
+      state.timerId = setTimeout(() => {
+        state.timerId = null;
+        onSingleClick();
+      }, delayMs);
+    },
+    handleDoubleClick() {
+      if (state.timerId) {
+        clearTimeout(state.timerId);
+        state.timerId = null;
+      }
+      onDoubleClick();
+    },
+    cancelPendingClick() {
+      if (state.timerId) {
+        clearTimeout(state.timerId);
+        state.timerId = null;
+      }
+    },
+  };
 }
 
 export function isInsertColumnRequired(
@@ -138,9 +176,7 @@ export function escapeSQL(value: string): string {
 
 export function quoteIdent(driver: string | undefined, name: string): string {
   if (
-    driver === "mysql" ||
-    driver === "tidb" ||
-    driver === "mariadb" ||
+    (driver && isMysqlFamilyDriver(driver as any)) ||
     driver === "clickhouse"
   ) {
     return `\`${name}\``;
@@ -246,7 +282,7 @@ export function getQualifiedTableName(
   schema: string,
   table: string,
 ): string {
-  if (driver === "mysql" || driver === "tidb" || driver === "mariadb") {
+  if (isMysqlFamilyDriver(driver as any)) {
     return quoteIdent(driver, table);
   }
 

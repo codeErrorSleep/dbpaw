@@ -19,6 +19,10 @@ pub mod oracle;
 pub mod postgres;
 pub mod sqlite;
 
+pub fn is_mysql_family_driver(driver: &str) -> bool {
+    matches!(driver, "mysql" | "mariadb" | "tidb" | "starrocks")
+}
+
 /// Build a `[CONN_FAILED]` error message with a context-aware hint derived from the
 /// underlying error text, so users are not misled by a generic credential warning
 /// when the actual problem is TLS incompatibility, a network issue, etc.
@@ -26,7 +30,9 @@ pub(crate) fn conn_failed_error(e: &dyn std::fmt::Display) -> String {
     let raw = e.to_string();
     let lower = raw.to_ascii_lowercase();
 
-    let hint = if lower.contains("dpi-1047") || lower.contains("cannot locate a 64-bit oracle client") {
+    let hint = if lower.contains("dpi-1047")
+        || lower.contains("cannot locate a 64-bit oracle client")
+    {
         "hint: Oracle Instant Client is not installed — download it from \
          https://www.oracle.com/database/technologies/instant-client/downloads.html \
          and add the directory containing libclntsh to your library path \
@@ -143,7 +149,7 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
             let driver = PostgresDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
-        "mysql" | "tidb" | "mariadb" => {
+        driver if is_mysql_family_driver(driver) => {
             let driver = MysqlDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
@@ -176,7 +182,7 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
 
 #[cfg(test)]
 mod tests {
-    use super::{conn_failed_error, strip_trailing_statement_terminator};
+    use super::{conn_failed_error, is_mysql_family_driver, strip_trailing_statement_terminator};
 
     #[test]
     fn conn_failed_error_oracle_client_hint() {
@@ -248,5 +254,12 @@ mod tests {
     #[test]
     fn strip_trailing_statement_terminator_keeps_sql_without_semicolon() {
         assert_eq!(strip_trailing_statement_terminator("SELECT 1"), "SELECT 1");
+    }
+
+    #[test]
+    fn mysql_family_helper_includes_starrocks() {
+        assert!(is_mysql_family_driver("mysql"));
+        assert!(is_mysql_family_driver("starrocks"));
+        assert!(!is_mysql_family_driver("postgres"));
     }
 }

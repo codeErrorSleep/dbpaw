@@ -5,6 +5,7 @@ import {
   calculateAutoColumnWidths,
   canMutateClickHouseTable,
   collectSearchMatches,
+  createSingleAndDoubleClickHandler,
   escapeSQL,
   formatCellValue,
   formatInsertSQLValue,
@@ -30,6 +31,7 @@ describe("formatSQLValue", () => {
     expect(formatSQLValue("false", true, "execution", "mysql")).toBe("FALSE");
     expect(formatSQLValue("true", true, "execution", "tidb")).toBe("TRUE");
     expect(formatSQLValue("false", true, "execution", "mariadb")).toBe("FALSE");
+    expect(formatSQLValue("true", true, "execution", "starrocks")).toBe("TRUE");
   });
 
   test("throws for invalid boolean in execution mode", () => {
@@ -131,6 +133,12 @@ describe("getQualifiedTableName", () => {
     );
   });
 
+  test("uses unqualified table with backticks for starrocks", () => {
+    expect(getQualifiedTableName("starrocks", "analytics", "events")).toBe(
+      "`events`",
+    );
+  });
+
   test("does not qualify sqlite main/public schema", () => {
     expect(getQualifiedTableName("sqlite", "main", "users")).toBe('"users"');
     expect(getQualifiedTableName("sqlite", "public", "users")).toBe('"users"');
@@ -208,6 +216,7 @@ describe("quoteIdent", () => {
     expect(quoteIdent("mysql", "my_table")).toBe("`my_table`");
     expect(quoteIdent("tidb", "my_table")).toBe("`my_table`");
     expect(quoteIdent("mariadb", "my_table")).toBe("`my_table`");
+    expect(quoteIdent("starrocks", "my_table")).toBe("`my_table`");
     expect(quoteIdent("clickhouse", "my_table")).toBe("`my_table`");
   });
 
@@ -263,6 +272,60 @@ describe("sortRows", () => {
   });
 });
 
+describe("createSingleAndDoubleClickHandler", () => {
+  test("runs single-click action after delay", async () => {
+    const calls: string[] = [];
+    const state = { timerId: null };
+    const handler = createSingleAndDoubleClickHandler(
+      state,
+      () => calls.push("copy"),
+      () => calls.push("sort"),
+      10,
+    );
+
+    handler.handleClick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(calls).toEqual(["copy"]);
+    expect(state.timerId).toBeNull();
+  });
+
+  test("double click cancels pending single-click action", () => {
+    const calls: string[] = [];
+    const state = { timerId: null };
+    const handler = createSingleAndDoubleClickHandler(
+      state,
+      () => calls.push("copy"),
+      () => calls.push("sort"),
+      20,
+    );
+
+    handler.handleClick();
+    handler.handleDoubleClick();
+
+    expect(calls).toEqual(["sort"]);
+    expect(state.timerId).toBeNull();
+  });
+
+  test("cancelPendingClick clears pending single-click action", async () => {
+    const calls: string[] = [];
+    const state = { timerId: null };
+    const handler = createSingleAndDoubleClickHandler(
+      state,
+      () => calls.push("copy"),
+      () => calls.push("sort"),
+      10,
+    );
+
+    handler.handleClick();
+    handler.cancelPendingClick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(calls).toEqual([]);
+    expect(state.timerId).toBeNull();
+  });
+});
+
 describe("collectSearchMatches", () => {
   const data = [
     { id: 1, name: "Alice" },
@@ -292,15 +355,28 @@ describe("collectSearchMatches", () => {
 
   test("skips null and undefined cell values", () => {
     const withNulls = [{ id: null, name: undefined }];
-    const matches = collectSearchMatches(withNulls, ["id", "name"], "null", identity);
+    const matches = collectSearchMatches(
+      withNulls,
+      ["id", "name"],
+      "null",
+      identity,
+    );
     expect(matches).toEqual([]);
   });
 });
 
 describe("calculateAutoColumnWidths", () => {
   test("returns empty object for empty data or columns", () => {
-    expect(calculateAutoColumnWidths({ data: [], columns: ["a"], columnWidths: {} })).toEqual({});
-    expect(calculateAutoColumnWidths({ data: [{ a: 1 }], columns: [], columnWidths: {} })).toEqual({});
+    expect(
+      calculateAutoColumnWidths({ data: [], columns: ["a"], columnWidths: {} }),
+    ).toEqual({});
+    expect(
+      calculateAutoColumnWidths({
+        data: [{ a: 1 }],
+        columns: [],
+        columnWidths: {},
+      }),
+    ).toEqual({});
   });
 
   test("skips columns with a pre-set width", () => {
@@ -415,7 +491,12 @@ describe("formatCellValue", () => {
   });
 
   test("object with many keys → shows first 2 keys and remainder count", () => {
-    const result = formatCellValue({ id: 1, name: "x", role: "admin", score: 99 });
+    const result = formatCellValue({
+      id: 1,
+      name: "x",
+      role: "admin",
+      score: 99,
+    });
     expect(result).toMatch(/^\{id, name, \.\.\. \+2\}$/);
   });
 
@@ -438,17 +519,19 @@ describe("formatCellValue: integration with collectSearchMatches", () => {
       { id: 2, meta: { role: "user", tags: [] } },
     ];
     const identity = (_row: number, _col: string, val: any) => val;
-    const matches = collectSearchMatches(data, ["id", "meta"], "admin", identity);
+    const matches = collectSearchMatches(
+      data,
+      ["id", "meta"],
+      "admin",
+      identity,
+    );
     expect(matches.length).toBe(1);
     expect(matches[0].row).toBe(0);
     expect(matches[0].col).toBe("meta");
   });
 
   test("array fields are searchable by content", () => {
-    const data = [
-      { tags: ["read", "write"] },
-      { tags: ["read"] },
-    ];
+    const data = [{ tags: ["read", "write"] }, { tags: ["read"] }];
     const identity = (_row: number, _col: string, val: any) => val;
     const matches = collectSearchMatches(data, ["tags"], "write", identity);
     expect(matches.length).toBe(1);
@@ -480,7 +563,9 @@ describe("formatCellValue: PostgreSQL array column output", () => {
   });
 
   test("text array displays as compact JSON string array", () => {
-    expect(formatCellValue(["postgres", "arrays"])).toBe('["postgres","arrays"]');
+    expect(formatCellValue(["postgres", "arrays"])).toBe(
+      '["postgres","arrays"]',
+    );
   });
 
   test("bool array displays as compact JSON", () => {
@@ -492,7 +577,10 @@ describe("formatCellValue: PostgreSQL array column output", () => {
   });
 
   test("jsonb array (array of objects) displays as full JSON", () => {
-    const val = [{ source: "web", valid: true }, { source: "app", valid: false }];
+    const val = [
+      { source: "web", valid: true },
+      { source: "app", valid: false },
+    ];
     expect(formatCellValue(val)).toBe(JSON.stringify(val));
   });
 
@@ -537,7 +625,12 @@ describe("collectSearchMatches: PostgreSQL array columns are searchable", () => 
   const identity = (_row: number, _col: string, val: any) => val;
 
   test("finds match inside text array content", () => {
-    const matches = collectSearchMatches(data, ["id", "tags"], "jsonb", identity);
+    const matches = collectSearchMatches(
+      data,
+      ["id", "tags"],
+      "jsonb",
+      identity,
+    );
     expect(matches.length).toBe(1);
     expect(matches[0].row).toBe(0);
     expect(matches[0].col).toBe("tags");

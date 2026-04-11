@@ -4,11 +4,18 @@ use crate::models::{
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use sqlx::{mysql::MySqlPoolOptions, Column, Executor, Row, TypeInfo};
+use sqlx::{
+    mysql::{MySqlConnectOptions, MySqlPoolOptions},
+    Column, Executor, Row, TypeInfo,
+};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
+
+#[cfg(test)]
+use sqlx::ConnectOptions;
 
 use crate::ssh::SshTunnel;
 
@@ -53,7 +60,16 @@ fn build_verify_ca_query_param(ca_path: &Path) -> String {
     )
 }
 
+fn mysql_family_default_port(driver: &str) -> u16 {
+    if driver.eq_ignore_ascii_case("starrocks") {
+        9030
+    } else {
+        3306
+    }
+}
+
 fn normalize_mysql_host_and_port(
+    raw_driver: &str,
     raw_host: &str,
     raw_port: Option<i64>,
 ) -> Result<(String, u16), String> {
@@ -62,7 +78,7 @@ fn normalize_mysql_host_and_port(
         return Err("[VALIDATION_ERROR] host cannot be empty".to_string());
     }
 
-    let mut port = raw_port.unwrap_or(3306);
+    let mut port = raw_port.unwrap_or(i64::from(mysql_family_default_port(raw_driver)));
     if !host.starts_with('[') && host.matches(':').count() == 1 {
         if let Some((host_part, port_part)) = host.rsplit_once(':') {
             let host_part = host_part.trim();
@@ -91,7 +107,7 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
         .host
         .clone()
         .ok_or("[VALIDATION_ERROR] host cannot be empty")?;
-    let (host, port) = normalize_mysql_host_and_port(&raw_host, form.port)?;
+    let (host, port) = normalize_mysql_host_and_port(&form.driver, &raw_host, form.port)?;
     // Allow database to be empty
     let username = form
         .username
@@ -155,6 +171,26 @@ fn build_dsn_with_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathB
     build_dsn_and_ca_path(form)
 }
 
+fn build_connect_options(dsn: &str, driver: &str) -> Result<MySqlConnectOptions, String> {
+    let mut options =
+        MySqlConnectOptions::from_str(dsn).map_err(|e| format!("[CONN_FAILED] {e}"))?;
+
+    if driver.eq_ignore_ascii_case("starrocks") {
+        // sqlx initializes MySQL connections with:
+        // SET sql_mode=(SELECT CONCAT(@@sql_mode, ...))
+        // plus timezone / SET NAMES session mutations tailored for MySQL.
+        // StarRocks rejects part of this initialization sequence, so skip the
+        // post-connect SET mutations entirely for the StarRocks compatibility path.
+        options = options
+            .pipes_as_concat(false)
+            .no_engine_substitution(false)
+            .timezone(None::<String>)
+            .set_names(false);
+    }
+
+    Ok(options)
+}
+
 fn cleanup_ca_file(path: &Path) {
     let _ = fs::remove_file(path);
 }
@@ -171,7 +207,6 @@ fn is_prepared_protocol_unsupported_error(err: &str) -> bool {
         || lower.contains("prepared statement protocol")
         || lower.contains("preparedoes not support") // PolarDB-X
 }
-
 
 impl Drop for MysqlDriver {
     fn drop(&mut self) {
@@ -196,10 +231,11 @@ impl MysqlDriver {
         }
 
         let (dsn, ca_cert_path) = build_dsn_with_ca_path(&dsn_form)?;
+        let connect_options = build_connect_options(&dsn, &dsn_form.driver)?;
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(3))
-            .connect(&dsn)
+            .connect_with(connect_options)
             .await
             .map_err(|e| super::conn_failed_error(&e))?;
 
@@ -1145,6 +1181,37 @@ mod tests {
             conn_str,
             "mysql://root:password@localhost:3308/test_db?ssl-mode=DISABLED"
         );
+    }
+
+    #[test]
+    fn test_conn_string_uses_starrocks_default_port_when_port_missing() {
+        let form = ConnectionForm {
+            driver: "starrocks".to_string(),
+            host: Some("localhost".to_string()),
+            port: None,
+            username: Some("root".to_string()),
+            password: Some("password".to_string()),
+            database: Some("analytics".to_string()),
+            ..Default::default()
+        };
+
+        let conn_str = build_dsn(&form).unwrap();
+        assert_eq!(
+            conn_str,
+            "mysql://root:password@localhost:9030/analytics?ssl-mode=DISABLED"
+        );
+    }
+
+    #[test]
+    fn test_starrocks_connect_options_disable_sql_mode_mutations() {
+        let options = build_connect_options(
+            "mysql://root:password@localhost:9030/analytics?ssl-mode=DISABLED",
+            "starrocks",
+        )
+        .unwrap();
+
+        let rendered = options.to_url_lossy().to_string();
+        assert!(rendered.contains("ssl-mode=DISABLED"));
     }
 
     #[test]

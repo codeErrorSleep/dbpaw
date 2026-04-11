@@ -186,9 +186,8 @@ impl OracleDriver {
         let cfg = self.config.clone();
         tokio::task::spawn_blocking(move || {
             let connect_string = build_connect_string(&cfg);
-            let conn =
-                oracle::Connection::connect(&cfg.username, &cfg.password, &connect_string)
-                    .map_err(|e| conn_failed_error(&e))?;
+            let conn = oracle::Connection::connect(&cfg.username, &cfg.password, &connect_string)
+                .map_err(|e| conn_failed_error(&e))?;
             f(conn)
         })
         .await
@@ -414,9 +413,10 @@ impl DatabaseDriver for OracleDriver {
                     if let (Some(name), Some(col_name)) = (idx_name, col_name) {
                         let unique = is_unique.unwrap_or(0) == 1;
                         let pos = position.unwrap_or(0);
-                        let entry = idx_map
-                            .entry(name)
-                            .or_insert((unique, idx_type.clone(), Vec::new()));
+                        let entry =
+                            idx_map
+                                .entry(name)
+                                .or_insert((unique, idx_type.clone(), Vec::new()));
                         entry.0 = unique;
                         if entry.1.is_none() {
                             entry.1 = idx_type;
@@ -704,7 +704,8 @@ impl DatabaseDriver for OracleDriver {
                     .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 let row_count = stmt.row_count().unwrap_or(0) as i64;
                 // Commit so the change is visible after the connection closes.
-                conn.commit().map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                conn.commit()
+                    .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
                 Ok(QueryResult {
                     row_count,
                     data: vec![],
@@ -751,10 +752,10 @@ impl DatabaseDriver for OracleDriver {
                 if let (Some(sn), Some(tn), Some(cn), Some(ct)) =
                     (schema_name, table_name, col_name, col_type)
                 {
-                    table_map
-                        .entry((sn, tn))
-                        .or_default()
-                        .push(ColumnSchema { name: cn, r#type: ct });
+                    table_map.entry((sn, tn)).or_default().push(ColumnSchema {
+                        name: cn,
+                        r#type: ct,
+                    });
                 }
             }
             let mut tables: Vec<TableSchema> = table_map

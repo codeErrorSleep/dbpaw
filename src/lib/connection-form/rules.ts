@@ -1,8 +1,5 @@
 import type { ConnectionForm, Driver } from "@/services/api";
-import {
-  isMysqlFamilyDriver,
-  isFileBasedDriver,
-} from "@/lib/driver-registry";
+import { isMysqlFamilyDriver, isFileBasedDriver } from "@/lib/driver-registry";
 
 export { isMysqlFamilyDriver, isFileBasedDriver };
 

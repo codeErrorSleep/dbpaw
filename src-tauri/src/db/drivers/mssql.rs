@@ -734,7 +734,10 @@ impl DatabaseDriver for MssqlDriver {
         }
 
         let ddl = format!(
-            "CREATE TABLE {}.{} (\n{}\n);",
+            "-- Note: This DDL is reconstructed from table metadata and may be incomplete.\n\
+             -- Constraints such as foreign keys, unique constraints, check constraints,\n\
+             -- and indexes are not included.\n\
+             CREATE TABLE {}.{} (\n{}\n);",
             quote_ident(&schema)?,
             quote_ident(&table)?,
             lines.join(",\n")

@@ -17,10 +17,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sidebar } from "@/components/business/Sidebar/Sidebar";
 import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
 import { TableView } from "@/components/business/DataGrid/TableView";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TableMetadataView } from "@/components/business/Metadata/TableMetadataView";
 import { SqlExecutionLogsDropdown } from "@/components/business/SqlLogs/SqlExecutionLogsDialog";
 import { FileCode, Table, X, Settings, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isMysqlFamilyDriver } from "@/lib/driver-registry";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -186,10 +188,7 @@ export default function App() {
     schemaOverride?: string,
   ) => {
     const isDatabaseScoped =
-      driver === "mysql" ||
-      driver === "tidb" ||
-      driver === "mariadb" ||
-      driver === "clickhouse";
+      (driver && isMysqlFamilyDriver(driver as any)) || driver === "clickhouse";
     const normalizedSchemaOverride = (schemaOverride || "").trim();
     return {
       schema: isDatabaseScoped
@@ -235,6 +234,7 @@ export default function App() {
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
   const [isCloseSaveDialogOpen, setIsCloseSaveDialogOpen] = useState(false);
   const [sidebarLayout, setSidebarLayout] = useState<SidebarLayoutMode>("tabs");
+  const [showColumnComments, setShowColumnComments] = useState(false);
   const closeSaveCompletedRef = useRef(false);
   const unsavedConfirmActionRef = useRef<"save" | "discard" | null>(null);
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
@@ -269,6 +269,7 @@ export default function App() {
         setSidebarLayout(layout === "tree" ? "tree" : "tabs");
       },
     );
+    void getSetting("showColumnComments", false).then(setShowColumnComments);
   }, []);
 
   const sensors = useSensors(
@@ -824,7 +825,7 @@ export default function App() {
       table: string;
       driver: string;
     },
-    format: "csv" | "json" | "sql",
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
     filePath: string,
   ) => {
     try {
@@ -1616,125 +1617,131 @@ export default function App() {
                       value={tab.id}
                       className="h-full m-0"
                     >
-                      {tab.type === "editor" ? (
-                        <Suspense
-                          fallback={
-                            <LazyPanelFallback label={t("common.loading")} />
-                          }
-                        >
-                          <SqlEditor
-                            databaseName={tab.database}
-                            availableDatabases={tab.availableDatabases}
-                            onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
-                            onCancel={() =>
-                              tab.connectionId && tab.activeQueryId
-                                ? api.query.cancel(
-                                    String(tab.connectionId),
-                                    tab.activeQueryId,
-                                  )
-                                : Promise.resolve(false)
+                      <ErrorBoundary>
+                        {tab.type === "editor" ? (
+                          <Suspense
+                            fallback={
+                              <LazyPanelFallback label={t("common.loading")} />
                             }
-                            isExecuting={!!tab.activeQueryId}
-                            queryResults={tab.queryResults}
-                            value={tab.sqlContent}
-                            onChange={(sql) => handleSqlChange(tab.id, sql)}
-                            onDatabaseChange={(database) =>
-                              void handleEditorDatabaseChange(tab.id, database)
+                          >
+                            <SqlEditor
+                              databaseName={tab.database}
+                              availableDatabases={tab.availableDatabases}
+                              onExecute={(sql) =>
+                                handleExecuteQuery(tab.id, sql)
+                              }
+                              onCancel={() =>
+                                tab.connectionId && tab.activeQueryId
+                                  ? api.query.cancel(
+                                      String(tab.connectionId),
+                                      tab.activeQueryId,
+                                    )
+                                  : Promise.resolve(false)
+                              }
+                              isExecuting={!!tab.activeQueryId}
+                              queryResults={tab.queryResults}
+                              value={tab.sqlContent}
+                              onChange={(sql) => handleSqlChange(tab.id, sql)}
+                              onDatabaseChange={(database) =>
+                                void handleEditorDatabaseChange(
+                                  tab.id,
+                                  database,
+                                )
+                              }
+                              connectionId={tab.connectionId}
+                              driver={tab.driver}
+                              schemaOverview={tab.schemaOverview}
+                              savedQueryId={tab.savedQueryId}
+                              initialName={
+                                isDefaultQueryTitle(tab.title) ? "" : tab.title
+                              }
+                              initialDescription={tab.savedQueryDescription}
+                              onSaveSuccess={(savedQuery) => {
+                                setQueriesLastUpdated(Date.now());
+                                setTabs((prev) =>
+                                  prev.map((t) => {
+                                    if (t.id === tab.id) {
+                                      return {
+                                        ...t,
+                                        savedQueryId: savedQuery.id,
+                                        title: savedQuery.name,
+                                        savedQueryDescription:
+                                          savedQuery.description || undefined,
+                                        sqlContent: savedQuery.query,
+                                        lastSavedSql: savedQuery.query,
+                                        isDirty: false,
+                                      };
+                                    }
+                                    return t;
+                                  }),
+                                );
+                              }}
+                            />
+                          </Suspense>
+                        ) : tab.type === "table" ? (
+                          <TableView
+                            isLoading={tab.isLoading}
+                            data={tab.data}
+                            columns={tab.columns}
+                            total={tab.total}
+                            page={tab.page}
+                            pageSize={tab.pageSize}
+                            executionTimeMs={tab.executionTimeMs}
+                            onPageChange={(p) => handlePageChange(tab.id, p)}
+                            onPageSizeChange={(size) =>
+                              handlePageSizeChange(tab.id, size)
                             }
-                            connectionId={tab.connectionId}
-                            driver={tab.driver}
-                            schemaOverview={tab.schemaOverview}
-                            savedQueryId={tab.savedQueryId}
-                            initialName={
-                              isDefaultQueryTitle(tab.title) ? "" : tab.title
+                            sortColumn={tab.sortColumn}
+                            sortDirection={tab.sortDirection}
+                            onSortChange={(col, dir) =>
+                              handleSortChange(tab.id, col, dir)
                             }
-                            initialDescription={tab.savedQueryDescription}
-                            onSaveSuccess={(savedQuery) => {
-                              setQueriesLastUpdated(Date.now());
-                              setTabs((prev) =>
-                                prev.map((t) => {
-                                  if (t.id === tab.id) {
-                                    return {
-                                      ...t,
-                                      savedQueryId: savedQuery.id,
-                                      title: savedQuery.name,
-                                      savedQueryDescription:
-                                        savedQuery.description || undefined,
-                                      sqlContent: savedQuery.query,
-                                      lastSavedSql: savedQuery.query,
-                                      isDirty: false,
-                                    };
+                            filter={tab.filter}
+                            orderBy={tab.orderBy}
+                            onFilterChange={(f, ob) =>
+                              handleFilterChange(tab.id, f, ob)
+                            }
+                            onOpenDDL={handleOpenTableDDL}
+                            onDataRefresh={(params) =>
+                              handleTableRefresh(tab.id, params)
+                            }
+                            onCreateQuery={handleCreateQuery}
+                            tableContext={
+                              tab.connectionId &&
+                              tab.database &&
+                              tab.tableName &&
+                              tab.driver
+                                ? {
+                                    connectionId: tab.connectionId,
+                                    database: tab.database,
+                                    schema:
+                                      isMysqlFamilyDriver(tab.driver as any) ||
+                                      tab.driver === "clickhouse"
+                                        ? tab.database
+                                        : tab.driver === "mssql"
+                                          ? "dbo"
+                                          : tab.driver === "duckdb"
+                                            ? "main"
+                                            : "public",
+                                    table: tab.tableName,
+                                    driver: tab.driver,
                                   }
-                                  return t;
-                                }),
-                              );
-                            }}
+                                : undefined
+                            }
+                            showColumnComments={showColumnComments}
                           />
-                        </Suspense>
-                      ) : tab.type === "table" ? (
-                        <TableView
-                          isLoading={tab.isLoading}
-                          data={tab.data}
-                          columns={tab.columns}
-                          total={tab.total}
-                          page={tab.page}
-                          pageSize={tab.pageSize}
-                          executionTimeMs={tab.executionTimeMs}
-                          onPageChange={(p) => handlePageChange(tab.id, p)}
-                          onPageSizeChange={(size) =>
-                            handlePageSizeChange(tab.id, size)
-                          }
-                          sortColumn={tab.sortColumn}
-                          sortDirection={tab.sortDirection}
-                          onSortChange={(col, dir) =>
-                            handleSortChange(tab.id, col, dir)
-                          }
-                          filter={tab.filter}
-                          orderBy={tab.orderBy}
-                          onFilterChange={(f, ob) =>
-                            handleFilterChange(tab.id, f, ob)
-                          }
-                          onOpenDDL={handleOpenTableDDL}
-                          onDataRefresh={(params) =>
-                            handleTableRefresh(tab.id, params)
-                          }
-                          onCreateQuery={handleCreateQuery}
-                          tableContext={
-                            tab.connectionId &&
-                            tab.database &&
-                            tab.tableName &&
-                            tab.driver
-                              ? {
-                                  connectionId: tab.connectionId,
-                                  database: tab.database,
-                                  schema:
-                                    tab.driver === "mysql" ||
-                                    tab.driver === "tidb" ||
-                                    tab.driver === "mariadb" ||
-                                    tab.driver === "clickhouse"
-                                      ? tab.database
-                                      : tab.driver === "mssql"
-                                        ? "dbo"
-                                        : tab.driver === "duckdb"
-                                          ? "main"
-                                          : "public",
-                                  table: tab.tableName,
-                                  driver: tab.driver,
-                                }
-                              : undefined
-                          }
-                        />
-                      ) : tab.connectionId &&
-                        tab.database &&
-                        tab.schema &&
-                        tab.tableName ? (
-                        <TableMetadataView
-                          connectionId={tab.connectionId}
-                          database={tab.database}
-                          schema={tab.schema}
-                          table={tab.tableName}
-                        />
-                      ) : null}
+                        ) : tab.connectionId &&
+                          tab.database &&
+                          tab.schema &&
+                          tab.tableName ? (
+                          <TableMetadataView
+                            connectionId={tab.connectionId}
+                            database={tab.database}
+                            schema={tab.schema}
+                            table={tab.tableName}
+                          />
+                        ) : null}
+                      </ErrorBoundary>
                     </TabsContent>
                   ))
                 )}
@@ -1817,6 +1824,8 @@ export default function App() {
             onOpenChange={setOpenSettings}
             sidebarLayout={sidebarLayout}
             onSidebarLayoutChange={setSidebarLayout}
+            showColumnComments={showColumnComments}
+            onShowColumnCommentsChange={setShowColumnComments}
           />
         </Suspense>
       )}

@@ -54,7 +54,7 @@ pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionF
     validate_port_range("ssh port", form.ssh_port)?;
 
     let driver = form.driver.to_ascii_lowercase();
-    if matches!(driver.as_str(), "mysql" | "mariadb" | "tidb") {
+    if crate::db::drivers::is_mysql_family_driver(&driver) {
         if let Some(host) = form.host.clone() {
             let (normalized_host, normalized_port) = parse_host_embedded_port(&host, form.port);
             form.host = Some(normalized_host);
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn normalize_trims_fields_and_parses_mysql_host_port() {
         let form = ConnectionForm {
-            driver: "mysql".to_string(),
+            driver: "starrocks".to_string(),
             host: Some(" 127.0.0.1:3307 ".to_string()),
             port: None,
             username: Some(" root ".to_string()),
@@ -107,6 +107,21 @@ mod tests {
         assert_eq!(normalized.host, Some("127.0.0.1".to_string()));
         assert_eq!(normalized.port, Some(3307));
         assert_eq!(normalized.username, Some("root".to_string()));
+    }
+
+    #[test]
+    fn normalize_prefers_embedded_starrocks_port_over_existing_port() {
+        let form = ConnectionForm {
+            driver: "starrocks".to_string(),
+            host: Some("127.0.0.1:9031".to_string()),
+            port: Some(9030),
+            username: Some("root".to_string()),
+            ..Default::default()
+        };
+
+        let normalized = normalize_connection_form(form).unwrap();
+        assert_eq!(normalized.host, Some("127.0.0.1".to_string()));
+        assert_eq!(normalized.port, Some(9031));
     }
 
     #[test]

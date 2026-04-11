@@ -12,13 +12,16 @@ export const sanitizeConnectionErrorMessage = (message: string) =>
 
 export const getExportDefaultName = (
   tableName: string,
-  format: "csv" | "json" | "sql",
+  format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
 ) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `${tableName}_${timestamp}.${format}`;
+  const ext = format === "csv" ? "csv" : format === "json" ? "json" : "sql";
+  return `${tableName}_${timestamp}.${ext}`;
 };
 
-export const getExportFilter = (format: "csv" | "json" | "sql") => {
+export const getExportFilter = (
+  format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
+) => {
   if (format === "csv") {
     return [{ name: "CSV", extensions: ["csv"] }];
   }

@@ -1,0 +1,29 @@
+name: UpgradeLink Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload (e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  upgradelink-upload:
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Upload latest.json to UpgradeLink
+        uses: toolsetlink/upgradelink-action@3.0.2
+        with:
+          access_key: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
+          access_secret: ${{ secrets.UPGRADE_LINK_ACCESS_SECRET }}
+          config: |
+            {
+              "app_type": "tauri",
+              "request": {
+                "app_key": "${{ secrets.UPGRADE_LINK_TAURI_KEY }}",
+                "latest_json_url": "https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/latest.json"
+              }
+            }

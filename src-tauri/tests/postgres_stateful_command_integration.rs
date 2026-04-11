@@ -736,6 +736,110 @@ async fn test_postgres_command_transfer_export_and_import_minimal_flow() {
 
 #[tokio::test]
 #[ignore]
+async fn test_postgres_command_import_sql_file_supports_function_trigger_script() {
+    let docker = (!postgres_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = postgres_context::postgres_form_from_test_context(docker.as_ref());
+    wait_until_postgres_ready(&form).await;
+    let state = init_state_with_local_db().await;
+    let conn_id = create_postgres_connection_for_state(&state, &form, "import-trigger").await;
+    let database = form
+        .database
+        .clone()
+        .unwrap_or_else(|| "postgres".to_string());
+    let schema = "public".to_string();
+    let table = unique_name("dbpaw_import_pg_tbl");
+    let func_name = unique_name("dbpaw_import_pg_fn");
+    let trigger_name = unique_name("dbpaw_import_pg_trg");
+    let qualified = format!("\"{}\".\"{}\"", schema, table);
+    let base = std::env::temp_dir().join(unique_name("dbpaw_postgres_import_it"));
+    fs::create_dir_all(&base).expect("create temp transfer dir should succeed");
+    let import_sql_path = base.join("import.sql");
+
+    let import_sql = format!(
+        r#"
+CREATE TABLE {qualified} (
+    id INT PRIMARY KEY,
+    name TEXT,
+    touch_count INT DEFAULT 0
+);
+CREATE OR REPLACE FUNCTION "{schema}"."{func_name}"()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.touch_count = COALESCE(NEW.touch_count, 0) + 1;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER "{trigger_name}"
+BEFORE INSERT OR UPDATE ON {qualified}
+FOR EACH ROW
+EXECUTE FUNCTION "{schema}"."{func_name}"();
+"#
+    );
+    fs::write(&import_sql_path, import_sql).expect("write import sql file should succeed");
+
+    let import_result = transfer::import_sql_file_direct(
+        &state,
+        conn_id,
+        Some(database.clone()),
+        import_sql_path.to_string_lossy().to_string(),
+        "postgres".to_string(),
+    )
+    .await
+    .expect("import_sql_file should succeed");
+    assert_eq!(
+        import_result.success_statements,
+        import_result.total_statements
+    );
+    assert!(import_result.error.is_none());
+
+    let driver = PostgresDriver::connect(&form)
+        .await
+        .expect("failed to connect postgres driver for verification");
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name) VALUES (1, 'alpha')",
+            qualified
+        ))
+        .await
+        .expect("insert into imported postgres table should succeed");
+    driver
+        .execute_query(format!(
+            "UPDATE {} SET name = 'beta' WHERE id = 1",
+            qualified
+        ))
+        .await
+        .expect("update imported postgres table should succeed");
+    let verify = driver
+        .execute_query(format!(
+            "SELECT touch_count AS c FROM {} WHERE id = 1",
+            qualified
+        ))
+        .await
+        .expect("verify postgres trigger should succeed");
+    let count = verify.data[0]["c"]
+        .as_str()
+        .and_then(|v| v.parse::<i64>().ok())
+        .expect("touch_count should parse");
+    assert_eq!(count, 2);
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+    let _ = driver
+        .execute_query(format!(
+            "DROP FUNCTION IF EXISTS \"{}\".\"{}\"()",
+            schema, func_name
+        ))
+        .await;
+    driver.close().await;
+
+    let _ = fs::remove_file(import_sql_path);
+    let _ = fs::remove_dir_all(base);
+    let _ = connection::delete_connection_direct(&state, conn_id).await;
+}
+
+#[tokio::test]
+#[ignore]
 async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() {
     let state = init_state_with_local_db().await;
 

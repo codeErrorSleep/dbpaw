@@ -18,6 +18,7 @@ const DRIVER_IDS = [
   "mysql",
   "mariadb",
   "tidb",
+  "starrocks",
   "sqlite",
   "duckdb",
   "clickhouse",
@@ -101,6 +102,18 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsCreateDatabase: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMysql),
+  },
+  {
+    id: "starrocks",
+    label: "StarRocks",
+    defaultPort: 9030,
+    isFileBased: false,
+    isMysqlFamily: true,
+    supportsSSLCA: true,
+    supportsSchemaBrowsing: false,
+    supportsCreateDatabase: true,
+    importCapability: "unsupported",
+    icon: () => <Database className="w-4 h-4" />,
   },
   {
     id: "sqlite",
@@ -190,7 +203,9 @@ export const getConnectionIcon = (
 ): ReactNode => {
   const config = DRIVER_REGISTRY.find((d) => d.id === driver);
   if (config) return config.icon();
-  const normalized = String(driver || "").trim().toLowerCase();
+  const normalized = String(driver || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "postgresql" || normalized === "pgsql")
     return getConnectionIcon("postgres");
   if (normalized === "sqlite3") return getConnectionIcon("sqlite");

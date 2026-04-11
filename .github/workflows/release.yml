@@ -120,7 +120,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: '1.3.10'
 
       - name: Cache Bun dependencies
         uses: actions/cache@v4
@@ -392,32 +392,3 @@ jobs:
             merged/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  upgradelink-upload:
-    needs: release
-    permissions:
-      contents: read
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Resolve release tag
-        id: release_meta
-        shell: bash
-        env:
-          TAG_NAME: ${{ inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          echo "release_tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload latest.json to UpgradeLink
-        uses: toolsetlink/upgradelink-action@3.0.2
-        with:
-          access_key: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
-          access_secret: ${{ secrets.UPGRADE_LINK_ACCESS_SECRET }}
-          config: |
-            {
-              "app_type": "tauri",
-              "request": {
-                "app_key": "${{ secrets.UPGRADE_LINK_TAURI_KEY }}",
-                "latest_json_url": "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.release_tag }}/latest.json"
-              }
-            }

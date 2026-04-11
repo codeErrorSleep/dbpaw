@@ -103,6 +103,12 @@ export const ja: Translations = {
       fontSizeDescription:
         "アプリ全体の文字サイズを調整します（範囲：{{min}}-{{max}}px）",
     },
+    dataGrid: {
+      title: "データグリッド",
+      showColumnComments: "カラムコメントを表示",
+      showColumnCommentsDescription:
+        "テーブルヘッダーの列名の下に小さなテキストでカラムコメントを表示します",
+    },
     layout: {
       title: "レイアウト",
       modeTitle: "サイドバー配置",
@@ -295,7 +301,9 @@ export const ja: Translations = {
       importSqlReadOnly: "SQL をインポート（読み取り専用で未対応）",
       exportCsv: "CSV としてエクスポート",
       exportJson: "JSON としてエクスポート",
-      exportSql: "SQL としてエクスポート",
+      exportSqlDml: "DML をエクスポート (INSERT)",
+      exportSqlDdl: "DDL をエクスポート (CREATE)",
+      exportSqlFull: "DML & DDL をエクスポート",
     },
     importDialog: {
       title: "SQL をインポート",
@@ -387,6 +395,14 @@ export const ja: Translations = {
     selectProvider: "AI プロバイダーを選択",
     send: "送信",
     sendMessage: "メッセージを送信",
+  },
+  tableView: {
+    header: {
+      actionHint: "{{column}} をクリックで列名コピー、ダブルクリックで並び替え",
+    },
+    toast: {
+      columnNameCopied: "列名をコピーしました: {{column}}",
+    },
   },
   tableSelector: {
     emptyLabel: "テーブルスキーマを選択（データなし）",

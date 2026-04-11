@@ -364,6 +364,39 @@ fn skip_backtick_quote(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
+fn parse_dollar_quote_tag(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'$') {
+        return None;
+    }
+    let mut i = start + 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if bytes.get(i) == Some(&b'$') {
+        Some(i)
+    } else {
+        None
+    }
+}
+
+fn skip_dollar_quote(bytes: &[u8], start: usize) -> usize {
+    let Some(tag_end) = parse_dollar_quote_tag(bytes, start) else {
+        return start + 1;
+    };
+    let tag = &bytes[start..=tag_end];
+    let tag_len = tag.len();
+    let mut i = tag_end + 1;
+
+    while i + tag_len <= bytes.len() {
+        if &bytes[i..i + tag_len] == tag {
+            return i + tag_len;
+        }
+        i += 1;
+    }
+
+    bytes.len()
+}
+
 fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
     i += 2;
     while i < bytes.len() && bytes[i] != b'\n' {
@@ -430,6 +463,13 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
         if b == b'`' {
             i = skip_backtick_quote(bytes, i);
             continue;
+        }
+        if b == b'$' {
+            let next = skip_dollar_quote(bytes, i);
+            if next != i + 1 {
+                i = next;
+                continue;
+            }
         }
         if b == b'(' {
             depth += 1;
@@ -1487,6 +1527,39 @@ CREATE TABLE pg_data_type_test (
         assert_eq!(statements.len(), 2);
         assert!(statements[0].starts_with("CREATE DOMAIN email_domain"));
         assert!(statements[1].starts_with("CREATE TABLE pg_data_type_test"));
+    }
+
+    #[test]
+    fn test_split_sql_statements_keeps_postgres_dollar_quoted_function_intact() {
+        let sql = r#"
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+"#;
+        let statements = split_sql_statements(sql);
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].contains("NEW.updated_at = CURRENT_TIMESTAMP;"));
+        assert!(statements[0].ends_with("$$"));
+    }
+
+    #[test]
+    fn test_split_sql_statements_keeps_tagged_dollar_quoted_function_intact() {
+        let sql = r#"
+CREATE FUNCTION demo()
+RETURNS text LANGUAGE plpgsql AS $body$
+BEGIN
+    RETURN 'ok';
+END;
+$body$;
+"#;
+        let statements = split_sql_statements(sql);
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].contains("RETURN 'ok';"));
+        assert!(statements[0].ends_with("$body$"));
     }
 
     #[test]

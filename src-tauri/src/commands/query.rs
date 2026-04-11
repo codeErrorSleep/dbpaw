@@ -76,6 +76,39 @@ fn skip_backtick_quote(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
+fn parse_dollar_quote_tag(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'$') {
+        return None;
+    }
+    let mut i = start + 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if bytes.get(i) == Some(&b'$') {
+        Some(i)
+    } else {
+        None
+    }
+}
+
+fn skip_dollar_quote(bytes: &[u8], start: usize) -> usize {
+    let Some(tag_end) = parse_dollar_quote_tag(bytes, start) else {
+        return start + 1;
+    };
+    let tag = &bytes[start..=tag_end];
+    let tag_len = tag.len();
+    let mut i = tag_end + 1;
+
+    while i + tag_len <= bytes.len() {
+        if &bytes[i..i + tag_len] == tag {
+            return i + tag_len;
+        }
+        i += 1;
+    }
+
+    bytes.len()
+}
+
 fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
     i += 2;
     while i < bytes.len() && bytes[i] != b'\n' {
@@ -148,6 +181,13 @@ fn is_single_statement(sql: &str) -> bool {
             i = skip_backtick_quote(bytes, i);
             continue;
         }
+        if b == b'$' {
+            let next = skip_dollar_quote(bytes, i);
+            if next != i + 1 {
+                i = next;
+                continue;
+            }
+        }
         if b == b'(' {
             depth += 1;
             i += 1;
@@ -215,6 +255,13 @@ fn collect_top_level_keywords(sql: &str) -> Vec<String> {
         if b == b'`' {
             i = skip_backtick_quote(bytes, i);
             continue;
+        }
+        if b == b'$' {
+            let next = skip_dollar_quote(bytes, i);
+            if next != i + 1 {
+                i = next;
+                continue;
+            }
         }
         if b == b'(' {
             depth += 1;
@@ -337,6 +384,13 @@ fn has_top_level_limit(sql: &str) -> bool {
         if b == b'`' {
             i = skip_backtick_quote(bytes, i);
             continue;
+        }
+        if b == b'$' {
+            let next = skip_dollar_quote(bytes, i);
+            if next != i + 1 {
+                i = next;
+                continue;
+            }
         }
         if b == b'(' {
             depth += 1;
@@ -1215,6 +1269,12 @@ mod tests {
         assert!(is_single_statement("SELECT 'a; b'"));
         assert!(is_single_statement("SELECT \"a; b\""));
         assert!(is_single_statement("SELECT `a; b`"));
+        assert!(is_single_statement(
+            "CREATE FUNCTION f() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;"
+        ));
+        assert!(is_single_statement(
+            "CREATE FUNCTION f() RETURNS text AS $tag$ BEGIN RETURN ';'; END; $tag$ LANGUAGE plpgsql;"
+        ));
         assert!(!is_single_statement("SELECT 1; SELECT 2"));
     }
 
@@ -1232,6 +1292,18 @@ mod tests {
         assert_eq!(tokens.first().map(String::as_str), Some("with"));
         assert!(tokens.contains(&"select".to_string()));
         assert!(tokens.contains(&"from".to_string()));
+    }
+
+    #[test]
+    fn collect_top_level_keywords_skips_dollar_quoted_bodies() {
+        let tokens = collect_top_level_keywords(
+            "CREATE FUNCTION f() RETURNS void AS $$ BEGIN SELECT 1; END; $$ LANGUAGE plpgsql",
+        );
+        assert_eq!(tokens.first().map(String::as_str), Some("create"));
+        assert!(tokens.contains(&"function".to_string()));
+        assert!(!tokens
+            .iter()
+            .any(|token| token == "begin" || token == "end"));
     }
 
     #[test]

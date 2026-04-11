@@ -1,9 +1,13 @@
-use dbpaw_lib::commands::{connection, metadata, query};
+use dbpaw_lib::commands::{connection, metadata, query, transfer};
 use dbpaw_lib::db::drivers::sqlite::SqliteDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::db::local::LocalDb;
 use dbpaw_lib::models::ConnectionForm;
+use dbpaw_lib::state::AppState;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -22,6 +26,31 @@ fn unique_table_name(prefix: &str) -> String {
         .expect("time should be after unix epoch")
         .as_millis();
     format!("{}_{}", prefix, millis)
+}
+
+async fn init_state_with_local_db() -> AppState {
+    let state = AppState::new();
+    let local_db_dir = std::env::temp_dir().join(unique_table_name("dbpaw_sqlite_localdb_it"));
+    let db = LocalDb::init_with_app_dir(&local_db_dir)
+        .await
+        .expect("failed to initialize local db");
+    let mut lock = state.local_db.lock().await;
+    *lock = Some(Arc::new(db));
+    drop(lock);
+    state
+}
+
+async fn create_sqlite_connection_for_state(
+    state: &AppState,
+    base_form: &ConnectionForm,
+    suffix: &str,
+) -> i64 {
+    let mut form = base_form.clone();
+    form.name = Some(format!("sqlite-stateful-{suffix}"));
+    let created = connection::create_connection_direct(state, form)
+        .await
+        .expect("create_connection should succeed");
+    created.id
 }
 
 async fn prepare_query_test_table(form: &ConnectionForm, table: &str) {
@@ -256,6 +285,92 @@ async fn test_sqlite_command_execute_by_conn_insert_affects_rows() {
 
     // Cleanup
     let _ = std::fs::remove_file(db_path);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_sqlite_command_import_sql_file_supports_trigger_script() {
+    let db_path = sqlite_test_path();
+    let db_path_str = db_path.to_string_lossy().to_string();
+    let form = ConnectionForm {
+        driver: "sqlite".to_string(),
+        file_path: Some(db_path_str.clone()),
+        ..Default::default()
+    };
+
+    let state = init_state_with_local_db().await;
+    let conn_id = create_sqlite_connection_for_state(&state, &form, "import-trigger").await;
+    let base = std::env::temp_dir().join(unique_table_name("dbpaw_sqlite_import_it"));
+    fs::create_dir_all(&base).expect("create temp transfer dir should succeed");
+    let import_sql_path = base.join("import.sql");
+
+    let source_table = unique_table_name("dbpaw_sqlite_src");
+    let audit_table = unique_table_name("dbpaw_sqlite_audit");
+    let trigger_name = unique_table_name("dbpaw_sqlite_trg");
+    let import_sql = format!(
+        r#"
+CREATE TABLE {source_table} (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE {audit_table} (entry_id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER, action TEXT);
+CREATE TRIGGER {trigger_name}
+AFTER INSERT ON {source_table}
+BEGIN
+    INSERT INTO {audit_table}(source_id, action) VALUES (NEW.id, 'insert');
+END;
+"#
+    );
+    fs::write(&import_sql_path, import_sql).expect("write import sql file should succeed");
+
+    let import_result = transfer::import_sql_file_direct(
+        &state,
+        conn_id,
+        Some("main".to_string()),
+        import_sql_path.to_string_lossy().to_string(),
+        "sqlite".to_string(),
+    )
+    .await
+    .expect("import_sql_file should succeed");
+    assert_eq!(
+        import_result.success_statements,
+        import_result.total_statements
+    );
+    assert!(import_result.error.is_none());
+
+    let driver = SqliteDriver::connect(&form)
+        .await
+        .expect("failed to connect sqlite driver for verification");
+    driver
+        .execute_query(format!(
+            "INSERT INTO {} (id, name) VALUES (1, 'alpha')",
+            source_table
+        ))
+        .await
+        .expect("insert into imported sqlite table should succeed");
+    let verify = driver
+        .execute_query(format!("SELECT COUNT(*) AS c FROM {}", audit_table))
+        .await
+        .expect("verify sqlite trigger should succeed");
+    let count = verify.data[0]["c"]
+        .as_i64()
+        .or_else(|| {
+            verify.data[0]["c"]
+                .as_str()
+                .and_then(|v| v.parse::<i64>().ok())
+        })
+        .expect("audit count should be numeric");
+    assert_eq!(count, 1);
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", source_table))
+        .await;
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", audit_table))
+        .await;
+    driver.close().await;
+
+    let _ = connection::delete_connection_direct(&state, conn_id).await;
+    let _ = fs::remove_file(import_sql_path);
+    let _ = fs::remove_dir_all(base);
+    let _ = fs::remove_file(db_path);
 }
 
 #[tokio::test]

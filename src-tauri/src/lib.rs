@@ -22,6 +22,18 @@ pub fn run() {
         .on_menu_event(|app, event| {
             if event.id() == "settings" {
                 let _ = app.emit("open-settings", ());
+            } else if event.id() == "debug_reload" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.reload();
+                }
+            } else if event.id() == "debug_toggle_devtools" {
+                if let Some(window) = app.get_webview_window("main") {
+                    if window.is_devtools_open() {
+                        window.close_devtools();
+                    } else {
+                        window.open_devtools();
+                    }
+                }
             }
         })
         .manage(AppState::new())
@@ -35,6 +47,7 @@ pub fn run() {
                 if let Err(e) = (|| -> tauri::Result<()> {
                     let app_menu = Submenu::new(&handle, "App", true)?;
                     let edit_menu = Submenu::new(&handle, "Edit", true)?;
+                    let developer_menu = Submenu::new(&handle, "Developer", true)?;
 
                     let about = PredefinedMenuItem::about(&handle, None, None)?;
                     let settings = MenuItem::with_id(
@@ -69,6 +82,20 @@ pub fn run() {
                     let copy = PredefinedMenuItem::copy(&handle, None)?;
                     let paste = PredefinedMenuItem::paste(&handle, None)?;
                     let select_all = PredefinedMenuItem::select_all(&handle, None)?;
+                    let reload = MenuItem::with_id(
+                        &handle,
+                        "debug_reload",
+                        "Reload",
+                        true,
+                        Some("CmdOrCtrl+R"),
+                    )?;
+                    let toggle_devtools = MenuItem::with_id(
+                        &handle,
+                        "debug_toggle_devtools",
+                        "Toggle DevTools",
+                        true,
+                        Some("Alt+CmdOrCtrl+I"),
+                    )?;
 
                     edit_menu.append(&undo)?;
                     edit_menu.append(&redo)?;
@@ -78,7 +105,11 @@ pub fn run() {
                     edit_menu.append(&paste)?;
                     edit_menu.append(&select_all)?;
 
-                    let menu = Menu::with_items(&handle, &[&app_menu, &edit_menu])?;
+                    developer_menu.append(&reload)?;
+                    developer_menu.append(&toggle_devtools)?;
+
+                    let menu =
+                        Menu::with_items(&handle, &[&app_menu, &edit_menu, &developer_menu])?;
                     app.set_menu(menu)?;
                     Ok(())
                 })() {
@@ -125,6 +156,8 @@ pub fn run() {
             commands::connection::list_databases,
             commands::connection::list_databases_by_id,
             commands::connection::create_database_by_id,
+            commands::connection::get_mysql_charsets_by_id,
+            commands::connection::get_mysql_collations_by_id,
             commands::storage::save_query,
             commands::storage::get_saved_queries,
             commands::storage::update_saved_query,

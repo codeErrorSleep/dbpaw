@@ -213,7 +213,12 @@ export const mockTableData = {
       created_at: "2024-01-15 10:30:00",
       updated_at: "2024-01-15 10:30:00",
       // object with 4 keys → abbreviated as {role, department, ... +2}
-      metadata: { role: "admin", department: "engineering", level: 5, active: true },
+      metadata: {
+        role: "admin",
+        department: "engineering",
+        level: 5,
+        active: true,
+      },
       // array with 3 items → [3 items]
       tags: ["vip", "beta-tester", "early-adopter"],
       settings: null,
@@ -230,7 +235,11 @@ export const mockTableData = {
       // array with 1 item → inline JSON
       tags: ["newsletter"],
       // nested object → tree view shows expand/collapse
-      settings: { theme: "dark", lang: "zh", notifications: { email: true, sms: false } },
+      settings: {
+        theme: "dark",
+        lang: "zh",
+        notifications: { email: true, sms: false },
+      },
     },
     {
       id: 3,
@@ -253,7 +262,11 @@ export const mockTableData = {
       created_at: "2024-01-18 09:15:00",
       updated_at: "2024-01-18 09:15:00",
       // object containing a nested array
-      metadata: { role: "moderator", permissions: ["read", "write", "delete"], score: 88 },
+      metadata: {
+        role: "moderator",
+        permissions: ["read", "write", "delete"],
+        score: 88,
+      },
       tags: ["moderator", "trusted"],
       settings: null,
     },
@@ -265,10 +278,18 @@ export const mockTableData = {
       created_at: "2024-01-19 16:50:00",
       updated_at: "2024-01-19 16:50:00",
       // array of objects → table view renders as multi-column table
-      metadata: [{ key: "plan", value: "pro" }, { key: "trial", value: false }],
+      metadata: [
+        { key: "plan", value: "pro" },
+        { key: "trial", value: false },
+      ],
       tags: ["pro"],
       // object with 4 keys → tree/table view
-      settings: { theme: "system", lang: "ja", timezone: "Asia/Tokyo", fontSize: 14 },
+      settings: {
+        theme: "system",
+        lang: "ja",
+        timezone: "Asia/Tokyo",
+        fontSize: 14,
+      },
     },
     {
       id: 6,
@@ -451,7 +472,10 @@ export const mockArrayTypeData: QueryResult = {
       scores: [95, 87, 72],
       flags: [true, false, true],
       readings: [3.14, 2.72, 1.41],
-      metadata_list: [{ source: "web", valid: true }, { source: "app", valid: false }],
+      metadata_list: [
+        { source: "web", valid: true },
+        { source: "app", valid: false },
+      ],
     },
     {
       id: 2,
@@ -761,9 +785,7 @@ export async function mockExecuteQuery(
   // Return different data based on query type
   if (lower.includes("select")) {
     // Dedicated array-type dataset: SELECT * FROM pg_arrays
-    const isArrayQuery =
-      lower.includes("pg_arrays") ||
-      lower.includes("array");
+    const isArrayQuery = lower.includes("pg_arrays") || lower.includes("array");
     // Dedicated complex-type dataset: SELECT * FROM json_test
     const isComplexQuery =
       !isArrayQuery &&
@@ -772,7 +794,11 @@ export async function mockExecuteQuery(
         lower.includes("jsonb") ||
         lower.includes("complex"));
     const result = {
-      ...(isArrayQuery ? mockArrayTypeData : isComplexQuery ? mockComplexTypeData : mockQueryResult),
+      ...(isArrayQuery
+        ? mockArrayTypeData
+        : isComplexQuery
+          ? mockComplexTypeData
+          : mockQueryResult),
       timeTakenMs: Math.floor(Math.random() * 100) + 20,
     };
     appendSqlExecutionLog({
@@ -896,7 +922,12 @@ const mockArrayTestTableMetadata: TableMetadata = {
     { name: "scores", type: "int4[]", nullable: true, primaryKey: false },
     { name: "flags", type: "bool[]", nullable: true, primaryKey: false },
     { name: "readings", type: "float8[]", nullable: true, primaryKey: false },
-    { name: "metadata_list", type: "jsonb[]", nullable: true, primaryKey: false },
+    {
+      name: "metadata_list",
+      type: "jsonb[]",
+      nullable: true,
+      primaryKey: false,
+    },
   ],
   indexes: [],
   foreignKeys: [],
@@ -940,6 +971,83 @@ export async function mockListDatabases(
 export async function mockListDatabasesById(_id: number): Promise<string[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return mockDatabases;
+}
+
+/**
+ * Mock get MySQL charsets
+ */
+export async function mockGetMysqlCharsets(_id: number): Promise<string[]> {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  return [
+    "armscii8",
+    "ascii",
+    "big5",
+    "binary",
+    "cp1250",
+    "cp1251",
+    "cp1256",
+    "cp1257",
+    "cp850",
+    "cp852",
+    "cp866",
+    "cp932",
+    "dec8",
+    "eucjpms",
+    "euckr",
+    "gb18030",
+    "gb2312",
+    "gbk",
+    "geostd8",
+    "greek",
+    "hebrew",
+    "hp8",
+    "keybcs2",
+    "koi8r",
+    "koi8u",
+    "latin1",
+    "latin2",
+    "latin5",
+    "latin7",
+    "macce",
+    "macroman",
+    "sjis",
+    "swe7",
+    "tis620",
+    "ucs2",
+    "ujis",
+    "utf16",
+    "utf16le",
+    "utf32",
+    "utf8",
+    "utf8mb4",
+  ];
+}
+
+/**
+ * Mock get MySQL collations
+ */
+export async function mockGetMysqlCollations(
+  _id: number,
+  charset?: string,
+): Promise<string[]> {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const all: Record<string, string[]> = {
+    utf8mb4: [
+      "utf8mb4_0900_ai_ci",
+      "utf8mb4_0900_as_ci",
+      "utf8mb4_0900_as_cs",
+      "utf8mb4_bin",
+      "utf8mb4_general_ci",
+      "utf8mb4_unicode_ci",
+      "utf8mb4_unicode_520_ci",
+    ],
+    utf8: ["utf8_bin", "utf8_general_ci", "utf8_unicode_ci"],
+    latin1: ["latin1_bin", "latin1_general_ci", "latin1_swedish_ci"],
+    ascii: ["ascii_bin", "ascii_general_ci"],
+    binary: ["binary"],
+  };
+  if (charset && all[charset]) return all[charset];
+  return Object.values(all).flat().sort();
 }
 
 /**
@@ -1356,6 +1464,12 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
 
     case "create_database_by_id":
       return mockCreateDatabaseById(args.id, args.payload) as Promise<T>;
+
+    case "get_mysql_charsets_by_id":
+      return mockGetMysqlCharsets(args.id) as Promise<T>;
+
+    case "get_mysql_collations_by_id":
+      return mockGetMysqlCollations(args.id, args.charset) as Promise<T>;
 
     case "test_connection_ephemeral":
       return mockTestConnectionEphemeral(args.form) as Promise<T>;

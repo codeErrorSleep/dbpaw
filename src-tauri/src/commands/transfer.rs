@@ -1,9 +1,11 @@
+use crate::db::drivers::DatabaseDriver;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tauri::State;
 
 const DEFAULT_CHUNK_SIZE: i64 = 2000;
@@ -15,7 +17,9 @@ const MAX_IMPORT_STATEMENTS: usize = 50_000;
 pub enum ExportFormat {
     Csv,
     Json,
-    Sql,
+    SqlDml,
+    SqlDdl,
+    SqlFull,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -60,6 +64,102 @@ struct PreparedImportPlan {
     script_managed_transaction: bool,
 }
 
+async fn do_table_export(
+    db_driver: Arc<dyn DatabaseDriver>,
+    output_path: PathBuf,
+    schema: String,
+    table: String,
+    driver: String,
+    format: ExportFormat,
+    scope: ExportScope,
+    filter: Option<String>,
+    order_by: Option<String>,
+    sort_column: Option<String>,
+    sort_direction: Option<String>,
+    page: Option<i64>,
+    limit: Option<i64>,
+    chunk: i64,
+) -> Result<ExportResult, String> {
+    let mut writer = ExportWriter::new(output_path.clone(), format.clone())?;
+    let mut exported = 0i64;
+
+    if matches!(format, ExportFormat::SqlDdl | ExportFormat::SqlFull) {
+        let ddl = db_driver
+            .get_table_ddl(schema.clone(), table.clone())
+            .await?;
+        writer.write_ddl(&ddl)?;
+    }
+
+    if !matches!(format, ExportFormat::SqlDdl) {
+        let columns: Vec<String> = db_driver
+            .get_table_metadata(schema.clone(), table.clone())
+            .await?
+            .columns
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+
+        writer.write_csv_header(&columns)?;
+
+        match scope {
+            ExportScope::CurrentPage => {
+                let resp = db_driver
+                    .get_table_data_chunk(
+                        schema.clone(),
+                        table.clone(),
+                        page.unwrap_or(1).max(1),
+                        limit.unwrap_or(50).max(1),
+                        sort_column,
+                        sort_direction,
+                        filter,
+                        order_by,
+                    )
+                    .await?;
+                exported +=
+                    writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
+            }
+            ExportScope::Filtered | ExportScope::FullTable => {
+                let (eff_filter, eff_order, eff_sort_col, eff_sort_dir) =
+                    if matches!(scope, ExportScope::Filtered) {
+                        (filter, order_by, sort_column, sort_direction)
+                    } else {
+                        (None, None, None, None)
+                    };
+                let mut current_page = 1;
+                loop {
+                    let resp = db_driver
+                        .get_table_data_chunk(
+                            schema.clone(),
+                            table.clone(),
+                            current_page,
+                            chunk,
+                            eff_sort_col.clone(),
+                            eff_sort_dir.clone(),
+                            eff_filter.clone(),
+                            eff_order.clone(),
+                        )
+                        .await?;
+                    if resp.data.is_empty() {
+                        break;
+                    }
+                    exported +=
+                        writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
+                    if exported >= resp.total {
+                        break;
+                    }
+                    current_page += 1;
+                }
+            }
+        }
+    }
+
+    writer.finish()?;
+    Ok(ExportResult {
+        file_path: output_path.to_string_lossy().to_string(),
+        row_count: exported,
+    })
+}
+
 #[tauri::command]
 pub async fn export_table_data(
     state: State<'_, AppState>,
@@ -80,9 +180,7 @@ pub async fn export_table_data(
     chunk_size: Option<i64>,
 ) -> Result<ExportResult, String> {
     let output_path = resolve_output_path(file_path, &table, extension_for_format(&format))?;
-
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
-
     super::execute_with_retry(&state, id, database, |db_driver| {
         let output_path = output_path.clone();
         let schema = schema.clone();
@@ -95,97 +193,23 @@ pub async fn export_table_data(
         let scope = scope.clone();
         let format = format.clone();
         async move {
-            let columns = db_driver
-                .get_table_metadata(schema.clone(), table.clone())
-                .await?
-                .columns
-                .into_iter()
-                .map(|c| c.name)
-                .collect::<Vec<_>>();
-
-            let mut writer =
-                ExportWriter::new(output_path.clone(), format.clone(), columns.clone())?;
-            let mut exported = 0i64;
-
-            match scope {
-                ExportScope::CurrentPage => {
-                    let use_page = page.unwrap_or(1).max(1);
-                    let use_limit = limit.unwrap_or(50).max(1);
-                    let resp = db_driver
-                        .get_table_data_chunk(
-                            schema.clone(),
-                            table.clone(),
-                            use_page,
-                            use_limit,
-                            sort_column.clone(),
-                            sort_direction.clone(),
-                            filter.clone(),
-                            order_by.clone(),
-                        )
-                        .await?;
-                    exported +=
-                        writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
-                }
-                ExportScope::Filtered | ExportScope::FullTable => {
-                    let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        filter.clone()
-                    } else {
-                        None
-                    };
-                    let order_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        order_by.clone()
-                    } else {
-                        None
-                    };
-                    let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_column.clone()
-                    } else {
-                        None
-                    };
-                    let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_direction.clone()
-                    } else {
-                        None
-                    };
-
-                    let mut current_page = 1;
-                    loop {
-                        let resp = db_driver
-                            .get_table_data_chunk(
-                                schema.clone(),
-                                table.clone(),
-                                current_page,
-                                chunk,
-                                sort_col_for_scope.clone(),
-                                sort_dir_for_scope.clone(),
-                                filter_for_scope.clone(),
-                                order_for_scope.clone(),
-                            )
-                            .await?;
-                        if resp.data.is_empty() {
-                            break;
-                        }
-
-                        exported += writer.write_rows(
-                            &resp.data,
-                            &columns,
-                            Some(&schema),
-                            &table,
-                            &driver,
-                        )?;
-                        if exported >= resp.total {
-                            break;
-                        }
-                        current_page += 1;
-                    }
-                }
-            }
-
-            writer.finish()?;
-            Ok(ExportResult {
-                file_path: output_path.to_string_lossy().to_string(),
-                row_count: exported,
-            })
+            do_table_export(
+                db_driver,
+                output_path,
+                schema,
+                table,
+                driver,
+                format,
+                scope,
+                filter,
+                order_by,
+                sort_column,
+                sort_direction,
+                page,
+                limit,
+                chunk,
+            )
+            .await
         }
     })
     .await
@@ -211,7 +235,6 @@ pub async fn export_table_data_direct(
 ) -> Result<ExportResult, String> {
     let output_path = resolve_output_path(file_path, &table, extension_for_format(&format))?;
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
-
     super::execute_with_retry_from_app_state(state, id, database, |db_driver| {
         let output_path = output_path.clone();
         let schema = schema.clone();
@@ -224,97 +247,23 @@ pub async fn export_table_data_direct(
         let scope = scope.clone();
         let format = format.clone();
         async move {
-            let columns = db_driver
-                .get_table_metadata(schema.clone(), table.clone())
-                .await?
-                .columns
-                .into_iter()
-                .map(|c| c.name)
-                .collect::<Vec<_>>();
-
-            let mut writer =
-                ExportWriter::new(output_path.clone(), format.clone(), columns.clone())?;
-            let mut exported = 0i64;
-
-            match scope {
-                ExportScope::CurrentPage => {
-                    let use_page = page.unwrap_or(1).max(1);
-                    let use_limit = limit.unwrap_or(50).max(1);
-                    let resp = db_driver
-                        .get_table_data_chunk(
-                            schema.clone(),
-                            table.clone(),
-                            use_page,
-                            use_limit,
-                            sort_column.clone(),
-                            sort_direction.clone(),
-                            filter.clone(),
-                            order_by.clone(),
-                        )
-                        .await?;
-                    exported +=
-                        writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
-                }
-                ExportScope::Filtered | ExportScope::FullTable => {
-                    let filter_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        filter.clone()
-                    } else {
-                        None
-                    };
-                    let order_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        order_by.clone()
-                    } else {
-                        None
-                    };
-                    let sort_col_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_column.clone()
-                    } else {
-                        None
-                    };
-                    let sort_dir_for_scope = if matches!(scope, ExportScope::Filtered) {
-                        sort_direction.clone()
-                    } else {
-                        None
-                    };
-
-                    let mut current_page = 1;
-                    loop {
-                        let resp = db_driver
-                            .get_table_data_chunk(
-                                schema.clone(),
-                                table.clone(),
-                                current_page,
-                                chunk,
-                                sort_col_for_scope.clone(),
-                                sort_dir_for_scope.clone(),
-                                filter_for_scope.clone(),
-                                order_for_scope.clone(),
-                            )
-                            .await?;
-                        if resp.data.is_empty() {
-                            break;
-                        }
-
-                        exported += writer.write_rows(
-                            &resp.data,
-                            &columns,
-                            Some(&schema),
-                            &table,
-                            &driver,
-                        )?;
-                        if exported >= resp.total {
-                            break;
-                        }
-                        current_page += 1;
-                    }
-                }
-            }
-
-            writer.finish()?;
-            Ok(ExportResult {
-                file_path: output_path.to_string_lossy().to_string(),
-                row_count: exported,
-            })
+            do_table_export(
+                db_driver,
+                output_path,
+                schema,
+                table,
+                driver,
+                format,
+                scope,
+                filter,
+                order_by,
+                sort_column,
+                sort_direction,
+                page,
+                limit,
+                chunk,
+            )
+            .await
         }
     })
     .await
@@ -345,7 +294,8 @@ pub async fn export_query_result(
                 .into_iter()
                 .map(|c| c.name)
                 .collect::<Vec<_>>();
-            let mut writer = ExportWriter::new(output_path.clone(), format, columns.clone())?;
+            let mut writer = ExportWriter::new(output_path.clone(), format)?;
+            writer.write_csv_header(&columns)?;
             let exported =
                 writer.write_rows(&result.data, &columns, None, "query_result", &driver)?;
             writer.finish()?;
@@ -382,7 +332,8 @@ pub async fn export_query_result_direct(
                 .into_iter()
                 .map(|c| c.name)
                 .collect::<Vec<_>>();
-            let mut writer = ExportWriter::new(output_path.clone(), format, columns.clone())?;
+            let mut writer = ExportWriter::new(output_path.clone(), format)?;
+            writer.write_csv_header(&columns)?;
             let exported =
                 writer.write_rows(&result.data, &columns, None, "query_result", &driver)?;
             writer.finish()?;
@@ -614,6 +565,10 @@ fn import_transaction_sql<'a>(
 ) -> Result<(&'a str, &'a str, &'a str), String> {
     match normalized_driver {
         "mysql" | "mariadb" | "tidb" => Ok(("START TRANSACTION", "COMMIT", "ROLLBACK")),
+        "starrocks" => Err(
+            "[UNSUPPORTED] Driver starrocks does not support transactional SQL import in this flow"
+                .to_string(),
+        ),
         "postgres" | "sqlite" | "duckdb" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "mssql" => Ok((
             "BEGIN TRANSACTION",
@@ -906,7 +861,7 @@ fn extension_for_format(format: &ExportFormat) -> &'static str {
     match format {
         ExportFormat::Csv => "csv",
         ExportFormat::Json => "json",
-        ExportFormat::Sql => "sql",
+        ExportFormat::SqlDml | ExportFormat::SqlDdl | ExportFormat::SqlFull => "sql",
     }
 }
 
@@ -976,19 +931,474 @@ enum SqlScanState {
     BlockComment,
 }
 
-fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> {
-    let mysql_style_hash_comment = matches!(driver, "mysql" | "mariadb" | "tidb");
+fn starts_with_chars(chars: &[char], idx: usize, needle: &[char]) -> bool {
+    if idx + needle.len() > chars.len() {
+        return false;
+    }
+    for (offset, ch) in needle.iter().enumerate() {
+        if chars[idx + offset] != *ch {
+            return false;
+        }
+    }
+    true
+}
+
+fn line_start_index(chars: &[char], idx: usize) -> usize {
+    let mut start = idx;
+    while start > 0 && chars[start - 1] != '\n' {
+        start -= 1;
+    }
+    start
+}
+
+fn parse_mysql_delimiter_command(chars: &[char], idx: usize) -> Option<(String, usize)> {
+    let line_start = line_start_index(chars, idx);
+    let mut cursor = line_start;
+    while cursor < chars.len() && matches!(chars[cursor], ' ' | '\t' | '\r') {
+        cursor += 1;
+    }
+    if cursor != idx {
+        return None;
+    }
+
+    let keyword: Vec<char> = "DELIMITER".chars().collect();
+    if !starts_with_chars(chars, cursor, &keyword) {
+        return None;
+    }
+
+    let mut after_keyword = cursor + keyword.len();
+    if after_keyword < chars.len() && chars[after_keyword] != ' ' && chars[after_keyword] != '\t' {
+        return None;
+    }
+    while after_keyword < chars.len() && matches!(chars[after_keyword], ' ' | '\t') {
+        after_keyword += 1;
+    }
+    if after_keyword >= chars.len() || matches!(chars[after_keyword], '\n' | '\r') {
+        return None;
+    }
+
+    let mut line_end = after_keyword;
+    while line_end < chars.len() && !matches!(chars[line_end], '\n' | '\r') {
+        line_end += 1;
+    }
+
+    let delimiter: String = chars[after_keyword..line_end]
+        .iter()
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if delimiter.is_empty() {
+        return None;
+    }
+
+    let mut next_idx = line_end;
+    if next_idx < chars.len() && chars[next_idx] == '\r' {
+        next_idx += 1;
+    }
+    if next_idx < chars.len() && chars[next_idx] == '\n' {
+        next_idx += 1;
+    }
+
+    Some((delimiter, next_idx))
+}
+
+fn sqlite_trigger_state(sql: &str) -> (bool, bool) {
     let chars: Vec<char> = sql.chars().collect();
-    let mut out = Vec::new();
-    let mut current = String::new();
     let mut state = SqlScanState::Normal;
     let mut i = 0usize;
+    let mut tokens = Vec::new();
+    let mut trigger_begin_seen = false;
+    let mut trigger_block_depth = 0i32;
+    let mut case_depth = 0i32;
+    let mut last_word: Option<String> = None;
 
     while i < chars.len() {
         match &state {
             SqlScanState::Normal => {
                 let ch = chars[i];
                 let next = chars.get(i + 1).copied();
+                if ch == '-' && next == Some('-') {
+                    state = SqlScanState::LineComment;
+                    i += 2;
+                    continue;
+                }
+                if ch == '/' && next == Some('*') {
+                    state = SqlScanState::BlockComment;
+                    i += 2;
+                    continue;
+                }
+                if ch == '\'' {
+                    state = SqlScanState::SingleQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch == '"' {
+                    state = SqlScanState::DoubleQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch == '`' {
+                    state = SqlScanState::BacktickQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch.is_ascii_alphabetic() || ch == '_' {
+                    let start = i;
+                    i += 1;
+                    while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                        i += 1;
+                    }
+                    let token = chars[start..i]
+                        .iter()
+                        .collect::<String>()
+                        .to_ascii_lowercase();
+                    tokens.push(token.clone());
+
+                    if trigger_begin_seen {
+                        match token.as_str() {
+                            "case" => case_depth += 1,
+                            "begin" => trigger_block_depth += 1,
+                            "end" => {
+                                if case_depth > 0 {
+                                    case_depth -= 1;
+                                } else if trigger_block_depth > 0 {
+                                    trigger_block_depth -= 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else if token == "begin" {
+                        let is_create_trigger = matches!(
+                            tokens.as_slice(),
+                            [first, second, ..] if first == "create"
+                                && (second == "trigger"
+                                    || ((second == "temp" || second == "temporary")
+                                        && tokens.get(2).map(String::as_str) == Some("trigger")))
+                        );
+                        if is_create_trigger {
+                            trigger_begin_seen = true;
+                            trigger_block_depth = 1;
+                        }
+                    }
+
+                    last_word = Some(token);
+                    continue;
+                }
+                i += 1;
+            }
+            SqlScanState::SingleQuoted => {
+                if chars[i] == '\\' && chars.get(i + 1).is_some() {
+                    i += 2;
+                    continue;
+                }
+                if chars[i] == '\'' {
+                    if chars.get(i + 1) == Some(&'\'') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::DoubleQuoted => {
+                if chars[i] == '"' {
+                    if chars.get(i + 1) == Some(&'"') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::BacktickQuoted => {
+                if chars[i] == '`' {
+                    if chars.get(i + 1) == Some(&'`') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::LineComment => {
+                if chars[i] == '\n' {
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::BlockComment => {
+                if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    state = SqlScanState::Normal;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            SqlScanState::DollarQuoted(_) => {
+                state = SqlScanState::Normal;
+            }
+        }
+    }
+
+    let is_trigger = trigger_begin_seen;
+    let ready_to_terminate = is_trigger
+        && trigger_block_depth == 0
+        && case_depth == 0
+        && last_word.as_deref() == Some("end");
+    (is_trigger, ready_to_terminate)
+}
+
+fn oracle_plsql_state(sql: &str) -> (bool, bool) {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut state = SqlScanState::Normal;
+    let mut i = 0usize;
+    let mut tokens = Vec::new();
+    let mut block_depth = 0i32;
+    let mut case_depth = 0i32;
+    let mut last_word: Option<String> = None;
+    let mut is_oracle_block = false;
+
+    while i < chars.len() {
+        match &state {
+            SqlScanState::Normal => {
+                let ch = chars[i];
+                let next = chars.get(i + 1).copied();
+                if ch == '-' && next == Some('-') {
+                    state = SqlScanState::LineComment;
+                    i += 2;
+                    continue;
+                }
+                if ch == '/' && next == Some('*') {
+                    state = SqlScanState::BlockComment;
+                    i += 2;
+                    continue;
+                }
+                if ch == '\'' {
+                    state = SqlScanState::SingleQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch == '"' {
+                    state = SqlScanState::DoubleQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch == '`' {
+                    state = SqlScanState::BacktickQuoted;
+                    i += 1;
+                    continue;
+                }
+                if ch.is_ascii_alphabetic() || ch == '_' {
+                    let start = i;
+                    i += 1;
+                    while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                        i += 1;
+                    }
+                    let token = chars[start..i]
+                        .iter()
+                        .collect::<String>()
+                        .to_ascii_lowercase();
+                    tokens.push(token.clone());
+
+                    if !is_oracle_block {
+                        let second = tokens.get(1).map(String::as_str);
+                        let third = tokens.get(2).map(String::as_str);
+                        let fourth = tokens.get(3).map(String::as_str);
+                        is_oracle_block = matches!(
+                            tokens.first().map(String::as_str),
+                            Some("declare") | Some("begin")
+                        ) || (tokens.first().map(String::as_str)
+                            == Some("create")
+                            && second == Some("or")
+                            && third == Some("replace")
+                            && matches!(
+                                fourth,
+                                Some("function")
+                                    | Some("procedure")
+                                    | Some("trigger")
+                                    | Some("package")
+                                    | Some("type")
+                            ));
+                    }
+
+                    if is_oracle_block {
+                        match token.as_str() {
+                            "case" => case_depth += 1,
+                            "begin" => block_depth += 1,
+                            "end" => {
+                                if case_depth > 0 {
+                                    case_depth -= 1;
+                                } else if block_depth > 0 {
+                                    block_depth -= 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    last_word = Some(token);
+                    continue;
+                }
+                i += 1;
+            }
+            SqlScanState::SingleQuoted => {
+                if chars[i] == '\\' && chars.get(i + 1).is_some() {
+                    i += 2;
+                    continue;
+                }
+                if chars[i] == '\'' {
+                    if chars.get(i + 1) == Some(&'\'') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::DoubleQuoted => {
+                if chars[i] == '"' {
+                    if chars.get(i + 1) == Some(&'"') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::BacktickQuoted => {
+                if chars[i] == '`' {
+                    if chars.get(i + 1) == Some(&'`') {
+                        i += 2;
+                        continue;
+                    }
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::LineComment => {
+                if chars[i] == '\n' {
+                    state = SqlScanState::Normal;
+                }
+                i += 1;
+            }
+            SqlScanState::BlockComment => {
+                if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    state = SqlScanState::Normal;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            SqlScanState::DollarQuoted(_) => {
+                state = SqlScanState::Normal;
+            }
+        }
+    }
+
+    let ready_to_terminate = is_oracle_block
+        && block_depth == 0
+        && case_depth == 0
+        && last_word.as_deref() == Some("end");
+    (is_oracle_block, ready_to_terminate)
+}
+
+fn parse_oracle_slash_terminator(chars: &[char], idx: usize) -> Option<usize> {
+    let line_start = line_start_index(chars, idx);
+    let mut cursor = line_start;
+    while cursor < chars.len() && matches!(chars[cursor], ' ' | '\t' | '\r') {
+        cursor += 1;
+    }
+    if cursor != idx || chars.get(idx) != Some(&'/') {
+        return None;
+    }
+
+    let mut line_end = idx + 1;
+    while line_end < chars.len() && !matches!(chars[line_end], '\n' | '\r') {
+        if !matches!(chars[line_end], ' ' | '\t') {
+            return None;
+        }
+        line_end += 1;
+    }
+
+    let mut next_idx = line_end;
+    if next_idx < chars.len() && chars[next_idx] == '\r' {
+        next_idx += 1;
+    }
+    if next_idx < chars.len() && chars[next_idx] == '\n' {
+        next_idx += 1;
+    }
+
+    Some(next_idx)
+}
+
+fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> {
+    let mysql_style_hash_comment = matches!(driver, "mysql" | "mariadb" | "tidb");
+    let mysql_style_delimiter = mysql_style_hash_comment;
+    let sqlite_style_trigger = driver == "sqlite";
+    let oracle_style_block = driver == "oracle";
+    let chars: Vec<char> = sql.chars().collect();
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut state = SqlScanState::Normal;
+    let mut delimiter = ";".to_string();
+    let mut i = 0usize;
+
+    while i < chars.len() {
+        match &state {
+            SqlScanState::Normal => {
+                if mysql_style_delimiter {
+                    if let Some((next_delimiter, next_idx)) =
+                        parse_mysql_delimiter_command(&chars, i)
+                    {
+                        delimiter = next_delimiter;
+                        i = next_idx;
+                        continue;
+                    }
+                }
+                if oracle_style_block {
+                    if let Some(next_idx) = parse_oracle_slash_terminator(&chars, i) {
+                        let (is_block, ready_to_terminate) = oracle_plsql_state(current.trim());
+                        if is_block && ready_to_terminate {
+                            let statement = current.trim();
+                            if !statement.is_empty() {
+                                out.push(statement.to_string());
+                            }
+                            current.clear();
+                            i = next_idx;
+                            continue;
+                        }
+                    }
+                }
+
+                let ch = chars[i];
+                let next = chars.get(i + 1).copied();
+                let delimiter_chars: Vec<char> = delimiter.chars().collect();
+
+                if starts_with_chars(&chars, i, &delimiter_chars) {
+                    if sqlite_style_trigger && delimiter == ";" {
+                        let (is_trigger, ready_to_terminate) = sqlite_trigger_state(current.trim());
+                        if is_trigger && !ready_to_terminate {
+                            current.push(ch);
+                            i += delimiter_chars.len();
+                            continue;
+                        }
+                    }
+                    if oracle_style_block && delimiter == ";" {
+                        let (is_block, _) = oracle_plsql_state(current.trim());
+                        if is_block {
+                            current.push(ch);
+                            i += delimiter_chars.len();
+                            continue;
+                        }
+                    }
+                    let statement = current.trim();
+                    if !statement.is_empty() {
+                        out.push(statement.to_string());
+                    }
+                    current.clear();
+                    i += delimiter_chars.len();
+                    continue;
+                }
 
                 if ch == '-' && next == Some('-') {
                     state = SqlScanState::LineComment;
@@ -1030,15 +1440,6 @@ fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> 
                         i = end_idx + 1;
                         continue;
                     }
-                }
-                if ch == ';' {
-                    let statement = current.trim();
-                    if !statement.is_empty() {
-                        out.push(statement.to_string());
-                    }
-                    current.clear();
-                    i += 1;
-                    continue;
                 }
                 current.push(ch);
                 i += 1;
@@ -1233,28 +1634,15 @@ struct ExportWriter {
 }
 
 impl ExportWriter {
-    fn new(path: PathBuf, format: ExportFormat, columns: Vec<String>) -> Result<Self, String> {
+    fn new(path: PathBuf, format: ExportFormat) -> Result<Self, String> {
         let file =
             File::create(path).map_err(|e| format!("[EXPORT_ERROR] create file failed: {e}"))?;
         let mut writer = BufWriter::new(file);
 
-        match format {
-            ExportFormat::Csv => {
-                let header = columns
-                    .iter()
-                    .map(|c| csv_escape(c))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                writer
-                    .write_all(format!("{header}\n").as_bytes())
-                    .map_err(|e| format!("[EXPORT_ERROR] write csv header failed: {e}"))?;
-            }
-            ExportFormat::Json => {
-                writer
-                    .write_all(b"[\n")
-                    .map_err(|e| format!("[EXPORT_ERROR] write json header failed: {e}"))?;
-            }
-            ExportFormat::Sql => {}
+        if matches!(format, ExportFormat::Json) {
+            writer
+                .write_all(b"[\n")
+                .map_err(|e| format!("[EXPORT_ERROR] write json header failed: {e}"))?;
         }
 
         Ok(Self {
@@ -1262,6 +1650,20 @@ impl ExportWriter {
             writer,
             first_json_row: true,
         })
+    }
+
+    fn write_csv_header(&mut self, columns: &[String]) -> Result<(), String> {
+        if !matches!(self.format, ExportFormat::Csv) {
+            return Ok(());
+        }
+        let header = columns
+            .iter()
+            .map(|c| csv_escape(c))
+            .collect::<Vec<_>>()
+            .join(",");
+        self.writer
+            .write_all(format!("{header}\n").as_bytes())
+            .map_err(|e| format!("[EXPORT_ERROR] write csv header failed: {e}"))
     }
 
     fn write_rows(
@@ -1315,7 +1717,7 @@ impl ExportWriter {
                     .write_all(text.as_bytes())
                     .map_err(|e| format!("[EXPORT_ERROR] write json row failed: {e}"))?;
             }
-            ExportFormat::Sql => {
+            ExportFormat::SqlDml | ExportFormat::SqlFull => {
                 let quoted_cols = columns
                     .iter()
                     .map(|c| quote_ident(c, driver))
@@ -1340,7 +1742,16 @@ impl ExportWriter {
                     .write_all(statement.as_bytes())
                     .map_err(|e| format!("[EXPORT_ERROR] write sql row failed: {e}"))?;
             }
+            ExportFormat::SqlDdl => unreachable!("SqlDdl rows are never written"),
         }
+        Ok(())
+    }
+
+    fn write_ddl(&mut self, ddl: &str) -> Result<(), String> {
+        let content = format!("{}\n\n", ddl.trim_end());
+        self.writer
+            .write_all(content.as_bytes())
+            .map_err(|e| format!("[EXPORT_ERROR] write ddl failed: {e}"))?;
         Ok(())
     }
 
@@ -1548,8 +1959,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!("dbpaw-transfer-test-{unique}.json"));
-        let mut writer =
-            ExportWriter::new(path.clone(), ExportFormat::Json, vec!["a".to_string()]).unwrap();
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::Json).unwrap();
         let err = writer
             .write_rows(
                 &[Value::String("not-object".to_string())],
@@ -1594,6 +2004,120 @@ mod tests {
         assert_eq!(statements.len(), 2);
         assert_eq!(statements[0], "SELECT 1 # 2");
         assert_eq!(statements[1], "SELECT '#not_comment'");
+    }
+
+    #[test]
+    fn parse_sql_statements_supports_mysql_delimiter_blocks() {
+        let sql = r#"
+            DELIMITER $$
+            CREATE PROCEDURE p_demo()
+            BEGIN
+                SELECT 1;
+                SELECT 'semi;inside';
+            END$$
+            DELIMITER ;
+            SELECT 2;
+        "#;
+
+        let statements = parse_sql_statements(sql, "mysql").unwrap();
+        assert_eq!(statements.len(), 2);
+        assert!(statements[0].starts_with("CREATE PROCEDURE p_demo()"));
+        assert!(statements[0].contains("SELECT 1;"));
+        assert!(statements[0].contains("SELECT 'semi;inside';"));
+        assert_eq!(statements[1], "SELECT 2");
+    }
+
+    #[test]
+    fn parse_sql_statements_ignores_mysql_delimiter_inside_strings() {
+        let sql = r#"
+            DELIMITER //
+            CREATE TRIGGER trg_demo BEFORE INSERT ON demo
+            FOR EACH ROW
+            BEGIN
+                SET @note = 'DELIMITER // should stay';
+            END//
+            DELIMITER ;
+        "#;
+
+        let statements = parse_sql_statements(sql, "mysql").unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].contains("DELIMITER // should stay"));
+        assert!(statements[0].contains("END"));
+    }
+
+    #[test]
+    fn parse_sql_statements_supports_sqlite_trigger_blocks() {
+        let sql = r#"
+            CREATE TRIGGER trg_demo
+            AFTER INSERT ON demo
+            BEGIN
+                INSERT INTO audit_log(message) VALUES ('first;value');
+                UPDATE demo SET touched_at = CURRENT_TIMESTAMP WHERE rowid = NEW.rowid;
+            END;
+            SELECT 1;
+        "#;
+
+        let statements = parse_sql_statements(sql, "sqlite").unwrap();
+        assert_eq!(statements.len(), 2);
+        assert!(statements[0].starts_with("CREATE TRIGGER trg_demo"));
+        assert!(statements[0].contains("VALUES ('first;value');"));
+        assert!(statements[0].contains("UPDATE demo SET touched_at = CURRENT_TIMESTAMP"));
+        assert_eq!(statements[1], "SELECT 1");
+    }
+
+    #[test]
+    fn parse_sql_statements_keeps_sqlite_case_end_inside_trigger_body() {
+        let sql = r#"
+            CREATE TRIGGER trg_case
+            AFTER UPDATE ON demo
+            BEGIN
+                UPDATE demo
+                SET status = CASE WHEN NEW.id > 10 THEN 'big' ELSE 'small' END;
+            END;
+        "#;
+
+        let statements = parse_sql_statements(sql, "sqlite").unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].contains("CASE WHEN NEW.id > 10 THEN 'big' ELSE 'small' END;"));
+        assert!(statements[0].ends_with("END"));
+    }
+
+    #[test]
+    fn parse_sql_statements_supports_oracle_create_or_replace_blocks() {
+        let sql = r#"
+            CREATE OR REPLACE PROCEDURE p_demo IS
+            BEGIN
+                INSERT INTO audit_log(message) VALUES ('first;value');
+                UPDATE audit_log SET message = 'done' WHERE message = 'first;value';
+            END;
+            /
+            SELECT 1 FROM DUAL;
+        "#;
+
+        let statements = parse_sql_statements(sql, "oracle").unwrap();
+        assert_eq!(statements.len(), 2);
+        assert!(statements[0].starts_with("CREATE OR REPLACE PROCEDURE p_demo IS"));
+        assert!(statements[0].contains("VALUES ('first;value');"));
+        assert!(statements[0].contains("END;"));
+        assert_eq!(statements[1], "SELECT 1 FROM DUAL");
+    }
+
+    #[test]
+    fn parse_sql_statements_supports_oracle_case_end_inside_block() {
+        let sql = r#"
+            CREATE OR REPLACE FUNCTION f_demo RETURN VARCHAR2 IS
+                v_result VARCHAR2(10);
+            BEGIN
+                v_result := CASE WHEN 1 = 1 THEN 'yes' ELSE 'no' END;
+                RETURN v_result;
+            END;
+            /
+        "#;
+
+        let statements = parse_sql_statements(sql, "oracle").unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].contains("CASE WHEN 1 = 1 THEN 'yes' ELSE 'no' END;"));
+        assert!(statements[0].ends_with("END;"));
     }
 
     #[test]
@@ -1677,6 +2201,7 @@ mod tests {
             ("SELECT 1 FROM DUAL", "COMMIT", "ROLLBACK")
         );
         assert!(import_transaction_sql("clickhouse", "clickhouse").is_err());
+        assert!(import_transaction_sql("starrocks", "starrocks").is_err());
     }
 
     #[test]
@@ -1693,5 +2218,137 @@ mod tests {
         let truncated = truncate_error_message(&source);
         assert!(truncated.len() <= 503);
         assert!(truncated.ends_with("..."));
+    }
+
+    fn tmp_path(suffix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("dbpaw-transfer-test-{unique}-{suffix}"))
+    }
+
+    fn make_row(pairs: &[(&str, Value)]) -> Value {
+        let mut map = serde_json::Map::new();
+        for (k, v) in pairs {
+            map.insert(k.to_string(), v.clone());
+        }
+        Value::Object(map)
+    }
+
+    #[test]
+    fn extension_for_format_sql_variants_all_return_sql() {
+        assert_eq!(extension_for_format(&ExportFormat::SqlDml), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::SqlDdl), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::SqlFull), "sql");
+        assert_eq!(extension_for_format(&ExportFormat::Csv), "csv");
+        assert_eq!(extension_for_format(&ExportFormat::Json), "json");
+    }
+
+    #[test]
+    fn export_writer_csv_writes_header_then_rows() {
+        let path = tmp_path("csv_header.csv");
+        let cols = vec!["id".to_string(), "name".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::Csv).unwrap();
+        writer.write_csv_header(&cols).unwrap();
+        let rows = vec![make_row(&[
+            ("id", Value::Number(1.into())),
+            ("name", Value::String("alice".to_string())),
+        ])];
+        writer
+            .write_rows(&rows, &cols, None, "t", "postgres")
+            .unwrap();
+        writer.finish().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("id,name\n"));
+        assert!(content.contains("1,alice"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_csv_header_is_noop_for_sql_formats() {
+        let path = tmp_path("sql_noop_header.sql");
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDml).unwrap();
+        writer.write_csv_header(&["id".to_string()]).unwrap();
+        writer.finish().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_writer_sql_dml_writes_insert_statements() {
+        let path = tmp_path("sql_dml.sql");
+        let cols = vec!["id".to_string(), "name".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDml).unwrap();
+        let rows = vec![
+            make_row(&[
+                ("id", Value::Number(1.into())),
+                ("name", Value::String("alice".to_string())),
+            ]),
+            make_row(&[("id", Value::Number(2.into())), ("name", Value::Null)]),
+        ];
+        let count = writer
+            .write_rows(&rows, &cols, Some("public"), "users", "postgres")
+            .unwrap();
+        writer.finish().unwrap();
+        assert_eq!(count, 2);
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("INSERT INTO \"public\".\"users\""));
+        assert!(content.contains("VALUES (1, 'alice')"));
+        assert!(content.contains("VALUES (2, NULL)"));
+        assert!(!content.contains("CREATE TABLE"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_writer_sql_ddl_writes_only_ddl() {
+        let path = tmp_path("sql_ddl.sql");
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDdl).unwrap();
+        writer
+            .write_ddl("CREATE TABLE users (id INTEGER);")
+            .unwrap();
+        writer.finish().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("CREATE TABLE users (id INTEGER);"));
+        assert!(!content.contains("INSERT INTO"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_writer_sql_full_writes_ddl_then_inserts() {
+        let path = tmp_path("sql_full.sql");
+        let cols = vec!["id".to_string(), "val".to_string()];
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlFull).unwrap();
+        writer
+            .write_ddl("CREATE TABLE t (id INT, val TEXT);")
+            .unwrap();
+        let rows = vec![make_row(&[
+            ("id", Value::Number(1.into())),
+            ("val", Value::String("x".to_string())),
+        ])];
+        let count = writer
+            .write_rows(&rows, &cols, None, "t", "postgres")
+            .unwrap();
+        writer.finish().unwrap();
+        assert_eq!(count, 1);
+        let content = fs::read_to_string(&path).unwrap();
+        let ddl_pos = content.find("CREATE TABLE").unwrap();
+        let dml_pos = content.find("INSERT INTO").unwrap();
+        assert!(ddl_pos < dml_pos, "DDL should appear before DML");
+        assert!(content.contains("VALUES (1, 'x')"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_ddl_trims_trailing_whitespace_and_adds_blank_line() {
+        let path = tmp_path("ddl_trim.sql");
+        let mut writer = ExportWriter::new(path.clone(), ExportFormat::SqlDdl).unwrap();
+        writer.write_ddl("CREATE TABLE t (id INT);   \n\n").unwrap();
+        writer.finish().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("CREATE TABLE t (id INT);"));
+        assert!(content.ends_with("\n\n"));
+        let _ = fs::remove_file(path);
     }
 }

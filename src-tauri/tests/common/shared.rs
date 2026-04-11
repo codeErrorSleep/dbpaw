@@ -5,7 +5,9 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[allow(dead_code)]
 const CONNECT_RETRY_ATTEMPTS: usize = 20;
+#[allow(dead_code)]
 const CONNECT_RETRY_DELAY_MS: u64 = 500;
 
 pub fn should_reuse_local_db() -> bool {
@@ -88,6 +90,7 @@ pub fn env_i64_any(names: &[&str], default: i64) -> i64 {
         .unwrap_or(default)
 }
 
+#[allow(dead_code)]
 pub async fn connect_with_retry<T, F, Fut>(mut connect: F) -> T
 where
     F: FnMut() -> Fut,

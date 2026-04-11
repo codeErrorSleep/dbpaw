@@ -6,6 +6,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 
+fn default_target_port(driver: &str) -> i64 {
+    if crate::db::drivers::is_mysql_family_driver(driver) {
+        return if driver == "starrocks" { 9030 } else { 3306 };
+    }
+
+    match driver {
+        "mssql" => 1433,
+        "oracle" => 1521,
+        "clickhouse" => 9000,
+        "sqlite" => 0,
+        _ => 5432, // postgres and unknown drivers
+    }
+}
+
 pub struct SshTunnel {
     pub local_port: u16,
     _guard: Arc<TunnelGuard>,
@@ -45,14 +59,8 @@ pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, String> {
             .and_then(|v| if v.trim().is_empty() { None } else { Some(v) });
 
     let target_host = config.host.clone().unwrap_or("localhost".to_string());
-    let default_port: i64 = match config.driver.to_ascii_lowercase().as_str() {
-        "mysql" => 3306,
-        "mssql" => 1433,
-        "oracle" => 1521,
-        "clickhouse" => 9000,
-        "sqlite" => 0,
-        _ => 5432, // postgres and unknown drivers
-    };
+    let normalized_driver = config.driver.to_ascii_lowercase();
+    let default_port = default_target_port(&normalized_driver);
     let target_port = config.port.unwrap_or(default_port);
     if target_port < 1 || target_port > 65535 {
         return Err("Target port must be between 1 and 65535".to_string());
@@ -300,6 +308,33 @@ mod tests {
                 "MSSQL default port (1433) should pass validation, got: {e}"
             );
         }
+
+        let config_starrocks = ConnectionForm {
+            driver: "starrocks".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: None, // should default to 9030
+            ssh_host: Some("127.0.0.1".to_string()),
+            ssh_port: Some(22),
+            ssh_username: Some("user".to_string()),
+            ssh_password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        let result = start_ssh_tunnel(&config_starrocks);
+        if let Err(e) = result {
+            assert!(
+                !e.contains("Target port must be between 1 and 65535"),
+                "StarRocks default port (9030) should pass validation, got: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_target_port_by_driver() {
+        assert_eq!(default_target_port("mysql"), 3306);
+        assert_eq!(default_target_port("mariadb"), 3306);
+        assert_eq!(default_target_port("tidb"), 3306);
+        assert_eq!(default_target_port("starrocks"), 9030);
+        assert_eq!(default_target_port("clickhouse"), 9000);
     }
 
     #[test]

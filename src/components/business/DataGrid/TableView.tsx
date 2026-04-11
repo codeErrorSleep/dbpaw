@@ -76,6 +76,7 @@ import {
   calculateAutoColumnWidths,
   canMutateClickHouseTable,
   collectSearchMatches,
+  createSingleAndDoubleClickHandler,
   escapeSQL,
   cellValueToString,
   formatCellValue,
@@ -147,6 +148,7 @@ interface TableViewProps {
     driver: string;
   };
   isLoading?: boolean;
+  showColumnComments?: boolean;
 }
 
 export function TableView({
@@ -170,6 +172,7 @@ export function TableView({
   onCreateQuery,
   tableContext,
   isLoading,
+  showColumnComments = false,
 }: TableViewProps) {
   const { t } = useTranslation();
   const PAGE_SIZE_OPTIONS = ["10", "50", "100", "200", "500", "1000"] as const;
@@ -178,6 +181,11 @@ export function TableView({
   const [pageInput, setPageInput] = useState(String(page));
   const [pageSizeInput, setPageSizeInput] = useState(String(pageSize));
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const columnWidthsRef = useRef<Record<string, number>>({});
+  columnWidthsRef.current = columnWidths;
+  const headerClickStateRef = useRef<
+    Record<string, { timerId: ReturnType<typeof setTimeout> | null }>
+  >({});
 
   // Reset column widths when columns definition changes (e.g. switching tables)
   const prevColumnsRef = useRef<string>("");
@@ -189,19 +197,20 @@ export function TableView({
     }
   }, [columns]);
 
-  // Auto-calculate column widths based on content
+  // Auto-calculate column widths based on content.
+  // Read columnWidths via ref to avoid re-triggering the effect on every width update.
   useEffect(() => {
     const newWidths = calculateAutoColumnWidths({
       data,
       columns,
-      columnWidths,
+      columnWidths: columnWidthsRef.current,
     });
     const hasChanges = Object.keys(newWidths).length > 0;
 
     if (hasChanges) {
       setColumnWidths((prev) => ({ ...prev, ...newWidths }));
     }
-  }, [data, columns, columnWidths]);
+  }, [data, columns]);
 
   useEffect(() => {
     setWhereInput(controlledFilter || "");
@@ -568,7 +577,9 @@ export function TableView({
       // Check if there's a pending change for this cell
       const key = `${rowIndex}_${col}`;
       const pending = pendingChanges.get(key);
-      const value = pending ? pending.newValue : cellValueToString(currentValue);
+      const value = pending
+        ? pending.newValue
+        : cellValueToString(currentValue);
       setEditingCell({ row: rowIndex, col });
       setEditValue(value);
       setSelectedCell({ row: rowIndex, col });
@@ -645,6 +656,26 @@ export function TableView({
       });
     });
   }, []);
+
+  const handleHeaderCopy = useCallback(
+    (column: string) => {
+      void navigator.clipboard
+        .writeText(column)
+        .then(() => {
+          toast.success(
+            t("tableView.toast.columnNameCopied", {
+              column,
+            }),
+          );
+        })
+        .catch((error) => {
+          toast.error("Failed to copy", {
+            description: error instanceof Error ? error.message : String(error),
+          });
+        });
+    },
+    [t],
+  );
 
   const selectSingleRow = useCallback((rowIndex: number) => {
     const nextSelectedRows = new Set([rowIndex]);
@@ -1356,6 +1387,18 @@ export function TableView({
   };
 
   useEffect(() => {
+    const clickStates = headerClickStateRef.current;
+    return () => {
+      Object.values(clickStates).forEach((state) => {
+        if (state.timerId) {
+          clearTimeout(state.timerId);
+          state.timerId = null;
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
@@ -1672,22 +1715,37 @@ export function TableView({
 
             <div className="flex items-center gap-1.5">
               {tableContext && onCreateQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
-                  onClick={() =>
-                    onCreateQuery(
-                      tableContext.connectionId,
-                      tableContext.database,
-                      tableContext.driver,
-                    )
-                  }
-                  title={t("connection.menu.newQuery")}
-                >
-                  <SquareTerminal className="w-3.5 h-3.5" />
-                  {t("connection.menu.newQuery")}
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
+                    onClick={() =>
+                      onCreateQuery(
+                        tableContext.connectionId,
+                        tableContext.database,
+                        tableContext.driver,
+                      )
+                    }
+                    title={t("connection.menu.newQuery")}
+                  >
+                    <SquareTerminal className="w-3.5 h-3.5" />
+                    {t("connection.menu.newQuery")}
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 hover:bg-muted/60"
+                    onClick={handleShowDDL}
+                    title="View Table Structure (DDL)"
+                  >
+                    <FileCode className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium leading-none">
+                      ddl
+                    </span>
+                  </Button>
+                </>
               )}
               {(canInsert || canUpdateDelete) && (
                 <>
@@ -1695,20 +1753,19 @@ export function TableView({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 gap-1 px-2 text-xs hover:bg-muted/60"
+                      className="h-6 w-6 p-0 hover:bg-muted/60"
                       onClick={handleAddDraftRow}
                       disabled={isSaving || isDeleting}
                       title="Add a new row draft"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Add
                     </Button>
                   )}
                   {canUpdateDelete && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 gap-1 px-2 text-xs hover:bg-destructive/10 text-destructive disabled:text-muted-foreground"
+                      className="h-6 w-6 p-0 hover:bg-destructive/10 text-destructive disabled:text-muted-foreground"
                       onClick={() => setDeleteDialogOpen(true)}
                       disabled={!selectedRows.size || isSaving || isDeleting}
                       title={
@@ -1718,7 +1775,6 @@ export function TableView({
                       }
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Delete
                     </Button>
                   )}
                 </>
@@ -1789,7 +1845,9 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("current_page", "sql")}
+                        onClick={() =>
+                          void handleExport("current_page", "sql_dml")
+                        }
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1811,7 +1869,7 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("filtered", "sql")}
+                        onClick={() => void handleExport("filtered", "sql_dml")}
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1833,7 +1891,9 @@ export function TableView({
                         JSON
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => void handleExport("full_table", "sql")}
+                        onClick={() =>
+                          void handleExport("full_table", "sql_dml")
+                        }
                       >
                         SQL
                       </DropdownMenuItem>
@@ -1841,18 +1901,6 @@ export function TableView({
                   </DropdownMenuSub>
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              {tableContext && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 hover:bg-muted/60"
-                  onClick={handleShowDDL}
-                  title="View Table Structure (DDL)"
-                >
-                  <FileCode className="w-3.5 h-3.5" />
-                </Button>
-              )}
             </div>
           </div>
 
@@ -1932,6 +1980,17 @@ export function TableView({
                 const direction = isSorted ? activeSortDirection : undefined;
                 const comment = columnComments[column]?.trim();
                 const headerTooltip = comment || column;
+                const headerActionLabel = t("tableView.header.actionHint", {
+                  column,
+                });
+                const headerClickState =
+                  headerClickStateRef.current[column] ??
+                  (headerClickStateRef.current[column] = { timerId: null });
+                const headerInteraction = createSingleAndDoubleClickHandler(
+                  headerClickState,
+                  () => handleHeaderCopy(column),
+                  () => handleSortClick(column),
+                );
                 return (
                   <th
                     key={column}
@@ -1947,23 +2006,33 @@ export function TableView({
                     <div className="flex items-center justify-between pr-2">
                       <button
                         type="button"
-                        className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1"
-                        onClick={() => handleSortClick(column)}
+                        className="flex flex-col items-start cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1 overflow-hidden"
+                        title={`${headerTooltip}\n${headerActionLabel}`}
+                        aria-label={headerActionLabel}
+                        onClick={headerInteraction.handleClick}
+                        onDoubleClick={headerInteraction.handleDoubleClick}
                       >
-                        <span className="truncate" title={headerTooltip}>
-                          {column}
-                        </span>
-                        <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                          {isSorted ? (
-                            direction === "asc" ? (
-                              <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                        <div className="flex items-center gap-1 w-full">
+                          <span className="truncate" title={headerTooltip}>
+                            {column}
+                          </span>
+                          <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                            {isSorted ? (
+                              direction === "asc" ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-primary" />
+                              )
                             ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-primary" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </span>
+                              <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </span>
+                        </div>
+                        {showColumnComments && comment && (
+                          <span className="block truncate text-[10px] text-muted-foreground/60 leading-tight font-normal">
+                            {comment}
+                          </span>
+                        )}
                       </button>
                       <div
                         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
@@ -1977,6 +2046,7 @@ export function TableView({
           </thead>
           <tbody>
             {currentData.map((row, rowIndex) => {
+              if (!row || typeof row !== "object") return null;
               const isEditing = (col: string) =>
                 editingCell?.row === rowIndex && editingCell?.col === col;
               const isSelected = (col: string) =>
@@ -2087,7 +2157,11 @@ export function TableView({
                                 {displayValue !== null &&
                                 displayValue !== undefined ? (
                                   <span
-                                    className={modified ? "text-orange-600 dark:text-orange-400" : ""}
+                                    className={
+                                      modified
+                                        ? "text-orange-600 dark:text-orange-400"
+                                        : ""
+                                    }
                                   >
                                     {formatCellValue(displayValue)}
                                   </span>
@@ -2103,10 +2177,22 @@ export function TableView({
                                     onMouseDown={(e) => e.stopPropagation()}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setComplexViewer({ value: displayValue, columnName: column });
+                                      setComplexViewer({
+                                        value: displayValue,
+                                        columnName: column,
+                                      });
                                     }}
                                   >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
                                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                                     </svg>
                                   </button>
@@ -2309,7 +2395,9 @@ export function TableView({
           value={complexViewer.value}
           columnName={complexViewer.columnName}
           open={true}
-          onOpenChange={(open) => { if (!open) setComplexViewer(null); }}
+          onOpenChange={(open) => {
+            if (!open) setComplexViewer(null);
+          }}
         />
       )}
 

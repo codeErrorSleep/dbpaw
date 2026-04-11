@@ -67,6 +67,7 @@ describe("normalizeImportDriver", () => {
       "mysql",
       "mariadb",
       "tidb",
+      "starrocks",
       "sqlite",
       "duckdb",
       "mssql",
@@ -91,6 +92,10 @@ describe("getImportDriverCapability", () => {
     expect(getImportDriverCapability("clickhouse")).toBe(
       "read_only_not_supported",
     );
+  });
+
+  test("starrocks import is unsupported", () => {
+    expect(getImportDriverCapability("starrocks")).toBe("unsupported");
   });
 
   test("all writable drivers are supported", () => {
@@ -168,13 +173,23 @@ describe("invoke: Tauri environment", () => {
     tauriInvokeImpl = async (cmd, args) => {
       capturedCmd = cmd;
       capturedArgs = args;
-      return { data: [], rowCount: 0, columns: [], timeTakenMs: 0, success: true };
+      return {
+        data: [],
+        rowCount: 0,
+        columns: [],
+        timeTakenMs: 0,
+        success: true,
+      };
     };
 
     await api.query.execute(42, "SELECT 1", "mydb", "sql_editor");
 
     expect(capturedCmd).toBe("execute_query");
-    expect(capturedArgs).toMatchObject({ id: 42, query: "SELECT 1", database: "mydb" });
+    expect(capturedArgs).toMatchObject({
+      id: 42,
+      query: "SELECT 1",
+      database: "mydb",
+    });
   });
 
   test("tauriInvoke error propagates to caller", async () => {
@@ -247,7 +262,10 @@ describe("api command mapping", () => {
     ["list_sql_execution_logs", () => api.sqlLogs.list()],
     ["list_tables", () => api.metadata.listTables(1)],
     ["get_table_ddl", () => api.metadata.getTableDDL(1, "db", "public", "t")],
-    ["get_table_metadata", () => api.metadata.getTableMetadata(1, "db", "public", "t")],
+    [
+      "get_table_metadata",
+      () => api.metadata.getTableMetadata(1, "db", "public", "t"),
+    ],
     ["get_connections", () => api.connections.list()],
     ["create_connection", () => api.connections.create({ driver: "postgres" })],
     ["delete_connection", () => api.connections.delete(1)],
@@ -257,6 +275,12 @@ describe("api command mapping", () => {
     ["ai_delete_provider", () => api.ai.providers.delete(1)],
     ["ai_list_conversations", () => api.ai.conversations.list()],
     ["cancel_query", () => api.query.cancel("uuid-abc", "qid-1")],
+    ["get_mysql_charsets_by_id", () => api.connections.getMysqlCharsets(1)],
+    ["get_mysql_collations_by_id", () => api.connections.getMysqlCollations(1)],
+    [
+      "get_mysql_collations_by_id",
+      () => api.connections.getMysqlCollations(1, "utf8mb4"),
+    ],
   ];
 
   for (const [expectedCmd, callFn] of commands) {

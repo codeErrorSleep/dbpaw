@@ -101,6 +101,12 @@ export const zh: Translations = {
       fontSizeTitle: "字体大小",
       fontSizeDescription: "调整应用全局文字大小（范围：{{min}}-{{max}}px）",
     },
+    dataGrid: {
+      title: "数据表格",
+      showColumnComments: "显示字段注释",
+      showColumnCommentsDescription:
+        "在表头列名下方以小字体显示字段的 Comment 注释",
+    },
     layout: {
       title: "布局",
       modeTitle: "侧边栏布局",
@@ -287,7 +293,9 @@ export const zh: Translations = {
       importSqlReadOnly: "导入 SQL（只读，不支持）",
       exportCsv: "导出为 CSV",
       exportJson: "导出为 JSON",
-      exportSql: "导出为 SQL",
+      exportSqlDml: "导出 DML (INSERT)",
+      exportSqlDdl: "导出 DDL (CREATE)",
+      exportSqlFull: "导出 DML & DDL",
     },
     importDialog: {
       title: "导入 SQL",
@@ -372,6 +380,14 @@ export const zh: Translations = {
     selectProvider: "选择 AI 提供商",
     send: "发送",
     sendMessage: "发送消息",
+  },
+  tableView: {
+    header: {
+      actionHint: "单击复制字段名，双击按 {{column}} 排序",
+    },
+    toast: {
+      columnNameCopied: "已复制字段名：{{column}}",
+    },
   },
   tableSelector: {
     emptyLabel: "选择表结构（不含数据）",

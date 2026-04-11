@@ -101,6 +101,12 @@ export const en = {
       fontSizeDescription:
         "Adjust global text size across the app (Range: {{min}}-{{max}}px)",
     },
+    dataGrid: {
+      title: "Data Grid",
+      showColumnComments: "Show Column Comments",
+      showColumnCommentsDescription:
+        "Display column comments in small text below the column name in table headers",
+    },
     layout: {
       title: "Layout",
       modeTitle: "Sidebar Layout",
@@ -292,7 +298,9 @@ export const en = {
       importSqlReadOnly: "Import SQL (Read-only, unsupported)",
       exportCsv: "Export as CSV",
       exportJson: "Export as JSON",
-      exportSql: "Export as SQL",
+      exportSqlDml: "Export DML (INSERT)",
+      exportSqlDdl: "Export DDL (CREATE)",
+      exportSqlFull: "Export DML & DDL",
     },
     importDialog: {
       title: "Import SQL",
@@ -426,6 +434,14 @@ export const en = {
       formatFailed: "Failed to format SQL",
     },
     untitled: "Untitled",
+  },
+  tableView: {
+    header: {
+      actionHint: "Click to copy column name, double-click to sort {{column}}",
+    },
+    toast: {
+      columnNameCopied: "Copied column name: {{column}}",
+    },
   },
 } as const;
 
