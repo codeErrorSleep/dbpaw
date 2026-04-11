@@ -1475,6 +1475,7 @@ fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> 
     let mut current = String::new();
     let mut state = SqlScanState::Normal;
     let mut delimiter = ";".to_string();
+    let mut delimiter_chars: Vec<char> = vec![';'];
     let mut i = 0usize;
 
     while i < chars.len() {
@@ -1485,6 +1486,7 @@ fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> 
                         parse_mysql_delimiter_command(&chars, i)
                     {
                         delimiter = next_delimiter;
+                        delimiter_chars = delimiter.chars().collect();
                         i = next_idx;
                         continue;
                     }
@@ -1506,7 +1508,6 @@ fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String>, String> 
 
                 let ch = chars[i];
                 let next = chars.get(i + 1).copied();
-                let delimiter_chars: Vec<char> = delimiter.chars().collect();
 
                 if starts_with_chars(&chars, i, &delimiter_chars) {
                     if sqlite_style_trigger && delimiter == ";" {
