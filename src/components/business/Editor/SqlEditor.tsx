@@ -12,6 +12,7 @@ import {
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap, EditorView } from "@codemirror/view";
 import {
+  Completion,
   CompletionContext,
   CompletionResult,
   acceptCompletion,
@@ -511,6 +512,14 @@ export function SqlEditor({
     }
   }, [initialName, initialDescription, executeSave, t]);
 
+  // Stable refs so keymap handlers never cause extensions to be rebuilt
+  const executeFromEditorRef = useRef(executeFromEditorSelection);
+  executeFromEditorRef.current = executeFromEditorSelection;
+  const handleFormatRef = useRef(handleFormat);
+  handleFormatRef.current = handleFormat;
+  const triggerSaveRef = useRef(triggerSave);
+  triggerSaveRef.current = triggerSave;
+
   // Determine Dialect
   const dialect = useMemo(() => {
     switch (driver) {
@@ -554,57 +563,53 @@ export function SqlEditor({
     return schemaMap;
   }, [schemaOverview]);
 
-  const globalCompletion = useMemo(() => {
-    if (!schemaOverview) return null;
-
-    return (context: CompletionContext): CompletionResult | null =>
-      buildSqlContextualCompletion({
-        textBeforeCursor: context.state.sliceDoc(0, context.pos),
-        explicit: context.explicit,
-        schemaOverview,
-      });
-  }, [schemaOverview]);
-
-  const clickhouseCompletion = useMemo(() => {
-    if (driver !== "clickhouse") return null;
+  const customCompletion = useMemo(():
+    | ((ctx: CompletionContext) => CompletionResult | null)
+    | null => {
+    const hasSchema = !!schemaOverview;
+    const isClickhouse = driver === "clickhouse";
+    if (!hasSchema && !isClickhouse) return null;
 
     return (context: CompletionContext): CompletionResult | null => {
-      const word = context.matchBefore(/[\w\s]*/);
-      if (!word || (word.from === word.to && !context.explicit)) return null;
+      const results: CompletionResult[] = [];
 
-      return {
-        from: word.from,
-        options: CLICKHOUSE_COMPLETIONS,
-      };
-    };
-  }, [driver]);
+      if (hasSchema) {
+        const r = buildSqlContextualCompletion({
+          textBeforeCursor: context.state.sliceDoc(0, context.pos),
+          explicit: context.explicit,
+          schemaOverview: schemaOverview!,
+        });
+        if (r) results.push(r);
+      }
 
-  const mergedCompletion = useMemo(() => {
-    if (!globalCompletion && !clickhouseCompletion) return null;
+      if (isClickhouse) {
+        const word = context.matchBefore(/\w*/);
+        if (word && (word.from !== word.to || context.explicit)) {
+          results.push({ from: word.from, options: CLICKHOUSE_COMPLETIONS });
+        }
+      }
 
-    return (context: CompletionContext): CompletionResult | null => {
-      const results = [globalCompletion, clickhouseCompletion]
-        .map((provider) => provider?.(context))
-        .filter((item): item is CompletionResult => !!item);
-      if (!results.length) return null;
+      if (results.length === 0) return null;
+      if (results.length === 1) return { ...results[0], validFor: /^[\w$]*$/ };
 
       const from = results.reduce(
-        (min, curr) => Math.min(min, curr.from),
+        (min, r) => Math.min(min, r.from),
         results[0].from,
       );
-      const options: NonNullable<CompletionResult["options"]>[number][] = [];
       const seen = new Set<string>();
+      const options: Completion[] = [];
       for (const result of results) {
         for (const option of result.options) {
           const key = `${option.label}::${option.type ?? ""}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          options.push(option);
+          if (!seen.has(key)) {
+            seen.add(key);
+            options.push(option);
+          }
         }
       }
-      return { from, options };
+      return { from, options, validFor: /^[\w$]*$/ };
     };
-  }, [globalCompletion, clickhouseCompletion]);
+  }, [schemaOverview, driver]);
 
   // Extensions
   const extensions = useMemo(() => {
@@ -625,21 +630,21 @@ export function SqlEditor({
           {
             key: "Mod-Enter",
             run: (view) => {
-              executeFromEditorSelection(view);
+              executeFromEditorRef.current(view);
               return true;
             },
           },
           {
             key: "Shift-Alt-f",
             run: () => {
-              void handleFormat();
+              void handleFormatRef.current();
               return true;
             },
           },
           {
             key: "Mod-s",
             run: () => {
-              triggerSave();
+              triggerSaveRef.current();
               return true;
             },
           },
@@ -647,24 +652,16 @@ export function SqlEditor({
       ),
     ];
 
-    // Inject global completion if available
-    if (mergedCompletion) {
+    if (customCompletion) {
       exts.push(
         dialect.language.data.of({
-          autocomplete: mergedCompletion,
+          autocomplete: customCompletion,
         }),
       );
     }
 
     return exts;
-  }, [
-    dialect,
-    sqlSchema,
-    executeFromEditorSelection,
-    handleFormat,
-    mergedCompletion,
-    triggerSave,
-  ]);
+  }, [dialect, sqlSchema, customCompletion]);
 
   // Theme
   const editorTheme = useMemo(() => {
