@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "quickdb",
+      "name": "dbpaw",
       "dependencies": {
         "@codemirror/lang-sql": "^6.10.0",
         "@codemirror/theme-one-dark": "^6.1.3",

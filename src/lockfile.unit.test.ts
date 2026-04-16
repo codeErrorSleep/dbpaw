@@ -2,29 +2,35 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-// Load and parse the package-lock.json relative to the project root
-const lockfilePath = resolve(import.meta.dir, "../package-lock.json");
-const lockfile = JSON.parse(readFileSync(lockfilePath, "utf-8"));
+// bun.lock is the authoritative lockfile for this project (bun install).
+// package-lock.json is kept for npm compatibility but is NOT auto-updated by bun.
+//
+// bun.lock uses JSONC (allows trailing commas) — strip them before parsing.
+function parseBunLock(path: string) {
+  const raw = readFileSync(path, "utf-8");
+  const json = raw.replace(/,(\s*[}\]])/g, "$1");
+  return JSON.parse(json);
+}
+
+const lockfilePath = resolve(import.meta.dir, "../bun.lock");
 const packageJsonPath = resolve(import.meta.dir, "../package.json");
+const lockfile = parseBunLock(lockfilePath);
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
-describe("package-lock.json integrity", () => {
-  test("top-level metadata matches package.json", () => {
-    expect(lockfile.name).toBe(packageJson.name);
-    expect(lockfile.version).toBe(packageJson.version);
-    expect(lockfile.packages[""].name).toBe(packageJson.name);
-    expect(lockfile.packages[""].version).toBe(packageJson.version);
+describe("bun.lock integrity", () => {
+  test("uses a modern bun lockfile structure", () => {
+    expect(lockfile.lockfileVersion).toBe(1);
+    expect(lockfile.workspaces).toBeDefined();
+    expect(lockfile.workspaces[""]).toBeDefined();
   });
 
-  test("root runtime dependencies match package.json", () => {
-    expect(lockfile.packages[""].dependencies).toEqual(
+  test("workspace name matches package.json", () => {
+    expect(lockfile.workspaces[""].name).toBe(packageJson.name);
+  });
+
+  test("runtime dependencies match package.json", () => {
+    expect(lockfile.workspaces[""].dependencies).toEqual(
       packageJson.dependencies,
     );
-  });
-
-  test("uses a modern npm lockfile structure", () => {
-    expect(lockfile.lockfileVersion).toBe(3);
-    expect(lockfile.requires).toBe(true);
-    expect(lockfile.packages[""]).toBeDefined();
   });
 });

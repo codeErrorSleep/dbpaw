@@ -158,6 +158,9 @@ export function generateAlterTableSQL(
   for (const col of addedCols) {
     if (driver === "oracle") {
       statements.push(`ALTER TABLE ${tr} ADD (${buildColDef(col, driver)});`);
+    } else if (driver === "mssql") {
+      // SQL Server uses ADD without the COLUMN keyword
+      statements.push(`ALTER TABLE ${tr} ADD ${buildColDef(col, driver)};`);
     } else {
       statements.push(
         `ALTER TABLE ${tr} ADD COLUMN ${buildColDef(col, driver)};`,
