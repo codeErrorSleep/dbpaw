@@ -306,6 +306,8 @@ export default function App() {
   const handleWindowDragStart = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
+    // React portal events bubble through the React tree, not the DOM — target lands outside this element.
+    if (!event.currentTarget.contains(target)) return;
     if (target.closest('[data-no-drag="true"]')) return;
     getCurrentWindow()
       .startDragging()
