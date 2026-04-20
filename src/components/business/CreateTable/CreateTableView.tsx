@@ -33,6 +33,19 @@ import {
   generateCreateTableSQL,
   supportsAutoIncrement,
 } from "@/lib/sql-gen/createTable";
+import {
+  IndexDef,
+  generateManageIndexSQL,
+  newIndexId,
+  supportsIndexManagement,
+} from "@/lib/sql-gen/manageIndexes";
+import {
+  CUSTOM_TYPE_SENTINEL,
+  columnGridTemplate,
+  splitSqlStatements,
+} from "@/lib/sql-gen/ddlUtils";
+import { validateColumns, validateIndexDefs } from "@/lib/sql-gen/tableValidation";
+import { IndexEditorSection } from "./IndexEditorSection";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,8 +67,6 @@ function defaultColumn(): ColumnDef {
     comment: "",
   };
 }
-
-const CUSTOM_TYPE_SENTINEL = "__custom__";
 
 // ─── props ────────────────────────────────────────────────────────────────────
 
@@ -95,12 +106,15 @@ export function CreateTableView({
   const [srDistColumns, setSrDistColumns] = useState<string[]>([]);
   const [srBuckets, setSrBuckets] = useState("10");
 
+  const [indexDefs, setIndexDefs] = useState<IndexDef[]>([]);
+
   const dbDriver = driver as DbDriver;
   const isStarRocks = dbDriver === "starrocks";
   const typePresets = TYPE_PRESETS[dbDriver] ?? TYPE_PRESETS["postgres"];
+  const indexSupported = supportsIndexManagement(dbDriver);
   const showAutoIncrement = supportsAutoIncrement(dbDriver);
 
-  // Sync removed column names out of srDistColumns
+  // Named columns for StarRocks distribution and index column picker
   const namedColumns = columns.map((c) => c.name.trim()).filter(Boolean);
 
   // ── derived SQL ─────────────────────────────────────────────────────────────
@@ -110,10 +124,19 @@ export function CreateTableView({
     : undefined;
 
   const generatedSQL = useMemo(() => {
-    return generateCreateTableSQL(
+    const createSQL = generateCreateTableSQL(
       { tableName, schema, columns, starrocksDistribution },
       dbDriver,
     );
+    if (!createSQL || !indexSupported) return createSQL;
+    const { sql: idxSQL } = generateManageIndexSQL(
+      schema,
+      tableName.trim(),
+      [],
+      indexDefs,
+      dbDriver,
+    );
+    return [createSQL, idxSQL].filter(Boolean).join("\n");
     // starrocksDistribution is derived from srDistType/srDistColumns/srBuckets
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -124,6 +147,8 @@ export function CreateTableView({
     srDistType,
     srDistColumns,
     srBuckets,
+    indexDefs,
+    indexSupported,
   ]);
 
   // ── validation ──────────────────────────────────────────────────────────────
@@ -131,53 +156,25 @@ export function CreateTableView({
   const validate = useCallback(() => {
     const errs: string[] = [];
 
-    if (!tableName.trim()) {
-      errs.push(t("createTable.validation.tableNameRequired"));
-    }
+    if (!tableName.trim()) errs.push(t("createTable.validation.tableNameRequired"));
 
-    const filledCols = columns.filter(
-      (c) => c.name.trim() || c.dataType.trim(),
-    );
-    if (filledCols.length === 0) {
-      errs.push(t("createTable.validation.noColumns"));
-    }
+    const filledCols = columns.filter((c) => c.name.trim() || c.dataType.trim());
+    if (filledCols.length === 0) errs.push(t("createTable.validation.noColumns"));
 
-    filledCols.forEach((col, i) => {
-      if (!col.name.trim()) {
-        errs.push(
-          t("createTable.validation.columnNameRequired", { index: i + 1 }),
-        );
-      }
-      if (!col.dataType.trim()) {
-        errs.push(
-          t("createTable.validation.columnTypeRequired", { index: i + 1 }),
-        );
-      }
-    });
+    errs.push(...validateColumns(filledCols, { driver: dbDriver, showAutoIncrement, t }));
 
-    const names = filledCols.map((c) => c.name.trim().toLowerCase());
-    names.forEach((name, i) => {
-      if (name && names.indexOf(name) !== i) {
-        errs.push(
-          t("createTable.validation.duplicateColumnName", {
-            name: filledCols[i].name.trim(),
-          }),
-        );
-      }
-    });
-
-    if (isStarRocks && srDistType === "hash" && srDistColumns.length === 0) {
+    if (isStarRocks && srDistType === "hash" && srDistColumns.length === 0)
       errs.push(t("createTable.validation.starrocksHashColumnsRequired"));
-    }
+
+    const colTypeMap = new Map(filledCols.map((c) => [c.name.trim(), c.dataType]));
+    errs.push(...validateIndexDefs(indexDefs, colTypeMap, { driver: dbDriver, t }));
 
     return errs;
-  }, [tableName, columns, t, isStarRocks, srDistType, srDistColumns]);
+  }, [tableName, columns, t, isStarRocks, srDistType, srDistColumns, showAutoIncrement, dbDriver, indexDefs]);
 
   // ── column mutations ─────────────────────────────────────────────────────────
 
-  const addColumn = () => {
-    setColumns((prev) => [...prev, defaultColumn()]);
-  };
+  const addColumn = () => setColumns((prev) => [...prev, defaultColumn()]);
 
   const removeColumn = (id: string) => {
     setColumns((prev) => prev.filter((c) => c.id !== id));
@@ -188,11 +185,8 @@ export function CreateTableView({
     });
   };
 
-  const updateColumn = (id: string, patch: Partial<ColumnDef>) => {
-    setColumns((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    );
-  };
+  const updateColumn = (id: string, patch: Partial<ColumnDef>) =>
+    setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
 
   const moveColumn = (id: string, direction: -1 | 1) => {
     setColumns((prev) => {
@@ -206,6 +200,31 @@ export function CreateTableView({
     });
   };
 
+  // ── index mutations ──────────────────────────────────────────────────────────
+
+  const addIndexDef = () =>
+    setIndexDefs((prev) => [
+      ...prev,
+      { id: newIndexId(), originalName: null, name: "", unique: false, columns: [], indexMethod: "", clustered: false, concurrently: false },
+    ]);
+
+  const removeIndexDef = (id: string) =>
+    setIndexDefs((prev) => prev.filter((d) => d.id !== id));
+
+  const updateIndexDef = (id: string, patch: Partial<IndexDef>) =>
+    setIndexDefs((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+
+  const toggleIndexColumn = (defId: string, colName: string) =>
+    setIndexDefs((prev) =>
+      prev.map((d) => {
+        if (d.id !== defId) return d;
+        const cols = d.columns.includes(colName)
+          ? d.columns.filter((c) => c !== colName)
+          : [...d.columns, colName];
+        return { ...d, columns: cols };
+      }),
+    );
+
   // ── execute ──────────────────────────────────────────────────────────────────
 
   const handleExecute = async () => {
@@ -217,15 +236,10 @@ export function CreateTableView({
     setErrors([]);
     setIsExecuting(true);
     try {
-      await api.query.execute(
-        connectionId,
-        generatedSQL,
-        database,
-        "sql_editor",
-      );
-      toast.success(
-        t("createTable.toast.success", { table: tableName.trim() }),
-      );
+      for (const stmt of splitSqlStatements(generatedSQL)) {
+        await api.query.execute(connectionId, stmt, database, "sql_editor");
+      }
+      toast.success(t("createTable.toast.success", { table: tableName.trim() }));
       onSuccess(tableName.trim());
     } catch (e) {
       toast.error(t("createTable.toast.error"), {
@@ -276,9 +290,7 @@ export function CreateTableView({
         {/* Column editor */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">
-              {t("createTable.form.columns")}
-            </span>
+            <span className="text-sm font-medium">{t("createTable.form.columns")}</span>
             <Button size="sm" variant="outline" onClick={addColumn}>
               <Plus className="w-3.5 h-3.5 mr-1" />
               {t("createTable.form.addColumn")}
@@ -294,24 +306,16 @@ export function CreateTableView({
               {/* Header row */}
               <div
                 className="grid bg-muted/50 border-b text-xs font-medium text-muted-foreground px-2 py-1.5 gap-1"
-                style={{
-                  gridTemplateColumns: columnGridTemplate(showAutoIncrement),
-                }}
+                style={{ gridTemplateColumns: columnGridTemplate(showAutoIncrement) }}
               >
                 <div className="w-5" />
                 <div>{t("createTable.form.columnName")}</div>
                 <div>{t("createTable.form.columnType")}</div>
                 <div>{t("createTable.form.columnLength")}</div>
-                <div className="text-center">
-                  {t("createTable.form.columnNotNull")}
-                </div>
-                <div className="text-center">
-                  {t("createTable.form.columnPrimaryKey")}
-                </div>
+                <div className="text-center">{t("createTable.form.columnNotNull")}</div>
+                <div className="text-center">{t("createTable.form.columnPrimaryKey")}</div>
                 {showAutoIncrement && (
-                  <div className="text-center">
-                    {t("createTable.form.columnAutoIncrement")}
-                  </div>
+                  <div className="text-center">{t("createTable.form.columnAutoIncrement")}</div>
                 )}
                 <div>{t("createTable.form.columnDefault")}</div>
                 <div>{t("createTable.form.columnComment")}</div>
@@ -326,21 +330,14 @@ export function CreateTableView({
                   (col.dataType !== "" &&
                     !typePresets.includes(col.dataType) &&
                     col.dataType !== CUSTOM_TYPE_SENTINEL);
-
-                const selectValue = isCustom
-                  ? CUSTOM_TYPE_SENTINEL
-                  : col.dataType || "";
+                const selectValue = isCustom ? CUSTOM_TYPE_SENTINEL : col.dataType || "";
 
                 return (
                   <div
                     key={col.id}
                     className="grid items-center px-2 py-1 gap-1 border-b last:border-b-0 hover:bg-muted/20"
-                    style={{
-                      gridTemplateColumns:
-                        columnGridTemplate(showAutoIncrement),
-                    }}
+                    style={{ gridTemplateColumns: columnGridTemplate(showAutoIncrement) }}
                   >
-                    {/* Drag handle / row indicator */}
                     <div className="flex flex-col gap-0.5 items-center">
                       <button
                         className="text-muted-foreground hover:text-foreground disabled:opacity-30"
@@ -349,32 +346,23 @@ export function CreateTableView({
                         tabIndex={-1}
                         title="Move up"
                       >
-                        <GripVertical
-                          className="w-3.5 h-3.5"
-                          style={{ marginBottom: -2 }}
-                        />
+                        <GripVertical className="w-3.5 h-3.5" style={{ marginBottom: -2 }} />
                       </button>
                     </div>
 
-                    {/* Name */}
                     <Input
                       className="h-7 text-xs px-2 font-mono"
                       value={col.name}
-                      onChange={(e) =>
-                        updateColumn(col.id, { name: e.target.value })
-                      }
+                      onChange={(e) => updateColumn(col.id, { name: e.target.value })}
                       placeholder={t("createTable.form.columnName")}
                     />
 
-                    {/* Type — preset select + optional custom input */}
                     <div className="flex gap-1">
                       <Select
                         value={selectValue}
                         onValueChange={(val) => {
                           if (val === CUSTOM_TYPE_SENTINEL) {
-                            updateColumn(col.id, {
-                              dataType: customType || CUSTOM_TYPE_SENTINEL,
-                            });
+                            updateColumn(col.id, { dataType: customType || CUSTOM_TYPE_SENTINEL });
                           } else {
                             updateColumn(col.id, { dataType: val, length: "" });
                             setCustomTypes((prev) => {
@@ -386,24 +374,15 @@ export function CreateTableView({
                         }}
                       >
                         <SelectTrigger className="h-7 text-xs px-2 font-mono min-w-0 w-full">
-                          <SelectValue
-                            placeholder={t("createTable.form.columnType")}
-                          />
+                          <SelectValue placeholder={t("createTable.form.columnType")} />
                         </SelectTrigger>
                         <SelectContent>
                           {typePresets.map((tp) => (
-                            <SelectItem
-                              key={tp}
-                              value={tp}
-                              className="text-xs font-mono"
-                            >
+                            <SelectItem key={tp} value={tp} className="text-xs font-mono">
                               {tp}
                             </SelectItem>
                           ))}
-                          <SelectItem
-                            value={CUSTOM_TYPE_SENTINEL}
-                            className="text-xs"
-                          >
+                          <SelectItem value={CUSTOM_TYPE_SENTINEL} className="text-xs">
                             Other…
                           </SelectItem>
                         </SelectContent>
@@ -411,20 +390,11 @@ export function CreateTableView({
                       {isCustom && (
                         <Input
                           className="h-7 text-xs px-2 font-mono w-28 shrink-0"
-                          value={
-                            col.dataType === CUSTOM_TYPE_SENTINEL
-                              ? customType
-                              : col.dataType
-                          }
+                          value={col.dataType === CUSTOM_TYPE_SENTINEL ? customType : col.dataType}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setCustomTypes((prev) => ({
-                              ...prev,
-                              [col.id]: val,
-                            }));
-                            updateColumn(col.id, {
-                              dataType: val || CUSTOM_TYPE_SENTINEL,
-                            });
+                            setCustomTypes((prev) => ({ ...prev, [col.id]: val }));
+                            updateColumn(col.id, { dataType: val || CUSTOM_TYPE_SENTINEL });
                           }}
                           placeholder="custom type"
                           autoFocus
@@ -432,69 +402,50 @@ export function CreateTableView({
                       )}
                     </div>
 
-                    {/* Length */}
                     <Input
                       className="h-7 text-xs px-2 font-mono"
                       value={col.length}
-                      onChange={(e) =>
-                        updateColumn(col.id, { length: e.target.value })
-                      }
+                      onChange={(e) => updateColumn(col.id, { length: e.target.value })}
                       placeholder="—"
                     />
 
-                    {/* Not Null */}
                     <div className="flex justify-center">
                       <Checkbox
                         checked={col.notNull}
-                        onCheckedChange={(v) =>
-                          updateColumn(col.id, { notNull: !!v })
-                        }
+                        onCheckedChange={(v) => updateColumn(col.id, { notNull: !!v })}
                       />
                     </div>
 
-                    {/* Primary Key */}
                     <div className="flex justify-center">
                       <Checkbox
                         checked={col.primaryKey}
-                        onCheckedChange={(v) =>
-                          updateColumn(col.id, { primaryKey: !!v })
-                        }
+                        onCheckedChange={(v) => updateColumn(col.id, { primaryKey: !!v })}
                       />
                     </div>
 
-                    {/* Auto Increment */}
                     {showAutoIncrement && (
                       <div className="flex justify-center">
                         <Checkbox
                           checked={col.autoIncrement}
-                          onCheckedChange={(v) =>
-                            updateColumn(col.id, { autoIncrement: !!v })
-                          }
+                          onCheckedChange={(v) => updateColumn(col.id, { autoIncrement: !!v })}
                         />
                       </div>
                     )}
 
-                    {/* Default value */}
                     <Input
                       className="h-7 text-xs px-2 font-mono"
                       value={col.defaultValue}
-                      onChange={(e) =>
-                        updateColumn(col.id, { defaultValue: e.target.value })
-                      }
+                      onChange={(e) => updateColumn(col.id, { defaultValue: e.target.value })}
                       placeholder="—"
                     />
 
-                    {/* Comment */}
                     <Input
                       className="h-7 text-xs px-2"
                       value={col.comment}
-                      onChange={(e) =>
-                        updateColumn(col.id, { comment: e.target.value })
-                      }
+                      onChange={(e) => updateColumn(col.id, { comment: e.target.value })}
                       placeholder="—"
                     />
 
-                    {/* Actions */}
                     <div className="flex items-center justify-end gap-1">
                       <button
                         className="text-muted-foreground hover:text-foreground disabled:opacity-30"
@@ -528,17 +479,13 @@ export function CreateTableView({
               {t("createTable.starrocks.distributionTitle")}
             </span>
             <div className="border rounded-md p-3 space-y-3">
-              {/* Distribution type */}
               <div className="flex items-center gap-4">
                 <span className="text-xs text-muted-foreground w-28 shrink-0">
                   {t("createTable.starrocks.distributionType")}
                 </span>
                 <div className="flex gap-3">
                   {(["hash", "random"] as const).map((type) => (
-                    <label
-                      key={type}
-                      className="flex items-center gap-1.5 cursor-pointer text-sm"
-                    >
+                    <label key={type} className="flex items-center gap-1.5 cursor-pointer text-sm">
                       <input
                         type="radio"
                         name="sr-dist-type"
@@ -555,7 +502,6 @@ export function CreateTableView({
                 </div>
               </div>
 
-              {/* Distribution columns (HASH only) */}
               {srDistType === "hash" && (
                 <div className="flex items-start gap-4">
                   <span className="text-xs text-muted-foreground w-28 shrink-0 pt-1">
@@ -564,9 +510,7 @@ export function CreateTableView({
                   <div className="flex flex-wrap gap-1.5 flex-1">
                     {namedColumns.length === 0 ? (
                       <span className="text-xs text-muted-foreground italic">
-                        {t(
-                          "createTable.starrocks.distributionColumnsPlaceholder",
-                        )}
+                        {t("createTable.starrocks.distributionColumnsPlaceholder")}
                       </span>
                     ) : (
                       namedColumns.map((col) => {
@@ -584,9 +528,7 @@ export function CreateTableView({
                               checked={checked}
                               onCheckedChange={(v) =>
                                 setSrDistColumns((prev) =>
-                                  v
-                                    ? [...prev, col]
-                                    : prev.filter((c) => c !== col),
+                                  v ? [...prev, col] : prev.filter((c) => c !== col),
                                 )
                               }
                               className="w-3 h-3"
@@ -600,7 +542,6 @@ export function CreateTableView({
                 </div>
               )}
 
-              {/* Buckets */}
               <div className="flex items-center gap-4">
                 <span className="text-xs text-muted-foreground w-28 shrink-0">
                   {t("createTable.starrocks.distributionBuckets")}
@@ -609,14 +550,23 @@ export function CreateTableView({
                   className="h-7 text-xs px-2 font-mono w-24"
                   value={srBuckets}
                   onChange={(e) => setSrBuckets(e.target.value)}
-                  placeholder={t(
-                    "createTable.starrocks.distributionBucketsPlaceholder",
-                  )}
+                  placeholder={t("createTable.starrocks.distributionBucketsPlaceholder")}
                 />
               </div>
             </div>
           </div>
         )}
+
+        {/* Index editor */}
+        <IndexEditorSection
+          defs={indexDefs}
+          tableColumns={namedColumns}
+          driver={dbDriver}
+          onAdd={addIndexDef}
+          onRemove={removeIndexDef}
+          onUpdate={updateIndexDef}
+          onToggleColumn={toggleIndexColumn}
+        />
 
         {/* Validation errors */}
         {errors.length > 0 && (
@@ -655,9 +605,7 @@ export function CreateTableView({
                     onClick={handleCopySql}
                   >
                     <Copy className="w-3 h-3" />
-                    {copiedSql
-                      ? t("createTable.sqlPreview.copied")
-                      : t("createTable.sqlPreview.copy")}
+                    {copiedSql ? t("createTable.sqlPreview.copied") : t("createTable.sqlPreview.copy")}
                   </button>
                 )}
               </div>
@@ -677,21 +625,10 @@ export function CreateTableView({
             {t("createTable.actions.cancel")}
           </Button>
           <Button onClick={handleExecute} disabled={isExecuting}>
-            {isExecuting
-              ? t("createTable.actions.executing")
-              : t("createTable.actions.execute")}
+            {isExecuting ? t("createTable.actions.executing") : t("createTable.actions.execute")}
           </Button>
         </div>
       </div>
     </div>
   );
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function columnGridTemplate(showAutoIncrement: boolean): string {
-  // grip | name | type | length | NN | PK | [AI] | default | comment | actions
-  return showAutoIncrement
-    ? "20px 1fr 1.4fr 80px 56px 40px 40px 100px 120px 64px"
-    : "20px 1fr 1.4fr 80px 56px 40px 100px 120px 64px";
 }

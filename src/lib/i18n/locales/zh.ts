@@ -515,6 +515,13 @@ export const zh: Translations = {
       columnTypeRequired: "第 {{index}} 行列类型不能为空",
       duplicateColumnName: "列名重复：{{name}}",
       starrocksHashColumnsRequired: "HASH 分布至少需要选择一个分布列",
+      multipleAutoIncrement: "每张表只能有一个 AUTO_INCREMENT 列",
+      varcharNeedsLength: "列「{{name}}」是 VARCHAR/CHAR 类型但未填写长度，例如应填写 VARCHAR(255)",
+      varcharZeroLength: "列「{{name}}」的长度为 0，VARCHAR/CHAR 不允许长度为 0",
+      decimalScaleExceedsPrecision: "列「{{name}}」的小数位数超过了精度，例如 DECIMAL(2,5) 是无效的",
+      indexTextColumn: "列「{{col}}」是 TEXT/BLOB 类型 — MySQL 要求为此类型指定前缀长度才能建索引，请改用 VARCHAR 或将其从索引中移除。",
+      indexDuplicateColumn: "索引「{{index}}」中列「{{col}}」重复出现",
+      autoIncrementNeedsKey: "列「{{name}}」设置了 AUTO_INCREMENT 但不是 PRIMARY KEY — AUTO_INCREMENT 列必须是主键或索引",
     },
     toast: {
       success: "数据表「{{table}}」创建成功",
@@ -542,6 +549,22 @@ export const zh: Translations = {
       loadError: "加载表结构失败",
       success: "数据表「{{table}}」修改成功",
       error: "应用变更失败",
+    },
+  },
+  manageIndexes: {
+    form: {
+      indexes: "索引",
+      addIndex: "新增索引",
+      noIndexes: "暂无索引。",
+      indexName: "索引名称",
+      unique: "唯一",
+      columns: "列",
+      method: "类型",
+      clustered: "聚簇",
+      concurrently: "并发",
+    },
+    unsupported: {
+      message: "当前数据库引擎不支持索引管理。",
     },
   },
 };
