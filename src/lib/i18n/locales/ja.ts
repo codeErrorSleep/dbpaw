@@ -252,6 +252,11 @@ export const ja: Translations = {
       fileFilterPem: "秘密鍵ファイル",
       fileFilterAll: "すべてのファイル",
       browse: "参照",
+      typeStepDescription:
+        "先にデータベースタイプを選択し、その後で接続情報を入力します。",
+      detailsStepDescription:
+        "選択したデータベースタイプに必要な接続情報を入力します。",
+      backToType: "タイプ選択に戻る",
       test: "テスト",
       testing: "テスト中…",
       connect: "接続",
@@ -272,6 +277,18 @@ export const ja: Translations = {
       },
       sslValidation: {
         caRequired: "CA 検証モードでは CA 証明書が必須です。",
+      },
+      driverKinds: {
+        sql: "SQL",
+        kv: "キー値",
+        document: "ドキュメント",
+        search: "検索",
+      },
+      driverHints: {
+        defaultPort: "デフォルトポート {{port}}",
+        fileBased: "ファイル型",
+        readOnly: "読み取り専用",
+        preview: "プレビュー",
       },
       inputValidation: {
         filePathRequired: "ファイルパスを入力してください。",

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   allowsHostWithPort,
+  buildConnectionFormDefaults,
+  getConnectionFormCapabilities,
   isFileBasedDriver,
   isMysqlFamilyDriver,
   normalizeConnectionFormInput,
@@ -47,6 +49,69 @@ describe("allowsHostWithPort / requiresPasswordOnCreate", () => {
     expect(requiresPasswordOnCreate("postgres")).toBe(true);
     expect(requiresPasswordOnCreate("mysql")).toBe(false);
     expect(requiresPasswordOnCreate("starrocks")).toBe(false);
+  });
+});
+
+describe("getConnectionFormCapabilities", () => {
+  test("returns file-based capabilities for sqlite", () => {
+    expect(getConnectionFormCapabilities("sqlite")).toEqual({
+      showHost: false,
+      showPort: false,
+      showUsername: false,
+      showPassword: true,
+      showDatabase: false,
+      showSchema: false,
+      showSsl: false,
+      showSsh: false,
+      showFilePath: true,
+      showSqliteKey: true,
+    });
+  });
+
+  test("returns redis-specific capabilities", () => {
+    expect(getConnectionFormCapabilities("redis")).toEqual({
+      showHost: true,
+      showPort: true,
+      showUsername: true,
+      showPassword: true,
+      showDatabase: false,
+      showSchema: false,
+      showSsl: false,
+      showSsh: false,
+      showFilePath: false,
+      showSqliteKey: false,
+    });
+  });
+
+  test("returns sql network capabilities for postgres", () => {
+    expect(getConnectionFormCapabilities("postgres")).toEqual({
+      showHost: true,
+      showPort: true,
+      showUsername: true,
+      showPassword: true,
+      showDatabase: true,
+      showSchema: true,
+      showSsl: true,
+      showSsh: true,
+      showFilePath: false,
+      showSqliteKey: false,
+    });
+  });
+});
+
+describe("buildConnectionFormDefaults", () => {
+  test("uses driver default port for mysql", () => {
+    expect(buildConnectionFormDefaults("mysql").port).toBe(3306);
+  });
+
+  test("does not set a port for sqlite", () => {
+    expect(buildConnectionFormDefaults("sqlite").port).toBeUndefined();
+  });
+
+  test("applies overrides after defaults", () => {
+    const form = buildConnectionFormDefaults("redis", { name: "Cache" });
+    expect(form.name).toBe("Cache");
+    expect(form.port).toBe(6379);
   });
 });
 

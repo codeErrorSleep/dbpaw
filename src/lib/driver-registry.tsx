@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 import { Database, Server } from "lucide-react";
 import {
   siMysql,
+  siMariadb,
   siPostgresql,
   siSqlite,
   siClickhouse,
   siDuckdb,
   siRedis,
+  siApachedoris,
 } from "simple-icons";
 
 export type ImportDriverCapability =
@@ -97,7 +99,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
     importCapability: "supported",
-    icon: () => renderSimpleIcon(siMysql),
+    icon: () => renderSimpleIcon(siMariadb),
   },
   {
     id: "tidb",
@@ -136,7 +138,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
     importCapability: "unsupported",
-    icon: () => <Database className="w-4 h-4" />,
+    icon: () => renderSimpleIcon(siApachedoris),
   },
   {
     id: "sqlite",

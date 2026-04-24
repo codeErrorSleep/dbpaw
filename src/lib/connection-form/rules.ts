@@ -1,7 +1,97 @@
 import type { ConnectionForm, Driver } from "@/services/api";
-import { isMysqlFamilyDriver, isFileBasedDriver } from "@/lib/driver-registry";
+import {
+  getDefaultPort,
+  isFileBasedDriver,
+  isMysqlFamilyDriver,
+} from "@/lib/driver-registry";
 
 export { isMysqlFamilyDriver, isFileBasedDriver };
+
+export interface ConnectionFormCapabilities {
+  showHost: boolean;
+  showPort: boolean;
+  showUsername: boolean;
+  showPassword: boolean;
+  showDatabase: boolean;
+  showSchema: boolean;
+  showSsl: boolean;
+  showSsh: boolean;
+  showFilePath: boolean;
+  showSqliteKey: boolean;
+}
+
+export const getConnectionFormCapabilities = (
+  driver: Driver,
+): ConnectionFormCapabilities => {
+  if (isFileBasedDriver(driver)) {
+    return {
+      showHost: false,
+      showPort: false,
+      showUsername: false,
+      showPassword: driver === "sqlite",
+      showDatabase: false,
+      showSchema: false,
+      showSsl: false,
+      showSsh: false,
+      showFilePath: true,
+      showSqliteKey: driver === "sqlite",
+    };
+  }
+
+  if (driver === "redis") {
+    return {
+      showHost: true,
+      showPort: true,
+      showUsername: true,
+      showPassword: true,
+      showDatabase: false,
+      showSchema: false,
+      showSsl: false,
+      showSsh: false,
+      showFilePath: false,
+      showSqliteKey: false,
+    };
+  }
+
+  return {
+    showHost: true,
+    showPort: true,
+    showUsername: true,
+    showPassword: true,
+    showDatabase: true,
+    showSchema:
+      driver === "postgres" || driver === "mssql" || driver === "oracle",
+    showSsl: true,
+    showSsh: true,
+    showFilePath: false,
+    showSqliteKey: false,
+  };
+};
+
+export const buildConnectionFormDefaults = (
+  driver: Driver,
+  overrides: Partial<ConnectionForm> = {},
+): ConnectionForm => ({
+  driver,
+  name: "",
+  host: "",
+  port: getDefaultPort(driver) ?? undefined,
+  database: "",
+  schema: "",
+  username: "",
+  password: "",
+  ssl: false,
+  sslMode: "require",
+  sslCaCert: "",
+  filePath: "",
+  sshEnabled: false,
+  sshHost: "",
+  sshPort: undefined,
+  sshUsername: "",
+  sshPassword: "",
+  sshKeyPath: "",
+  ...overrides,
+});
 
 export const allowsHostWithPort = (driver: Driver) =>
   isMysqlFamilyDriver(driver) || driver === "redis";

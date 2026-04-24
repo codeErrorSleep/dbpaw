@@ -75,6 +75,25 @@ describe("validateConnectionFormInput: required fields", () => {
     );
   });
 
+  test("does not require username or password for redis on create", () => {
+    const keys = validateConnectionFormInput(
+      {
+        ...baseForm,
+        driver: "redis",
+        username: "",
+        password: "",
+        port: 6379,
+      } as any,
+      "create",
+    ).map((i) => i.key);
+    expect(keys).not.toContain(
+      "connection.dialog.inputValidation.usernameRequired",
+    );
+    expect(keys).not.toContain(
+      "connection.dialog.inputValidation.passwordRequired",
+    );
+  });
+
   test("does not require password in edit mode", () => {
     const keys = validateConnectionFormInput(
       { ...baseForm, password: "" } as any,

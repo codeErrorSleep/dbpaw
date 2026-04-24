@@ -250,6 +250,11 @@ export const en = {
       fileFilterPem: "Private Key Files",
       fileFilterAll: "All Files",
       browse: "Browse",
+      typeStepDescription:
+        "Choose a database type first, then fill in its connection details.",
+      detailsStepDescription:
+        "Fill in the connection details required for the selected database type.",
+      backToType: "Back to types",
       test: "Test",
       testing: "Testing…",
       connect: "Connect",
@@ -270,6 +275,18 @@ export const en = {
       },
       sslValidation: {
         caRequired: "CA certificate is required in verify CA mode.",
+      },
+      driverKinds: {
+        sql: "SQL",
+        kv: "Key-Value",
+        document: "Document",
+        search: "Search",
+      },
+      driverHints: {
+        defaultPort: "Default port {{port}}",
+        fileBased: "File-based",
+        readOnly: "Read-only",
+        preview: "Preview",
       },
       inputValidation: {
         filePathRequired: "File path is required.",

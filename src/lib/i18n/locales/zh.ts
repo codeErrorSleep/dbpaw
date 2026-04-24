@@ -246,6 +246,9 @@ export const zh: Translations = {
       fileFilterPem: "私钥文件",
       fileFilterAll: "所有文件",
       browse: "浏览",
+      typeStepDescription: "先选择数据库类型，再填写对应连接参数。",
+      detailsStepDescription: "填写当前数据库类型所需的连接信息。",
+      backToType: "返回选择类型",
       test: "测试",
       testing: "测试中…",
       connect: "连接",
@@ -266,6 +269,18 @@ export const zh: Translations = {
       },
       sslValidation: {
         caRequired: "SSL 模式为校验 CA 时必须填写 CA 证书。",
+      },
+      driverKinds: {
+        sql: "SQL",
+        kv: "键值",
+        document: "文档",
+        search: "搜索",
+      },
+      driverHints: {
+        defaultPort: "默认端口 {{port}}",
+        fileBased: "文件型",
+        readOnly: "只读能力",
+        preview: "测试中",
       },
       inputValidation: {
         filePathRequired: "请填写文件路径。",

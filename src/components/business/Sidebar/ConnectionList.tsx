@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
@@ -22,14 +29,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -39,10 +38,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -50,7 +56,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   ContextMenu,
@@ -66,17 +71,15 @@ import type {
   SavedQuery,
 } from "@/services/api";
 import {
-  DRIVER_REGISTRY,
   getConnectionIcon,
-  getDefaultPort,
-  isFileBasedDriver,
-  supportsSSLCA,
   isMysqlFamilyDriver,
+  supportsSSLCA,
   supportsCreateDatabase,
   supportsSchemaBrowsing,
 } from "@/lib/driver-registry";
 import { toast } from "sonner";
 import { TreeNode } from "./connection-list/TreeNode";
+import { ConnectionDialog } from "./connection-list/ConnectionDialog";
 import {
   getExportDefaultName,
   getExportFilter,
@@ -85,9 +88,8 @@ import {
 } from "./connection-list/helpers";
 import { useTranslation } from "react-i18next";
 import {
+  buildConnectionFormDefaults,
   normalizeConnectionFormInput,
-  requiresPasswordOnCreate,
-  requiresUsername,
 } from "@/lib/connection-form/rules";
 import { validateConnectionFormInput } from "@/lib/connection-form/validate";
 
@@ -160,23 +162,6 @@ type SelectedTableNode = {
   database: string;
   table: string;
   schema: string;
-};
-
-const defaultForm: ConnectionForm = {
-  driver: "postgres",
-  name: "",
-  host: "",
-  port: 5432,
-  database: "",
-  schema: "",
-  username: "",
-  password: "",
-  ssl: false,
-  sslMode: "require",
-  sslCaCert: "",
-  sshEnabled: false,
-  sshPort: undefined,
-  sshUsername: "",
 };
 
 const defaultCreateDatabaseForm: CreateDatabaseForm = {
@@ -298,6 +283,51 @@ const mssqlCollationOptions = [
   "Korean_Unicode_100_CI_AS",
   "Korean_Unicode_140_CI_AS",
 ];
+
+const defaultConnectionDriver: Driver = "postgres";
+
+const buildFormFromConnection = (
+  connection: Pick<
+    Connection,
+    | "type"
+    | "name"
+    | "host"
+    | "port"
+    | "database"
+    | "username"
+    | "ssl"
+    | "sslMode"
+    | "sslCaCert"
+    | "filePath"
+    | "sshEnabled"
+    | "sshHost"
+    | "sshPort"
+    | "sshUsername"
+    | "sshKeyPath"
+  >,
+  overrides: Partial<ConnectionForm> = {},
+): ConnectionForm =>
+  buildConnectionFormDefaults(connection.type, {
+    name: connection.name,
+    host: connection.host || "",
+    port: Number(connection.port) || undefined,
+    database: connection.database || "",
+    schema: connection.type === "postgres" ? "public" : "",
+    username: connection.username || "",
+    password: "",
+    ssl: connection.ssl || false,
+    sslMode: connection.sslMode || "require",
+    sslCaCert: connection.sslCaCert || "",
+    filePath: connection.filePath || "",
+    sshEnabled: connection.sshEnabled || false,
+    sshHost: connection.sshHost || "",
+    sshPort: connection.sshPort || undefined,
+    sshUsername: connection.sshUsername || "",
+    sshPassword: "",
+    sshKeyPath: connection.sshKeyPath || "",
+    ...overrides,
+  });
+
 interface ConnectionListProps {
   onTableSelect?: (
     connection: string,
@@ -444,6 +474,7 @@ export function ConnectionList({
   }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [createStep, setCreateStep] = useState<"type" | "details">("type");
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
     null,
   );
@@ -485,7 +516,9 @@ export function ConnectionList({
     latency?: number;
   } | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
-  const [form, setForm] = useState<ConnectionForm>(defaultForm);
+  const [form, setForm] = useState<ConnectionForm>(
+    buildConnectionFormDefaults(defaultConnectionDriver),
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [savedQueriesByConnection, setSavedQueriesByConnection] = useState<
     Record<string, SavedQuery[]>
@@ -694,16 +727,6 @@ export function ConnectionList({
     }
   }, [searchTerm, filteredConnections, showSavedQueriesInTree]);
 
-  const isFileBased = isFileBasedDriver(form.driver);
-  const supportsSslCa = supportsSSLCA(form.driver);
-  const isPasswordRequiredOnCreate = useMemo(
-    () => requiresPasswordOnCreate(form.driver),
-    [form.driver],
-  );
-  const isUsernameRequired = useMemo(
-    () => requiresUsername(form.driver),
-    [form.driver],
-  );
   const normalizedForm = useMemo(
     () => normalizeConnectionFormInput(form),
     [form],
@@ -721,7 +744,7 @@ export function ConnectionList({
   }, [validationIssues]);
 
   const validateSslSettings = () => {
-    if (!form.ssl || !supportsSslCa) {
+    if (!form.ssl || !supportsSSLCA(form.driver)) {
       return null;
     }
     if (form.sslMode === "verify_ca" && !(form.sslCaCert || "").trim()) {
@@ -842,6 +865,33 @@ export function ConnectionList({
         e instanceof Error ? e.message : String(e),
       );
     }
+  };
+
+  const handlePickDatabaseFile = async (driver: Driver) => {
+    const selected = await pickSingleFile({
+      title:
+        driver === "duckdb"
+          ? t("connection.dialog.fileDialogTitleDuckdb")
+          : t("connection.dialog.fileDialogTitle"),
+      filters: [
+        {
+          name:
+            driver === "duckdb"
+              ? t("connection.dialog.fileFilterDuckdb")
+              : t("connection.dialog.fileFilterSqlite"),
+          extensions:
+            driver === "duckdb"
+              ? ["duckdb", "db"]
+              : ["sqlite", "db", "sqlite3", "db3"],
+        },
+        {
+          name: t("connection.dialog.fileFilterAll"),
+          extensions: ["*"],
+        },
+      ],
+    });
+    if (!selected) return;
+    setForm((current) => ({ ...current, filePath: selected }));
   };
 
   const fetchSavedQueriesByConnection = async () => {
@@ -1058,7 +1108,8 @@ export function ConnectionList({
       if (conn.type !== "redis") return;
       conn.databases.forEach((db) => {
         const dbKey = `${conn.id}-${db.name}`;
-        if (!expandedDatabasesRef.current.has(dbKey) || db.tables.length === 0) return;
+        if (!expandedDatabasesRef.current.has(dbKey) || db.tables.length === 0)
+          return;
         void loadRedisKeysPage(conn.id, db.name, 0, false);
       });
     });
@@ -1273,7 +1324,12 @@ export function ConnectionList({
     handledRedisRefreshIdRef.current = redisRefreshRequest.id;
     const dbKey = `${String(redisRefreshRequest.connectionId)}-${redisRefreshRequest.database}`;
     if (!expandedDatabasesRef.current.has(dbKey)) return;
-    void loadRedisKeysPage(String(redisRefreshRequest.connectionId), redisRefreshRequest.database, 0, false);
+    void loadRedisKeysPage(
+      String(redisRefreshRequest.connectionId),
+      redisRefreshRequest.database,
+      0,
+      false,
+    );
   }, [redisRefreshRequest, loadRedisKeysPage]);
 
   useEffect(() => {
@@ -1743,7 +1799,8 @@ export function ConnectionList({
         ...prev,
       ]);
       setIsDialogOpen(false);
-      setForm(defaultForm);
+      setCreateStep("type");
+      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
       if (onConnect) onConnect(normalizedForm);
     } catch (e: any) {
       setValidationMsg(String(e?.message || e));
@@ -1771,8 +1828,9 @@ export function ConnectionList({
       await fetchConnections();
       setIsDialogOpen(false);
       setDialogMode("create");
+      setCreateStep("type");
       setEditingConnectionId(null);
-      setForm(defaultForm);
+      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
     } catch (e: any) {
       setValidationMsg(String(e?.message || e));
     } finally {
@@ -1789,12 +1847,26 @@ export function ConnectionList({
     void handleConnect();
   };
 
-  const openCreateDialog = () => {
-    setDialogMode("create");
-    setEditingConnectionId(null);
+  const resetConnectionDialogFeedback = () => {
     setValidationMsg(null);
     setTestMsg(null);
-    setForm(defaultForm);
+  };
+
+  const closeConnectionDialog = () => {
+    setIsDialogOpen(false);
+    setDialogMode("create");
+    setCreateStep("type");
+    setEditingConnectionId(null);
+    resetConnectionDialogFeedback();
+    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
+  };
+
+  const openCreateDialog = () => {
+    setDialogMode("create");
+    setCreateStep("type");
+    setEditingConnectionId(null);
+    resetConnectionDialogFeedback();
+    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
     setIsDialogOpen(true);
   };
 
@@ -1803,30 +1875,21 @@ export function ConnectionList({
     if (!conn) return;
 
     setDialogMode("edit");
+    setCreateStep("details");
     setEditingConnectionId(connectionId);
-    setValidationMsg(null);
-    setTestMsg(null);
-    setForm({
-      driver: conn.type,
-      name: conn.name,
-      host: conn.host || "",
-      port: Number(conn.port) || undefined,
-      database: conn.database || "",
-      schema: conn.type === "postgres" ? "public" : "",
-      username: conn.username || "",
-      password: "",
-      ssl: conn.ssl || false,
-      sslMode: conn.sslMode || "require",
-      sslCaCert: conn.sslCaCert || "",
-      filePath: conn.filePath || "",
-      sshEnabled: conn.sshEnabled || false,
-      sshHost: conn.sshHost || "",
-      sshPort: conn.sshPort || 22,
-      sshUsername: conn.sshUsername || "root",
-      sshPassword: "",
-      sshKeyPath: conn.sshKeyPath || "",
-    });
+    resetConnectionDialogFeedback();
+    setForm(buildFormFromConnection(conn));
     setIsDialogOpen(true);
+  };
+
+  const handleCreateDriverSelect = (driver: Driver) => {
+    setForm((current) =>
+      buildConnectionFormDefaults(driver, {
+        name: current.name,
+      }),
+    );
+    resetConnectionDialogFeedback();
+    setCreateStep("details");
   };
 
   const handleReconnect = async (connectionId: string) => {
@@ -1851,26 +1914,9 @@ export function ConnectionList({
     const duplicateName = buildDuplicateConnectionName(
       source.name || t("common.unknown"),
     );
-    const duplicateForm: ConnectionForm = {
-      driver: source.type,
+    const duplicateForm = buildFormFromConnection(source, {
       name: duplicateName,
-      host: source.host || "",
-      port: Number(source.port) || undefined,
-      database: source.database || "",
-      schema: source.type === "postgres" ? "public" : "",
-      username: source.username || "",
-      password: "",
-      ssl: source.ssl || false,
-      sslMode: source.sslMode || "require",
-      sslCaCert: source.sslCaCert || "",
-      filePath: source.filePath || "",
-      sshEnabled: source.sshEnabled || false,
-      sshHost: source.sshHost || "",
-      sshPort: source.sshPort || undefined,
-      sshUsername: source.sshUsername || "",
-      sshPassword: "",
-      sshKeyPath: source.sshKeyPath || "",
-    };
+    });
 
     try {
       const res = await api.connections.create(duplicateForm);
@@ -2161,17 +2207,16 @@ export function ConnectionList({
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
-          <Dialog
+          <ConnectionDialog
             open={isDialogOpen}
             onOpenChange={(open) => {
-              setIsDialogOpen(open);
               if (!open) {
-                setValidationMsg(null);
-                setTestMsg(null);
+                closeConnectionDialog();
+                return;
               }
+              setIsDialogOpen(true);
             }}
-          >
-            <DialogTrigger asChild>
+            trigger={
               <Button
                 variant="ghost"
                 size="sm"
@@ -2180,532 +2225,26 @@ export function ConnectionList({
               >
                 <Plus className="w-3.5 h-3.5" />
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleDialogSubmit}>
-                <DialogHeader>
-                  <DialogTitle>
-                    {dialogMode === "edit"
-                      ? t("connection.dialog.editTitle")
-                      : t("connection.dialog.newTitle")}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="type">
-                      {t("connection.dialog.fields.databaseType")}
-                    </Label>
-                    <Select
-                      value={form.driver}
-                      onValueChange={(v: Driver) =>
-                        setForm((f) => ({
-                          ...f,
-                          driver: v,
-                          port: getDefaultPort(v) ?? f.port,
-                        }))
-                      }
-                    >
-                      <SelectTrigger id="type">
-                        <SelectValue
-                          placeholder={t(
-                            "connection.dialog.placeholders.selectDatabaseType",
-                          )}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DRIVER_REGISTRY.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">
-                      {t("connection.dialog.fields.connectionName")}
-                    </Label>
-                    <Input
-                      id="name"
-                      value={form.name || ""}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, name: e.target.value }))
-                      }
-                    />
-                  </div>
-                  {!isFileBased && (
-                    <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="grid gap-2">
-                          <Label htmlFor="host">
-                            {t("connection.dialog.fields.host")}{" "}
-                            <span className="text-red-600">*</span>
-                          </Label>
-                          <Input
-                            id="host"
-                            placeholder={
-                              form.driver === "redis"
-                                ? "127.0.0.1 or 10.0.0.1:6379,10.0.0.2:6379"
-                                : undefined
-                            }
-                            value={form.host || ""}
-                            onChange={(e) =>
-                              setForm((f) => ({ ...f, host: e.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="port">
-                            {t("connection.dialog.fields.port")}{" "}
-                            <span className="text-red-600">*</span>
-                          </Label>
-                          <Input
-                            id="port"
-                            placeholder={String(
-                              getDefaultPort(form.driver) ?? "",
-                            )}
-                            value={String(form.port || "")}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                port: Number(e.target.value) || undefined,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="grid gap-2">
-                          <Label htmlFor="username">
-                            {t("connection.dialog.fields.username")}{" "}
-                            {isUsernameRequired && (
-                              <span className="text-red-600">*</span>
-                            )}
-                          </Label>
-                          <Input
-                            id="username"
-                            value={form.username || ""}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                username: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="password">
-                            {t("connection.dialog.fields.password")}{" "}
-                            {dialogMode === "create" &&
-                              isPasswordRequiredOnCreate && (
-                                <span className="text-red-600">*</span>
-                              )}
-                          </Label>
-                          <Input
-                            id="password"
-                            type="password"
-                            placeholder={
-                              dialogMode === "edit"
-                                ? t(
-                                    "connection.dialog.placeholders.keepPassword",
-                                  )
-                                : undefined
-                            }
-                            value={form.password || ""}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                password: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="grid gap-2">
-                          <Label htmlFor="database">
-                            {t("connection.dialog.fields.database")}
-                          </Label>
-                          <Input
-                            id="database"
-                            value={form.database || ""}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                database: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="schema">
-                            {t("connection.dialog.fields.schema")}
-                          </Label>
-                          <Input
-                            id="schema"
-                            value={form.schema || ""}
-                            onChange={(e) =>
-                              setForm((f) => ({ ...f, schema: e.target.value }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="ssl"
-                          checked={form.ssl}
-                          onCheckedChange={(checked) =>
-                            setForm((f) => ({ ...f, ssl: checked === true }))
-                          }
-                        />
-                        <Label htmlFor="ssl">
-                          {t("connection.dialog.fields.ssl")}
-                        </Label>
-                      </div>
-                      {form.ssl && supportsSslCa && (
-                        <div className="border p-3 rounded-md space-y-3 bg-muted/20">
-                          <div className="grid gap-2">
-                            <Label htmlFor="sslMode">
-                              {t("connection.dialog.fields.sslMode")}
-                            </Label>
-                            <Select
-                              value={form.sslMode || "require"}
-                              onValueChange={(v: "require" | "verify_ca") =>
-                                setForm((f) => ({ ...f, sslMode: v }))
-                              }
-                            >
-                              <SelectTrigger id="sslMode">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="require">
-                                  {t("connection.dialog.sslMode.require")}
-                                </SelectItem>
-                                <SelectItem value="verify_ca">
-                                  {t("connection.dialog.sslMode.verifyCa")}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {form.sslMode === "verify_ca" && (
-                            <div className="grid gap-2">
-                              <Label htmlFor="sslCaCert">
-                                {t("connection.dialog.fields.sslCaCert")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <div className="flex justify-end">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => void handlePickSslCaCertFile()}
-                                >
-                                  <FolderOpen className="w-4 h-4 mr-2" />
-                                  {t("connection.dialog.browse")}
-                                </Button>
-                              </div>
-                              <Textarea
-                                id="sslCaCert"
-                                rows={5}
-                                placeholder={t(
-                                  "connection.dialog.placeholders.sslCaCert",
-                                )}
-                                value={form.sslCaCert || ""}
-                                onChange={(e) =>
-                                  setForm((f) => ({
-                                    ...f,
-                                    sslCaCert: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="ssh"
-                          checked={form.sshEnabled}
-                          onCheckedChange={(checked) =>
-                            setForm((f) => ({
-                              ...f,
-                              sshEnabled: checked === true,
-                            }))
-                          }
-                        />
-                        <Label htmlFor="ssh">
-                          {t("connection.dialog.fields.ssh")}
-                        </Label>
-                      </div>
-
-                      {form.sshEnabled && (
-                        <div className="border p-3 rounded-md space-y-3 bg-muted/20">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="grid gap-2">
-                              <Label htmlFor="sshHost">
-                                {t("connection.dialog.fields.sshHost")}
-                              </Label>
-                              <Input
-                                id="sshHost"
-                                placeholder={t(
-                                  "connection.dialog.placeholders.sshHost",
-                                )}
-                                value={form.sshHost || ""}
-                                onChange={(e) =>
-                                  setForm((f) => ({
-                                    ...f,
-                                    sshHost: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="sshPort">
-                                {t("connection.dialog.fields.sshPort")}
-                              </Label>
-                              <Input
-                                id="sshPort"
-                                placeholder={t(
-                                  "connection.dialog.placeholders.sshPort",
-                                )}
-                                value={String(form.sshPort || "")}
-                                onChange={(e) =>
-                                  setForm((f) => ({
-                                    ...f,
-                                    sshPort:
-                                      Number(e.target.value) || undefined,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor="sshUsername">
-                              {t("connection.dialog.fields.sshUsername")}
-                            </Label>
-                            <Input
-                              id="sshUsername"
-                              placeholder={t(
-                                "connection.dialog.placeholders.sshUsername",
-                              )}
-                              value={form.sshUsername || ""}
-                              onChange={(e) =>
-                                setForm((f) => ({
-                                  ...f,
-                                  sshUsername: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor="sshPassword">
-                              {t("connection.dialog.fields.sshPassword")}
-                            </Label>
-                            <Input
-                              id="sshPassword"
-                              type="password"
-                              placeholder={t(
-                                "connection.dialog.placeholders.sshPassword",
-                              )}
-                              value={form.sshPassword || ""}
-                              onChange={(e) =>
-                                setForm((f) => ({
-                                  ...f,
-                                  sshPassword: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor="sshKeyPath">
-                              {t("connection.dialog.fields.sshKeyPath")}
-                            </Label>
-                            <div className="flex gap-2">
-                              <Input
-                                id="sshKeyPath"
-                                placeholder={t(
-                                  "connection.dialog.placeholders.sshKeyPath",
-                                )}
-                                value={form.sshKeyPath || ""}
-                                onChange={(e) =>
-                                  setForm((f) => ({
-                                    ...f,
-                                    sshKeyPath: e.target.value,
-                                  }))
-                                }
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => void handlePickSshKeyFile()}
-                              >
-                                <FolderOpen className="w-4 h-4 mr-2" />
-                                {t("connection.dialog.browse")}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {isFileBased && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="filePath">
-                        {form.driver === "duckdb"
-                          ? t("connection.dialog.fields.duckdbFilePath")
-                          : t("connection.dialog.fields.sqliteFilePath")}{" "}
-                        <span className="text-red-600">*</span>
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="filePath"
-                          placeholder={
-                            form.driver === "duckdb"
-                              ? t("connection.dialog.placeholders.duckdbPath")
-                              : t("connection.dialog.placeholders.sqlitePath")
-                          }
-                          value={form.filePath || ""}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, filePath: e.target.value }))
-                          }
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={async () => {
-                            const selected = await pickSingleFile({
-                              title:
-                                form.driver === "duckdb"
-                                  ? t("connection.dialog.fileDialogTitleDuckdb")
-                                  : t("connection.dialog.fileDialogTitle"),
-                              filters: [
-                                {
-                                  name:
-                                    form.driver === "duckdb"
-                                      ? t("connection.dialog.fileFilterDuckdb")
-                                      : t("connection.dialog.fileFilterSqlite"),
-                                  extensions:
-                                    form.driver === "duckdb"
-                                      ? ["duckdb", "db"]
-                                      : ["sqlite", "db", "sqlite3", "db3"],
-                                },
-                                {
-                                  name: t("connection.dialog.fileFilterAll"),
-                                  extensions: ["*"],
-                                },
-                              ],
-                            });
-                            if (!selected) return;
-                            setForm((f) => ({ ...f, filePath: selected }));
-                          }}
-                        >
-                          <FolderOpen className="w-4 h-4 mr-2" />
-                          {t("connection.dialog.browse")}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  {form.driver === "sqlite" && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="sqliteKey">
-                        {t("connection.dialog.fields.sqliteKey")}
-                      </Label>
-                      <Input
-                        id="sqliteKey"
-                        type="password"
-                        placeholder={t(
-                          "connection.dialog.placeholders.sqliteKey",
-                        )}
-                        value={form.password || ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            password: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                  >
-                    {t("common.cancel")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleTestConnection}
-                    disabled={isTesting}
-                  >
-                    {isTesting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("connection.dialog.testing")}
-                      </>
-                    ) : (
-                      t("connection.dialog.test")
-                    )}
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      (dialogMode === "edit" ? isSavingEdit : isConnecting) ||
-                      !requiredOk
-                    }
-                  >
-                    {dialogMode === "edit" ? (
-                      isSavingEdit ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          {t("connection.dialog.saving")}
-                        </>
-                      ) : (
-                        t("common.save")
-                      )
-                    ) : isConnecting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("connection.dialog.connecting")}
-                      </>
-                    ) : (
-                      t("connection.dialog.connect")
-                    )}
-                  </Button>
-                </div>
-                {validationMsg && (
-                  <div className="mt-3">
-                    <Alert variant="destructive">
-                      <AlertTitle>
-                        {t("connection.dialog.validationFailed")}
-                      </AlertTitle>
-                      <AlertDescription>{validationMsg}</AlertDescription>
-                    </Alert>
-                  </div>
-                )}
-                {testMsg && (
-                  <div className="mt-3">
-                    <Alert variant={testMsg.ok ? "default" : "destructive"}>
-                      <AlertTitle>
-                        {testMsg.ok
-                          ? t("connection.dialog.testSuccess")
-                          : t("connection.dialog.testFailed")}
-                      </AlertTitle>
-                      <AlertDescription>
-                        {testMsg.text}
-                        {testMsg.latency ? `(${testMsg.latency}ms)` : ""}
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                )}
-              </form>
-            </DialogContent>
-          </Dialog>
+            }
+            dialogMode={dialogMode}
+            createStep={createStep}
+            form={form}
+            setForm={setForm}
+            validationMsg={validationMsg}
+            testMsg={testMsg}
+            requiredOk={requiredOk}
+            isTesting={isTesting}
+            isConnecting={isConnecting}
+            isSavingEdit={isSavingEdit}
+            onSubmit={handleDialogSubmit}
+            onClose={closeConnectionDialog}
+            onTestConnection={handleTestConnection}
+            onCreateDriverSelect={handleCreateDriverSelect}
+            onBackToType={() => setCreateStep("type")}
+            onPickSslCaCertFile={() => void handlePickSslCaCertFile()}
+            onPickSshKeyFile={() => void handlePickSshKeyFile()}
+            onPickDatabaseFile={(driver) => void handlePickDatabaseFile(driver)}
+          />
         </div>
       </div>
 
@@ -2748,7 +2287,12 @@ export function ConnectionList({
                 className="block w-full text-left text-xs text-muted-foreground hover:text-foreground px-3 py-1"
                 style={{ paddingLeft: indent }}
                 onClick={() =>
-                  void loadRedisKeysPage(connection.id, db.name, db.redisCursor!, true)
+                  void loadRedisKeysPage(
+                    connection.id,
+                    db.name,
+                    db.redisCursor!,
+                    true,
+                  )
                 }
               >
                 Load more…
@@ -3050,53 +2594,48 @@ export function ConnectionList({
                               });
                             }}
                           >
-                            {supportsSchemaNode
-                              ? database.schemas.map((schemaNode) => {
-                                  const schemaKey = getSchemaNodeKey(
-                                    dbKey,
-                                    schemaNode.name,
-                                  );
-                                  return (
-                                    <TreeNode
-                                      key={schemaKey}
-                                      level={databaseLevel + 1}
-                                      icon={<FolderOpen className="w-4 h-4" />}
-                                      label={schemaNode.name}
-                                      isExpanded={expandedSchemas.has(
-                                        schemaKey,
-                                      )}
-                                      onToggle={() => toggleSchema(schemaKey)}
-                                      onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setContextMenu({
-                                          visible: true,
-                                          x: e.clientX,
-                                          y: e.clientY,
-                                          connectionId: connection.id,
-                                          databaseName: database.name,
-                                          schemaName: schemaNode.name,
-                                          type: "schema",
-                                        });
-                                      }}
-                                    >
-                                      {schemaNode.tables.map((table) =>
-                                        renderTableNode(
-                                          table,
-                                          databaseLevel + 2,
-                                        ),
-                                      )}
-                                    </TreeNode>
-                                  );
-                                })
-                              : (
-                                <>
-                                  {database.tables.map((table) =>
-                                    renderTableNode(table, databaseLevel + 1),
-                                  )}
-                                  {renderRedisPageFooter(database, databaseLevel)}
-                                </>
-                              )}
+                            {supportsSchemaNode ? (
+                              database.schemas.map((schemaNode) => {
+                                const schemaKey = getSchemaNodeKey(
+                                  dbKey,
+                                  schemaNode.name,
+                                );
+                                return (
+                                  <TreeNode
+                                    key={schemaKey}
+                                    level={databaseLevel + 1}
+                                    icon={<FolderOpen className="w-4 h-4" />}
+                                    label={schemaNode.name}
+                                    isExpanded={expandedSchemas.has(schemaKey)}
+                                    onToggle={() => toggleSchema(schemaKey)}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setContextMenu({
+                                        visible: true,
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        connectionId: connection.id,
+                                        databaseName: database.name,
+                                        schemaName: schemaNode.name,
+                                        type: "schema",
+                                      });
+                                    }}
+                                  >
+                                    {schemaNode.tables.map((table) =>
+                                      renderTableNode(table, databaseLevel + 2),
+                                    )}
+                                  </TreeNode>
+                                );
+                              })
+                            ) : (
+                              <>
+                                {database.tables.map((table) =>
+                                  renderTableNode(table, databaseLevel + 1),
+                                )}
+                                {renderRedisPageFooter(database, databaseLevel)}
+                              </>
+                            )}
                           </TreeNode>
                         );
                       })}
@@ -3303,48 +2842,48 @@ export function ConnectionList({
                             });
                           }}
                         >
-                          {supportsSchemaNode
-                            ? database.schemas.map((schemaNode) => {
-                                const schemaKey = getSchemaNodeKey(
-                                  dbKey,
-                                  schemaNode.name,
-                                );
-                                return (
-                                  <TreeNode
-                                    key={schemaKey}
-                                    level={databaseLevel + 1}
-                                    icon={<FolderOpen className="w-4 h-4" />}
-                                    label={schemaNode.name}
-                                    isExpanded={expandedSchemas.has(schemaKey)}
-                                    onToggle={() => toggleSchema(schemaKey)}
-                                    onContextMenu={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setContextMenu({
-                                        visible: true,
-                                        x: e.clientX,
-                                        y: e.clientY,
-                                        connectionId: connection.id,
-                                        databaseName: database.name,
-                                        schemaName: schemaNode.name,
-                                        type: "schema",
-                                      });
-                                    }}
-                                  >
-                                    {schemaNode.tables.map((table) =>
-                                      renderTableNode(table, databaseLevel + 2),
-                                    )}
-                                  </TreeNode>
-                                );
-                              })
-                            : (
-                              <>
-                                {database.tables.map((table) =>
-                                  renderTableNode(table, databaseLevel + 1),
-                                )}
-                                {renderRedisPageFooter(database, databaseLevel)}
-                              </>
-                            )}
+                          {supportsSchemaNode ? (
+                            database.schemas.map((schemaNode) => {
+                              const schemaKey = getSchemaNodeKey(
+                                dbKey,
+                                schemaNode.name,
+                              );
+                              return (
+                                <TreeNode
+                                  key={schemaKey}
+                                  level={databaseLevel + 1}
+                                  icon={<FolderOpen className="w-4 h-4" />}
+                                  label={schemaNode.name}
+                                  isExpanded={expandedSchemas.has(schemaKey)}
+                                  onToggle={() => toggleSchema(schemaKey)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setContextMenu({
+                                      visible: true,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                      connectionId: connection.id,
+                                      databaseName: database.name,
+                                      schemaName: schemaNode.name,
+                                      type: "schema",
+                                    });
+                                  }}
+                                >
+                                  {schemaNode.tables.map((table) =>
+                                    renderTableNode(table, databaseLevel + 2),
+                                  )}
+                                </TreeNode>
+                              );
+                            })
+                          ) : (
+                            <>
+                              {database.tables.map((table) =>
+                                renderTableNode(table, databaseLevel + 1),
+                              )}
+                              {renderRedisPageFooter(database, databaseLevel)}
+                            </>
+                          )}
                         </TreeNode>
                       );
                     })
@@ -3458,7 +2997,10 @@ export function ConnectionList({
                   <button
                     className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                     onClick={() => {
-                      if (contextMenu.databaseName && contextMenuDatabaseConnection) {
+                      if (
+                        contextMenu.databaseName &&
+                        contextMenuDatabaseConnection
+                      ) {
                         onRedisKeySelect?.(
                           contextMenuDatabaseConnection.name,
                           contextMenu.databaseName,
@@ -3476,7 +3018,11 @@ export function ConnectionList({
                   <button
                     className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                     onClick={() => {
-                      if (contextMenu.connectionId && contextMenu.databaseName && contextMenuDatabaseConnection) {
+                      if (
+                        contextMenu.connectionId &&
+                        contextMenu.databaseName &&
+                        contextMenuDatabaseConnection
+                      ) {
                         onOpenRedisConsole?.(
                           contextMenuDatabaseConnection.name,
                           contextMenu.databaseName,
@@ -3496,8 +3042,9 @@ export function ConnectionList({
                   {contextMenu.connectionId &&
                   contextMenu.databaseName &&
                   contextMenuDatabaseConnection &&
-                  getImportDriverCapability(contextMenuDatabaseConnection.type) !==
-                    "unsupported" ? (
+                  getImportDriverCapability(
+                    contextMenuDatabaseConnection.type,
+                  ) !== "unsupported" ? (
                     <button
                       className="w-full px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                       disabled={
@@ -3524,7 +3071,10 @@ export function ConnectionList({
                   <button
                     className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                     onClick={async () => {
-                      if (contextMenu.connectionId && contextMenu.databaseName) {
+                      if (
+                        contextMenu.connectionId &&
+                        contextMenu.databaseName
+                      ) {
                         const connection = connections.find(
                           (conn) => conn.id === contextMenu.connectionId,
                         );
