@@ -373,11 +373,13 @@ interface ConnectionListProps {
   onSelectSavedQuery?: (query: SavedQuery) => void;
   lastUpdated?: number;
   showSavedQueriesInTree?: boolean;
-  redisRefreshRequest?: {
-    id: number;
-    connectionId: number;
-    database: string;
-  };
+  redisRefreshRequest?: RedisRefreshRequest;
+}
+
+export interface RedisRefreshRequest {
+  id: number;
+  connectionId: number;
+  database: string;
 }
 
 export function ConnectionList({
@@ -3456,14 +3458,14 @@ export function ConnectionList({
                   <button
                     className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                     onClick={() => {
-                      if (contextMenu.connectionId && contextMenu.databaseName) {
-                        const conn = connections.find(
-                          (c) => c.id === contextMenu.connectionId,
+                      if (contextMenu.databaseName && contextMenuDatabaseConnection) {
+                        onRedisKeySelect?.(
+                          contextMenuDatabaseConnection.name,
+                          contextMenu.databaseName,
+                          "",
+                          Number(contextMenu.connectionId),
+                          contextMenuDatabaseConnection.type,
                         );
-                        const db = conn?.databases.find(
-                          (d) => d.name === contextMenu.databaseName,
-                        );
-                        if (conn && db) handleCreateRedisKey(conn, db);
                       }
                       setContextMenu((prev) => ({ ...prev, visible: false }));
                     }}

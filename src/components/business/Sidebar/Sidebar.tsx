@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConnectionList } from "./ConnectionList";
+import { ConnectionList, type RedisRefreshRequest } from "./ConnectionList";
 import { SavedQueriesList } from "./SavedQueriesList";
 import { ConnectionForm, SavedQuery } from "@/services/api";
 import { useTranslation } from "react-i18next";
@@ -80,11 +80,7 @@ interface SidebarProps {
   activeTableTarget?: ActiveTableTarget;
   sidebarRevealRequest?: SidebarRevealRequest;
   layoutMode?: "tabs" | "tree";
-  redisRefreshRequest?: {
-    id: number;
-    connectionId: number;
-    database: string;
-  };
+  redisRefreshRequest?: RedisRefreshRequest;
 }
 
 export function Sidebar({

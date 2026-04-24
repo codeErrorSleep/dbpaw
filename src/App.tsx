@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sidebar } from "@/components/business/Sidebar/Sidebar";
+import type { RedisRefreshRequest } from "@/components/business/Sidebar/ConnectionList";
 import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
 import { TableView } from "@/components/business/DataGrid/TableView";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -268,11 +269,7 @@ export default function App() {
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
   const sidebarRevealRequestIdRef = useRef(0);
   const redisRefreshIdRef = useRef(0);
-  const [redisRefreshRequest, setRedisRefreshRequest] = useState<{
-    id: number;
-    connectionId: number;
-    database: string;
-  } | undefined>(undefined);
+  const [redisRefreshRequest, setRedisRefreshRequest] = useState<RedisRefreshRequest | undefined>(undefined);
 
   const revealSidebarForTab = useCallback(
     (tabId: string, sourceTabs = tabs) => {
@@ -911,6 +908,10 @@ export default function App() {
       },
     ]);
     setActiveTab(tabId);
+  };
+
+  const notifyRedisRefresh = (connectionId: number, database: string) => {
+    setRedisRefreshRequest({ id: ++redisRefreshIdRef.current, connectionId, database });
   };
 
   const handleExportTableFromTree = async (
@@ -1963,19 +1964,11 @@ export default function App() {
                                       : item,
                                   ),
                                 );
-                                setRedisRefreshRequest({
-                                  id: ++redisRefreshIdRef.current,
-                                  connectionId: tab.connectionId!,
-                                  database: tab.database!,
-                                });
+                                notifyRedisRefresh(tab.connectionId!, tab.database!);
                               }}
                               onDeleted={() => {
                                 handleCloseTab(tab.id);
-                                setRedisRefreshRequest({
-                                  id: ++redisRefreshIdRef.current,
-                                  connectionId: tab.connectionId!,
-                                  database: tab.database!,
-                                });
+                                notifyRedisRefresh(tab.connectionId!, tab.database!);
                               }}
                             />
                           </Suspense>
