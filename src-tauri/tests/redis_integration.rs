@@ -24,7 +24,6 @@ async fn cleanup(form: &dbpaw_lib::models::ConnectionForm, key: &str) {
 // ── connection tests ──────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn noauth_ping() {
     let form = noauth();
     let mut conn = redis::connect(&form, None).await.expect("connect failed");
@@ -33,7 +32,6 @@ async fn noauth_ping() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn auth_ping() {
     let form = auth();
     let mut conn = redis::connect(&form, None).await.expect("connect failed");
@@ -42,10 +40,9 @@ async fn auth_ping() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn list_databases_standalone() {
     let form = noauth();
-    let dbs = redis::list_databases(&form).unwrap();
+    let dbs = redis::list_databases(&form, 16).unwrap();
     assert_eq!(dbs.len(), 16, "expected 16 databases for standalone");
     assert!(
         dbs.iter().any(|d| d.selected),
@@ -56,7 +53,6 @@ async fn list_databases_standalone() {
 // ── scan tests ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn scan_keys_cursor_works() {
     let form = noauth();
     let prefix = redis_context::unique_name("scan_test");
@@ -101,7 +97,6 @@ async fn scan_keys_cursor_works() {
 // ── CRUD: string ──────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn crud_string() {
     let form = noauth();
     let key = redis_context::unique_name("crud_string");
@@ -137,7 +132,6 @@ async fn crud_string() {
 // ── CRUD: hash ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn crud_hash() {
     let form = noauth();
     let key = redis_context::unique_name("crud_hash");
@@ -168,13 +162,12 @@ async fn crud_hash() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn crud_hash_pagination_uses_scan_cursor() {
     let form = noauth();
     let key = redis_context::unique_name("crud_hash_page");
     let mut conn = redis::connect(&form, None).await.unwrap();
 
-    let fields: BTreeMap<String, String> = (0..300)
+    let fields: BTreeMap<String, String> = (0..3000)
         .map(|i| (format!("f{i}"), format!("v{i}")))
         .collect();
 
@@ -186,13 +179,13 @@ async fn crud_hash_pagination_uses_scan_cursor() {
     redis::set_key(&mut conn, payload).await.unwrap();
 
     let first = redis::get_key(&mut conn, key.clone()).await.unwrap();
-    assert_eq!(first.value_total_len, Some(300));
+    assert_eq!(first.value_total_len, Some(3000));
     assert!(first.value_offset != 0, "expected non-zero HSCAN cursor");
 
     let second = redis::get_key_page(&mut conn, key.clone(), first.value_offset, 200)
         .await
         .unwrap();
-    assert_eq!(second.value_total_len, Some(300));
+    assert_eq!(second.value_total_len, Some(3000));
     assert!(
         matches!(&second.value, RedisValue::Hash(v) if !v.is_empty()),
         "expected a non-empty second hash page"
@@ -204,7 +197,6 @@ async fn crud_hash_pagination_uses_scan_cursor() {
 // ── CRUD: list ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn crud_list_pagination() {
     let form = noauth();
     let key = redis_context::unique_name("crud_list");
@@ -244,7 +236,6 @@ async fn crud_list_pagination() {
 // ── CRUD: set ─────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn crud_set_pagination() {
     let form = noauth();
     let key = redis_context::unique_name("crud_set");
@@ -274,7 +265,6 @@ async fn crud_set_pagination() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn crud_set_initial_page_exposes_scan_cursor() {
     let form = noauth();
     let key = redis_context::unique_name("crud_set_cursor");
@@ -306,7 +296,6 @@ async fn crud_set_initial_page_exposes_scan_cursor() {
 // ── CRUD: zset ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn crud_zset_pagination() {
     let form = noauth();
     let key = redis_context::unique_name("crud_zset");
@@ -351,7 +340,6 @@ async fn crud_zset_pagination() {
 // ── rename ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn rename_key() {
     let form = noauth();
     let old = redis_context::unique_name("rename_old");
@@ -365,7 +353,7 @@ async fn rename_key() {
     };
     redis::set_key(&mut conn, payload).await.unwrap();
 
-    redis::rename_key(&mut conn, old.clone(), new.clone())
+    redis::rename_key(&mut conn, old.clone(), new.clone(), false)
         .await
         .unwrap();
 
@@ -381,7 +369,6 @@ async fn rename_key() {
 // ── TTL ───────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn set_ttl_and_persist() {
     let form = noauth();
     let key = redis_context::unique_name("ttl_test");
@@ -413,7 +400,6 @@ async fn set_ttl_and_persist() {
 
 /// Requires IT_REUSE_LOCAL_DB=1 and REDIS_CLUSTER_HOSTS=<host1>,<host2>,...
 #[tokio::test]
-#[ignore]
 async fn cluster_scan_is_partial() {
     let hosts = match std::env::var("REDIS_CLUSTER_HOSTS") {
         Ok(h) if !h.is_empty() => h,
@@ -441,7 +427,6 @@ async fn cluster_scan_is_partial() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn cluster_scan_requires_narrow_pattern() {
     let hosts = match std::env::var("REDIS_CLUSTER_HOSTS") {
         Ok(h) if !h.is_empty() => h,

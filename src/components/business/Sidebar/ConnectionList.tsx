@@ -2372,6 +2372,259 @@ export function ConnectionList({
               </div>
             );
 
+          const renderDatabaseTreeNode = (
+            database: DatabaseInfo,
+            level: number,
+          ) => {
+            const dbKey = `${connection.id}-${database.name}`;
+            const supportsSchemaNode = supportsSchemaNodeForDriver(
+              connection.type,
+            );
+            const renderTableNode = (
+              table: TableInfo,
+              tableLevel: number,
+            ) => {
+              const tableKey = getTableNodeKey(
+                connection.id,
+                database.name,
+                table.schema,
+                table.name,
+              );
+              return (
+                <ContextMenu key={tableKey}>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      ref={(el) => {
+                        tableNodeRefs.current[tableKey] = el;
+                      }}
+                    >
+                      <TreeNode
+                        level={tableLevel}
+                        icon={
+                          connection.type === "redis" ? (
+                            <Key className="w-4 h-4" />
+                          ) : (
+                            <Table className="w-4 h-4" />
+                          )
+                        }
+                        label={table.name}
+                        isSelected={selectedTableKey === tableKey}
+                        isExpanded={expandedTables.has(tableKey)}
+                        toggleOnRowClick={false}
+                        onToggle={() => {
+                          toggleTable(
+                            tableKey,
+                            connection.id,
+                            database.name,
+                            table,
+                          );
+                        }}
+                        onDoubleClick={() => {
+                          handleTableClick(
+                            connection,
+                            database,
+                            table,
+                          );
+                        }}
+                        statusIndicator={
+                          loadingTableKeys.has(tableKey)
+                            ? loadingSpinner
+                            : undefined
+                        }
+                        actions={
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() =>
+                                handleTableClick(
+                                  connection,
+                                  database,
+                                  table,
+                                )
+                              }
+                            >
+                              <Play className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        }
+                      >
+                        {table.columns.map((column) => (
+                          <div
+                            key={column.name}
+                            className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
+                            style={{
+                              paddingLeft: `${(tableLevel + 1) * 12 + 8}px`,
+                            }}
+                          >
+                            <span className="w-4" />
+                            {column.isPrimaryKey ? (
+                              <Key className="w-3 h-3 text-yellow-600 shrink-0" />
+                            ) : (
+                              <span className="w-3 shrink-0" />
+                            )}
+                            <span className="flex-1 truncate text-foreground">
+                              {column.name}
+                            </span>
+                            <span className="text-muted-foreground text-xs shrink-0">
+                              {column.type}
+                            </span>
+                          </div>
+                        ))}
+                      </TreeNode>
+                    </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    {connection.type !== "redis" ? (
+                      <>
+                        <ContextMenuItem
+                          onClick={() =>
+                            handleCreateQueryFromContext(
+                              connection.id,
+                              database.name,
+                            )
+                          }
+                        >
+                          <FileCode className="w-4 h-4 mr-2" />
+                          {t("connection.menu.newQuery")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onClick={() =>
+                            handleTableExportDialog(
+                              connection,
+                              database,
+                              table,
+                            )
+                          }
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          {t("connection.menu.exportTable")}
+                        </ContextMenuItem>
+                        {onAlterTable && (
+                          <ContextMenuItem
+                            onClick={() =>
+                              onAlterTable(
+                                Number(connection.id),
+                                database.name,
+                                table.schema ?? "",
+                                table.name,
+                                connection.type,
+                              )
+                            }
+                          >
+                            <TableIcon className="w-4 h-4 mr-2" />
+                            {t("connection.menu.alterTable")}
+                          </ContextMenuItem>
+                        )}
+                      </>
+                    ) : null}
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            };
+
+            return (
+              <TreeNode
+                key={dbKey}
+                level={level}
+                icon={<Database className="w-4 h-4" />}
+                label={
+                  (connection.type === "sqlite" ||
+                    connection.type === "duckdb") &&
+                  database.name === "main"
+                    ? t(
+                        connection.type === "duckdb"
+                          ? "connection.duckdbMainLabel"
+                          : "connection.sqliteMainLabel",
+                      )
+                    : database.name
+                }
+                isExpanded={
+                  connection.type === "redis"
+                    ? false
+                    : expandedDatabases.has(dbKey)
+                }
+                onToggle={() => toggleDatabase(dbKey)}
+                toggleOnRowClick={connection.type !== "redis"}
+                hideToggle={connection.type === "redis"}
+                statusIndicator={
+                  loadingDatabaseKeys.has(dbKey)
+                    ? loadingSpinner
+                    : undefined
+                }
+                actions={makeRedisDbActions(database)}
+                onDoubleClick={
+                  connection.type === "redis"
+                    ? () => {
+                        onOpenRedisBrowser?.(
+                          connection.name,
+                          database.name,
+                          Number(connection.id),
+                          connection.type,
+                        );
+                      }
+                    : undefined
+                }
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({
+                    visible: true,
+                    x: e.clientX,
+                    y: e.clientY,
+                    connectionId: connection.id,
+                    databaseName: database.name,
+                    type: "database",
+                  });
+                }}
+              >
+                {supportsSchemaNode ? (
+                  database.schemas.map((schemaNode) => {
+                    const schemaKey = getSchemaNodeKey(
+                      dbKey,
+                      schemaNode.name,
+                    );
+                    return (
+                      <TreeNode
+                        key={schemaKey}
+                        level={level + 1}
+                        icon={<FolderOpen className="w-4 h-4" />}
+                        label={schemaNode.name}
+                        isExpanded={expandedSchemas.has(schemaKey)}
+                        onToggle={() => toggleSchema(schemaKey)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenu({
+                            visible: true,
+                            x: e.clientX,
+                            y: e.clientY,
+                            connectionId: connection.id,
+                            databaseName: database.name,
+                            schemaName: schemaNode.name,
+                            type: "schema",
+                          });
+                        }}
+                      >
+                        {schemaNode.tables.map((table) =>
+                          renderTableNode(table, level + 2),
+                        )}
+                      </TreeNode>
+                    );
+                  })
+                ) : (
+                  <>
+                    {database.tables.map((table) =>
+                      renderTableNode(table, level + 1),
+                    )}
+                    {renderRedisPageFooter(database, level)}
+                  </>
+                )}
+              </TreeNode>
+            );
+          };
+
           return (
             <TreeNode
               key={connection.id}
@@ -2458,485 +2711,10 @@ export function ConnectionList({
                       forceShowToggle={visibleDatabases.length > 0}
                       canToggle={visibleDatabases.length > 0}
                     >
-                      {visibleDatabases.map((database) => {
-                        const databaseLevel = 2;
-                        const dbKey = `${connection.id}-${database.name}`;
-                        const supportsSchemaNode = supportsSchemaNodeForDriver(
-                          connection.type,
-                        );
-                        const renderTableNode = (
-                          table: TableInfo,
-                          level: number,
-                        ) => {
-                          const tableKey = getTableNodeKey(
-                            connection.id,
-                            database.name,
-                            table.schema,
-                            table.name,
-                          );
-                          return (
-                            <ContextMenu key={tableKey}>
-                              <ContextMenuTrigger asChild>
-                                <div
-                                  ref={(el) => {
-                                    tableNodeRefs.current[tableKey] = el;
-                                  }}
-                                >
-                                  <TreeNode
-                                    level={level}
-                                    icon={
-                                      connection.type === "redis" ? (
-                                        <Key className="w-4 h-4" />
-                                      ) : (
-                                        <Table className="w-4 h-4" />
-                                      )
-                                    }
-                                    label={table.name}
-                                    isSelected={selectedTableKey === tableKey}
-                                    isExpanded={expandedTables.has(tableKey)}
-                                    toggleOnRowClick={false}
-                                    onToggle={() => {
-                                      toggleTable(
-                                        tableKey,
-                                        connection.id,
-                                        database.name,
-                                        table,
-                                      );
-                                    }}
-                                    onDoubleClick={() => {
-                                      handleTableClick(
-                                        connection,
-                                        database,
-                                        table,
-                                      );
-                                    }}
-                                    statusIndicator={
-                                      loadingTableKeys.has(tableKey)
-                                        ? loadingSpinner
-                                        : undefined
-                                    }
-                                    actions={
-                                      <div onClick={(e) => e.stopPropagation()}>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0"
-                                          onClick={() =>
-                                            handleTableClick(
-                                              connection,
-                                              database,
-                                              table,
-                                            )
-                                          }
-                                        >
-                                          <Play className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    }
-                                  >
-                                    {table.columns.map((column) => (
-                                      <div
-                                        key={column.name}
-                                        className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
-                                        style={{
-                                          paddingLeft: `${(level + 1) * 12 + 8}px`,
-                                        }}
-                                      >
-                                        <span className="w-4" />
-                                        {column.isPrimaryKey ? (
-                                          <Key className="w-3 h-3 text-yellow-600 shrink-0" />
-                                        ) : (
-                                          <span className="w-3 shrink-0" />
-                                        )}
-                                        <span className="flex-1 truncate text-foreground">
-                                          {column.name}
-                                        </span>
-                                        <span className="text-muted-foreground text-xs shrink-0">
-                                          {column.type}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </TreeNode>
-                                </div>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent>
-                                {connection.type !== "redis" ? (
-                                  <>
-                                    <ContextMenuItem
-                                      onClick={() =>
-                                        handleCreateQueryFromContext(
-                                          connection.id,
-                                          database.name,
-                                        )
-                                      }
-                                    >
-                                      <FileCode className="w-4 h-4 mr-2" />
-                                      {t("connection.menu.newQuery")}
-                                    </ContextMenuItem>
-                                    <ContextMenuItem
-                                      onClick={() =>
-                                        handleTableExportDialog(
-                                          connection,
-                                          database,
-                                          table,
-                                        )
-                                      }
-                                    >
-                                      <Download className="w-4 h-4 mr-2" />
-                                      {t("connection.menu.exportTable")}
-                                    </ContextMenuItem>
-                                    {onAlterTable && (
-                                      <ContextMenuItem
-                                        onClick={() =>
-                                          onAlterTable(
-                                            Number(connection.id),
-                                            database.name,
-                                            table.schema ?? "",
-                                            table.name,
-                                            connection.type,
-                                          )
-                                        }
-                                      >
-                                        <TableIcon className="w-4 h-4 mr-2" />
-                                        {t("connection.menu.alterTable")}
-                                      </ContextMenuItem>
-                                    )}
-                                  </>
-                                ) : null}
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          );
-                        };
-                        return (
-                          <TreeNode
-                            key={dbKey}
-                            level={databaseLevel}
-                            icon={<Database className="w-4 h-4" />}
-                            label={
-                              (connection.type === "sqlite" ||
-                                connection.type === "duckdb") &&
-                              database.name === "main"
-                                ? t(
-                                    connection.type === "duckdb"
-                                      ? "connection.duckdbMainLabel"
-                                      : "connection.sqliteMainLabel",
-                                  )
-                                : database.name
-                            }
-                            isExpanded={expandedDatabases.has(dbKey)}
-                            onToggle={() => toggleDatabase(dbKey)}
-                            statusIndicator={
-                              loadingDatabaseKeys.has(dbKey)
-                                ? loadingSpinner
-                                : undefined
-                            }
-                            actions={makeRedisDbActions(database)}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setContextMenu({
-                                visible: true,
-                                x: e.clientX,
-                                y: e.clientY,
-                                connectionId: connection.id,
-                                databaseName: database.name,
-                                type: "database",
-                              });
-                            }}
-                          >
-                            {supportsSchemaNode ? (
-                              database.schemas.map((schemaNode) => {
-                                const schemaKey = getSchemaNodeKey(
-                                  dbKey,
-                                  schemaNode.name,
-                                );
-                                return (
-                                  <TreeNode
-                                    key={schemaKey}
-                                    level={databaseLevel + 1}
-                                    icon={<FolderOpen className="w-4 h-4" />}
-                                    label={schemaNode.name}
-                                    isExpanded={expandedSchemas.has(schemaKey)}
-                                    onToggle={() => toggleSchema(schemaKey)}
-                                    onContextMenu={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setContextMenu({
-                                        visible: true,
-                                        x: e.clientX,
-                                        y: e.clientY,
-                                        connectionId: connection.id,
-                                        databaseName: database.name,
-                                        schemaName: schemaNode.name,
-                                        type: "schema",
-                                      });
-                                    }}
-                                  >
-                                    {schemaNode.tables.map((table) =>
-                                      renderTableNode(table, databaseLevel + 2),
-                                    )}
-                                  </TreeNode>
-                                );
-                              })
-                            ) : (
-                              <>
-                                {database.tables.map((table) =>
-                                  renderTableNode(table, databaseLevel + 1),
-                                )}
-                                {renderRedisPageFooter(database, databaseLevel)}
-                              </>
-                            )}
-                          </TreeNode>
-                        );
-                      })}
+                      {visibleDatabases.map((database) => renderDatabaseTreeNode(database, 2))}
                     </TreeNode>
                   ) : (
-                    visibleDatabases.map((database) => {
-                      const databaseLevel = 1;
-                      const dbKey = `${connection.id}-${database.name}`;
-                      const supportsSchemaNode = supportsSchemaNodeForDriver(
-                        connection.type,
-                      );
-                      const renderTableNode = (
-                        table: TableInfo,
-                        level: number,
-                      ) => {
-                        const tableKey = getTableNodeKey(
-                          connection.id,
-                          database.name,
-                          table.schema,
-                          table.name,
-                        );
-                        return (
-                          <ContextMenu key={tableKey}>
-                            <ContextMenuTrigger asChild>
-                              <div
-                                ref={(el) => {
-                                  tableNodeRefs.current[tableKey] = el;
-                                }}
-                              >
-                                <TreeNode
-                                  level={level}
-                                  icon={
-                                    connection.type === "redis" ? (
-                                      <Key className="w-4 h-4" />
-                                    ) : (
-                                      <Table className="w-4 h-4" />
-                                    )
-                                  }
-                                  label={table.name}
-                                  isSelected={selectedTableKey === tableKey}
-                                  isExpanded={expandedTables.has(tableKey)}
-                                  toggleOnRowClick={false}
-                                  onToggle={() => {
-                                    toggleTable(
-                                      tableKey,
-                                      connection.id,
-                                      database.name,
-                                      table,
-                                    );
-                                  }}
-                                  onDoubleClick={() => {
-                                    handleTableClick(
-                                      connection,
-                                      database,
-                                      table,
-                                    );
-                                  }}
-                                  statusIndicator={
-                                    loadingTableKeys.has(tableKey) ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                    ) : undefined
-                                  }
-                                  actions={
-                                    <div onClick={(e) => e.stopPropagation()}>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 w-6 p-0"
-                                        onClick={() =>
-                                          handleTableClick(
-                                            connection,
-                                            database,
-                                            table,
-                                          )
-                                        }
-                                      >
-                                        <Play className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  }
-                                >
-                                  {table.columns.map((column) => (
-                                    <div
-                                      key={column.name}
-                                      className="flex items-center gap-1 px-2 py-1 hover:bg-accent text-xs"
-                                      style={{
-                                        paddingLeft: `${(level + 1) * 12 + 8}px`,
-                                      }}
-                                    >
-                                      <span className="w-4" />
-                                      {column.isPrimaryKey ? (
-                                        <Key className="w-3 h-3 text-yellow-600 shrink-0" />
-                                      ) : (
-                                        <span className="w-3 shrink-0" />
-                                      )}
-                                      <span className="flex-1 truncate text-foreground">
-                                        {column.name}
-                                      </span>
-                                      <span className="text-muted-foreground text-xs shrink-0">
-                                        {column.type}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </TreeNode>
-                              </div>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent>
-                              {connection.type !== "redis" ? (
-                                <>
-                                  <ContextMenuItem
-                                    onClick={() =>
-                                      handleCreateQueryFromContext(
-                                        connection.id,
-                                        database.name,
-                                      )
-                                    }
-                                  >
-                                    <FileCode className="w-4 h-4 mr-2" />
-                                    {t("connection.menu.newQuery")}
-                                  </ContextMenuItem>
-                                  <ContextMenuItem
-                                    onClick={() =>
-                                      handleTableExportDialog(
-                                        connection,
-                                        database,
-                                        table,
-                                      )
-                                    }
-                                  >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    {t("connection.menu.exportTable")}
-                                  </ContextMenuItem>
-                                  {onAlterTable && (
-                                    <ContextMenuItem
-                                      onClick={() =>
-                                        onAlterTable(
-                                          Number(connection.id),
-                                          database.name,
-                                          table.schema ?? "",
-                                          table.name,
-                                          connection.type,
-                                        )
-                                      }
-                                    >
-                                      <TableIcon className="w-4 h-4 mr-2" />
-                                      {t("connection.menu.alterTable")}
-                                    </ContextMenuItem>
-                                  )}
-                                </>
-                              ) : null}
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        );
-                      };
-                      return (
-                        <TreeNode
-                          key={dbKey}
-                          level={databaseLevel}
-                          icon={<Database className="w-4 h-4" />}
-                          label={
-                            (connection.type === "sqlite" ||
-                              connection.type === "duckdb") &&
-                            database.name === "main"
-                              ? t(
-                                  connection.type === "duckdb"
-                                    ? "connection.duckdbMainLabel"
-                                    : "connection.sqliteMainLabel",
-                                )
-                              : database.name
-                          }
-                          isExpanded={expandedDatabases.has(dbKey)}
-                          onToggle={() => toggleDatabase(dbKey)}
-                          statusIndicator={
-                            loadingDatabaseKeys.has(dbKey) ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                            ) : undefined
-                          }
-                          actions={
-                            connection.type === "redis" ? (
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() =>
-                                    handleCreateRedisKey(connection, database)
-                                  }
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            ) : undefined
-                          }
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setContextMenu({
-                              visible: true,
-                              x: e.clientX,
-                              y: e.clientY,
-                              connectionId: connection.id,
-                              databaseName: database.name,
-                              type: "database",
-                            });
-                          }}
-                        >
-                          {supportsSchemaNode ? (
-                            database.schemas.map((schemaNode) => {
-                              const schemaKey = getSchemaNodeKey(
-                                dbKey,
-                                schemaNode.name,
-                              );
-                              return (
-                                <TreeNode
-                                  key={schemaKey}
-                                  level={databaseLevel + 1}
-                                  icon={<FolderOpen className="w-4 h-4" />}
-                                  label={schemaNode.name}
-                                  isExpanded={expandedSchemas.has(schemaKey)}
-                                  onToggle={() => toggleSchema(schemaKey)}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setContextMenu({
-                                      visible: true,
-                                      x: e.clientX,
-                                      y: e.clientY,
-                                      connectionId: connection.id,
-                                      databaseName: database.name,
-                                      schemaName: schemaNode.name,
-                                      type: "schema",
-                                    });
-                                  }}
-                                >
-                                  {schemaNode.tables.map((table) =>
-                                    renderTableNode(table, databaseLevel + 2),
-                                  )}
-                                </TreeNode>
-                              );
-                            })
-                          ) : (
-                            <>
-                              {database.tables.map((table) =>
-                                renderTableNode(table, databaseLevel + 1),
-                              )}
-                              {renderRedisPageFooter(database, databaseLevel)}
-                            </>
-                          )}
-                        </TreeNode>
-                      );
-                    })
+                    visibleDatabases.map((database) => renderDatabaseTreeNode(database, 1))
                   )
                 ) : null}
               </>

@@ -2032,6 +2032,14 @@ export default function App() {
                             <RedisBrowserView
                               connectionId={tab.connectionId}
                               database={tab.database}
+                              onOpenConsole={() =>
+                                handleOpenRedisConsole(
+                                  tab.connection!,
+                                  tab.database!,
+                                  tab.connectionId!,
+                                  tab.driver!,
+                                )
+                              }
                             />
                           </Suspense>
                         ) : tab.type === "create-table" &&

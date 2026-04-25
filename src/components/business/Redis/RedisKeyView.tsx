@@ -169,25 +169,69 @@ function buildPatch(
   }
 
   if (current.kind === "list" && original.kind === "list") {
-    // Only safe operation in partial mode: append to end
-    // Verify the originally-loaded portion is untouched
-    for (let i = 0; i < originalLoadedCount; i++) {
-      if (current.value[i] !== original.value[i]) {
-        throw new Error(
-          "Cannot save a partially-loaded list with modifications to existing items. " +
-            'Use "Load more" to load all items first, then save.',
-        );
+    const curr = current.value;
+    const orig = original.value;
+
+    // Detect modifications within the originally-loaded range
+    const modifications: { index: number; value: string }[] = [];
+    for (let i = 0; i < Math.min(originalLoadedCount, curr.length); i++) {
+      if (curr[i] !== orig[i]) {
+        modifications.push({ index: i, value: curr[i] });
       }
     }
-    if (current.value.length < originalLoadedCount) {
-      throw new Error(
-        "Cannot save a partially-loaded list with deletions. " +
-          'Use "Load more" to load all items first, then save.',
-      );
+
+    const hasDeletions = curr.length < originalLoadedCount;
+    const hasAppends = curr.length > originalLoadedCount;
+
+    // Detect pure prepend: tail matches original prefix
+    let hasPrepends = false;
+    if (curr.length > originalLoadedCount && modifications.length === 0) {
+      const tail = curr.slice(curr.length - originalLoadedCount);
+      if (
+        JSON.stringify(tail) ===
+        JSON.stringify(orig.slice(0, originalLoadedCount))
+      ) {
+        hasPrepends = true;
+      }
     }
-    const toAppend = current.value.slice(originalLoadedCount);
-    if (toAppend.length > 0) patch.listRpush = toAppend;
-    return patch;
+
+    // Detect pure append: head matches original prefix
+    let pureAppend = false;
+    if (curr.length > originalLoadedCount && modifications.length === 0) {
+      const head = curr.slice(0, originalLoadedCount);
+      if (
+        JSON.stringify(head) ===
+        JSON.stringify(orig.slice(0, originalLoadedCount))
+      ) {
+        pureAppend = true;
+      }
+    }
+
+    if (!hasDeletions && modifications.length === 0 && pureAppend) {
+      patch.listRpush = curr.slice(originalLoadedCount);
+      return patch;
+    }
+
+    if (!hasDeletions && modifications.length === 0 && hasPrepends) {
+      patch.listLpush = curr.slice(0, curr.length - originalLoadedCount);
+      return patch;
+    }
+
+    if (!hasDeletions && !hasAppends && modifications.length > 0) {
+      patch.listSet = modifications;
+      return patch;
+    }
+
+    if (hasDeletions && modifications.length === 0 && !hasAppends) {
+      const deleted = orig.slice(curr.length);
+      if (deleted.length > 0) patch.listRem = deleted;
+      return patch;
+    }
+
+    throw new Error(
+      "Mixed list operations in partial-load mode are not supported. " +
+        'Use "Load more" to load all items first, then save.',
+    );
   }
 
   return patch;
@@ -209,7 +253,7 @@ export function RedisKeyView({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [pendingAction, setPendingAction] = useState<
-    "delete" | "overwrite" | null
+    "delete" | "overwrite" | "binary_overwrite" | "force_rename" | null
   >(null);
   const [valueIsPartial, setValueIsPartial] = useState(false);
   const [valueTotalLen, setValueTotalLen] = useState<number | null>(null);
@@ -294,17 +338,27 @@ export function RedisKeyView({
     }
   };
 
-  const doSave = async () => {
+  const doSave = async (forceRename?: boolean) => {
     const normalizedKey = keyName.trim();
     if (!normalizedKey) throw new Error("Redis key cannot be empty");
     const parsedTtl = parseRedisTtlSeconds(ttl);
     if (!isCreateMode && normalizedKey !== redisKey) {
-      await api.redis.renameKey(
-        connectionId,
-        database,
-        redisKey,
-        normalizedKey,
-      );
+      try {
+        await api.redis.renameKey(
+          connectionId,
+          database,
+          redisKey,
+          normalizedKey,
+          forceRename,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("already exists") && !forceRename) {
+          setPendingAction("force_rename");
+          return;
+        }
+        throw e;
+      }
     }
     const ttlOnly =
       !isCreateMode &&
@@ -421,7 +475,11 @@ export function RedisKeyView({
       }
       return;
     }
-    setPendingAction("overwrite");
+    if (record?.isBinary) {
+      setPendingAction("binary_overwrite");
+    } else {
+      setPendingAction("overwrite");
+    }
   };
 
   const doDelete = async () => {
@@ -435,6 +493,8 @@ export function RedisKeyView({
     try {
       if (pendingAction === "delete") {
         await doDelete();
+      } else if (pendingAction === "force_rename") {
+        await doSave(true);
       } else {
         await doSave();
       }
@@ -657,18 +717,30 @@ export function RedisKeyView({
             <AlertDialogTitle>
               {pendingAction === "delete"
                 ? "Delete this key?"
-                : "Overwrite key data?"}
+                : pendingAction === "binary_overwrite"
+                  ? "Overwrite binary key?"
+                  : pendingAction === "force_rename"
+                    ? "Key already exists"
+                    : "Overwrite key data?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction === "delete"
                 ? `"${redisKey}" will be permanently deleted. This cannot be undone.`
-                : "This will replace the current value. This cannot be undone."}
+                : pendingAction === "binary_overwrite"
+                  ? "This key contains binary data. Overwriting as text may corrupt the original bytes. This cannot be undone."
+                  : pendingAction === "force_rename"
+                    ? `Key "${keyName.trim()}" already exists. Force overwrite?`
+                    : "This will replace the current value. This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleConfirm()}>
-              {pendingAction === "delete" ? "Delete" : "Overwrite"}
+              {pendingAction === "delete"
+                ? "Delete"
+                : pendingAction === "force_rename"
+                  ? "Force overwrite"
+                  : "Overwrite"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

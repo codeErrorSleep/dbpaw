@@ -187,6 +187,7 @@ pub struct RedisKeyValue {
     pub value: RedisValue,
     pub value_total_len: Option<u64>,
     pub value_offset: u64,
+    pub is_binary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +207,13 @@ pub struct RedisMutationResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RedisListSetItem {
+    pub index: usize,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RedisKeyPatchPayload {
     pub key: String,
     pub ttl_seconds: Option<i64>,
@@ -216,6 +224,11 @@ pub struct RedisKeyPatchPayload {
     pub zset_add: Option<Vec<RedisZSetMember>>,
     pub zset_rem: Option<Vec<String>>,
     pub list_rpush: Option<Vec<String>>,
+    pub list_lpush: Option<Vec<String>>,
+    pub list_set: Option<Vec<RedisListSetItem>>,
+    pub list_rem: Option<Vec<String>>,
+    pub list_lpop: Option<usize>,
+    pub list_rpop: Option<usize>,
 }
 
 fn parse_database(database: Option<&str>) -> Result<i64, String> {
@@ -509,12 +522,23 @@ fn parse_node_addr(addr: &str) -> Result<(&str, u16), String> {
     Ok((host_part, port))
 }
 
+fn is_dangerous_wildcard(pattern: &str) -> bool {
+    let trimmed = pattern.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    !trimmed.chars().any(|c| c.is_alphanumeric())
+}
+
 async fn scan_cluster_keys(
     conn: &mut RedisConnection,
     state: Option<&str>,
     pattern: &str,
     count: u32,
 ) -> Result<(Vec<String>, String, bool), String> {
+    if is_dangerous_wildcard(pattern) {
+        return Err("[VALIDATION_ERROR] Cluster scan requires a non-wildcard pattern".to_string());
+    }
     let masters = get_cluster_master_nodes(conn).await?;
 
     let mut cursors: HashMap<String, u64> = match state {
@@ -671,16 +695,25 @@ pub async fn get_key(
         .map_err(|e| format!("[REDIS_ERROR] {e}"))?;
 
     let page = PAGE_SIZE - 1;
-    let (value, value_total_len, value_offset): (RedisValue, Option<u64>, u64) =
+    let (value, value_total_len, value_offset, is_binary): (RedisValue, Option<u64>, u64, bool) =
         match key_type.as_str() {
-            "none" => (RedisValue::None, None, 0),
+            "none" => (RedisValue::None, None, 0, false),
             "string" => {
                 let mut cmd = redis::cmd("GET");
                 cmd.arg(&key);
+                let bytes: Vec<u8> = conn.query(cmd).await.unwrap_or_default();
+                let (text, is_binary) = match String::from_utf8(bytes) {
+                    Ok(s) => (s, false),
+                    Err(e) => {
+                        let encoded = base64::prelude::BASE64_STANDARD.encode(e.into_bytes());
+                        (encoded, true)
+                    }
+                };
                 (
-                    RedisValue::String(conn.query(cmd).await.unwrap_or_default()),
+                    RedisValue::String(text),
                     None,
                     0,
+                    is_binary,
                 )
             }
             "hash" => {
@@ -694,7 +727,7 @@ pub async fn get_key(
                     .arg(PAGE_SIZE);
                 let (total, (next_cursor, fields)): (u64, (u64, BTreeMap<String, String>)) =
                     conn.pipe_query(&mut pipe).await.unwrap_or_default();
-                (RedisValue::Hash(fields), Some(total), next_cursor)
+                (RedisValue::Hash(fields), Some(total), next_cursor, false)
             }
             "list" => {
                 let mut pipe = redis::pipe();
@@ -707,7 +740,7 @@ pub async fn get_key(
                 let (total, items): (u64, Vec<String>) =
                     conn.pipe_query(&mut pipe).await.unwrap_or_default();
                 let next_offset = (items.len() as u64).min(total);
-                (RedisValue::List(items), Some(total), next_offset)
+                (RedisValue::List(items), Some(total), next_offset, false)
             }
             "set" => {
                 let mut pipe = redis::pipe();
@@ -720,7 +753,7 @@ pub async fn get_key(
                     .arg(PAGE_SIZE);
                 let (total, (next_cursor, members)): (u64, (u64, Vec<String>)) =
                     conn.pipe_query(&mut pipe).await.unwrap_or_default();
-                (RedisValue::Set(members), Some(total), next_cursor)
+                (RedisValue::Set(members), Some(total), next_cursor, false)
             }
             "zset" => {
                 let mut pipe = redis::pipe();
@@ -743,6 +776,7 @@ pub async fn get_key(
                     ),
                     Some(total),
                     next_offset,
+                    false,
                 )
             }
             other => {
@@ -759,6 +793,7 @@ pub async fn get_key(
         value,
         value_total_len,
         value_offset,
+        is_binary,
     })
 }
 
@@ -861,6 +896,7 @@ pub async fn get_key_page(
         value,
         value_total_len,
         value_offset,
+        is_binary: false,
     })
 }
 
@@ -1001,6 +1037,41 @@ pub async fn patch_key(
             conn.query::<i64>(cmd).await?;
         }
     }
+    if let Some(items) = payload.list_lpush {
+        if !items.is_empty() {
+            let mut cmd = redis::cmd("LPUSH");
+            cmd.arg(key).arg(items);
+            conn.query::<i64>(cmd).await?;
+        }
+    }
+    if let Some(items) = payload.list_set {
+        for item in items {
+            let mut cmd = redis::cmd("LSET");
+            cmd.arg(key).arg(item.index).arg(item.value);
+            conn.query::<()>(cmd).await?;
+        }
+    }
+    if let Some(values) = payload.list_rem {
+        for value in values {
+            let mut cmd = redis::cmd("LREM");
+            cmd.arg(key).arg(0).arg(value);
+            conn.query::<i64>(cmd).await?;
+        }
+    }
+    if let Some(count) = payload.list_lpop {
+        if count > 0 {
+            let mut cmd = redis::cmd("LPOP");
+            cmd.arg(key).arg(count);
+            conn.query::<()>(cmd).await?;
+        }
+    }
+    if let Some(count) = payload.list_rpop {
+        if count > 0 {
+            let mut cmd = redis::cmd("RPOP");
+            cmd.arg(key).arg(count);
+            conn.query::<()>(cmd).await?;
+        }
+    }
 
     match payload.ttl_seconds {
         Some(ttl) if ttl > 0 => {
@@ -1029,13 +1100,15 @@ pub async fn rename_key(
     conn: &mut RedisConnection,
     old_key: String,
     new_key: String,
+    force: bool,
 ) -> Result<RedisMutationResult, String> {
     validate_key(&old_key)?;
     validate_key(&new_key)?;
-    let mut cmd = redis::cmd("RENAMENX");
+    let cmd_name = if force { "RENAME" } else { "RENAMENX" };
+    let mut cmd = redis::cmd(cmd_name);
     cmd.arg(&old_key).arg(&new_key);
     let renamed: i64 = conn.query(cmd).await?;
-    if renamed == 0 {
+    if renamed == 0 && !force {
         return Err(format!(
             "[REDIS_ERROR] Key '{}' already exists. RENAMENX refused to overwrite.",
             new_key

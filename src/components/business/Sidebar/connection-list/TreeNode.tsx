@@ -11,6 +11,7 @@ export interface TreeNodeProps {
   onToggle?: () => void;
   canToggle?: boolean;
   forceShowToggle?: boolean;
+  hideToggle?: boolean;
   toggleOnRowClick?: boolean;
   onDoubleClick?: () => void;
   onContextMenu?: (e: MouseEvent) => void;
@@ -29,6 +30,7 @@ export function TreeNode({
   onToggle,
   canToggle = true,
   forceShowToggle = false,
+  hideToggle = false,
   toggleOnRowClick = true,
   onDoubleClick,
   onContextMenu,
@@ -37,7 +39,7 @@ export function TreeNode({
   actions,
 }: TreeNodeProps) {
   const hasChildren = children !== null && children !== undefined;
-  const showToggle = forceShowToggle || hasChildren;
+  const showToggle = !hideToggle && (forceShowToggle || hasChildren);
 
   return (
     <div>

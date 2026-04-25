@@ -259,15 +259,17 @@ pub async fn redis_rename_key(
     database: Option<String>,
     old_key: String,
     new_key: String,
+    force: Option<bool>,
 ) -> Result<RedisMutationResult, String> {
     let form = connection_form(&state, id).await?;
     let db = database.as_deref();
+    let force = force.unwrap_or(false);
     let mut conn = acquire(&state, id, &form, db).await?;
-    match redis::rename_key(&mut conn, old_key.clone(), new_key.clone()).await {
+    match redis::rename_key(&mut conn, old_key.clone(), new_key.clone(), force).await {
         Err(ref e) if is_io_error(e) => {
             evict(&state, id, &form, db).await;
             let mut conn = acquire(&state, id, &form, db).await?;
-            redis::rename_key(&mut conn, old_key, new_key).await
+            redis::rename_key(&mut conn, old_key, new_key, force).await
         }
         r => r,
     }

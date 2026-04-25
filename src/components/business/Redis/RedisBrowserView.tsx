@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, RefreshCw, Search } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Search, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +36,7 @@ function formatTtlShort(ttl: number): string {
 interface Props {
   connectionId: number;
   database: string;
+  onOpenConsole?: () => void;
 }
 
 type DetailState =
@@ -43,7 +44,7 @@ type DetailState =
   | { mode: "new" }
   | { mode: "view"; key: string };
 
-export function RedisBrowserView({ connectionId, database }: Props) {
+export function RedisBrowserView({ connectionId, database, onOpenConsole }: Props) {
   const [pattern, setPattern] = useState("");
   const [keys, setKeys] = useState<RedisKeyInfo[]>([]);
   const [cursor, setCursor] = useState("0");
@@ -187,15 +188,27 @@ export function RedisBrowserView({ connectionId, database }: Props) {
               <span className="text-xs text-muted-foreground">
                 {keys.length} keys{isPartial ? "+" : ""}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={handleNewKey}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                New key
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={onOpenConsole}
+                  title="Open Console"
+                >
+                  <Terminal className="w-3 h-3 mr-1" />
+                  Console
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={handleNewKey}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  New key
+                </Button>
+              </div>
             </div>
           </div>
 

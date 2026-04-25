@@ -77,6 +77,7 @@ export interface RedisKeyValue {
   value: RedisValue;
   valueTotalLen: number | null;
   valueOffset: number;
+  isBinary?: boolean;
 }
 
 export interface RedisSetKeyPayload {
@@ -90,6 +91,11 @@ export interface RedisMutationResult {
   affected: number;
 }
 
+export interface RedisListSetItem {
+  index: number;
+  value: string;
+}
+
 export interface RedisKeyPatchPayload {
   key: string;
   ttlSeconds: number | null;
@@ -100,6 +106,11 @@ export interface RedisKeyPatchPayload {
   zsetAdd?: { member: string; score: number }[];
   zsetRem?: string[];
   listRpush?: string[];
+  listLpush?: string[];
+  listSet?: RedisListSetItem[];
+  listRem?: string[];
+  listLpop?: number;
+  listRpop?: number;
 }
 
 export interface RedisRawResult {
@@ -586,12 +597,14 @@ export const api = {
       database: string | undefined,
       oldKey: string,
       newKey: string,
+      force?: boolean,
     ) =>
       invoke<RedisMutationResult>("redis_rename_key", {
         id,
         database,
         oldKey,
         newKey,
+        force,
       }),
     setTtl: (
       id: number,
