@@ -85,6 +85,7 @@ jobs:
           - mssql
           - sqlite
           - duckdb
+          - redis
 
     steps:
       - name: Checkout
