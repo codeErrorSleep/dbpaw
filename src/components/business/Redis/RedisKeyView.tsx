@@ -148,6 +148,16 @@ function isValueUnchanged(a: RedisValue, b: RedisValue): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function getJsonValidationError(value: RedisValue): string | null {
+  if (value.kind !== "json") return null;
+  try {
+    JSON.parse(value.value);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Invalid JSON";
+  }
+}
+
 function buildPatch(
   key: string,
   ttlSeconds: number | null,
@@ -299,9 +309,11 @@ export function RedisKeyView({
   const [loadedOffset, setLoadedOffset] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastStreamId, setLastStreamId] = useState("");
 
   const isCreateMode = redisKey.trim().length === 0;
+  const jsonValidationError = getJsonValidationError(value);
+  const jsonModuleMissing =
+    value.kind === "json" && record?.extra?.subtype === "json-module-missing";
 
   const load = async () => {
     if (isCreateMode) {
@@ -332,11 +344,6 @@ export function RedisKeyView({
       setLoadedOffset(next.valueOffset);
       setOriginalValue(resolvedKind === v.kind ? v : KIND_DEFAULT[resolvedKind]);
       setOriginalLoadedCount(count);
-      if (v.kind === "stream" && v.value.length > 0) {
-        setLastStreamId(v.value[v.value.length - 1].id);
-      } else {
-        setLastStreamId("");
-      }
     } catch (e) {
       toast.error("Failed to load Redis key", {
         description: e instanceof Error ? e.message : String(e),
@@ -383,47 +390,17 @@ export function RedisKeyView({
     }
   };
 
-  const handleLoadMoreStream = async () => {
-    if (!record || value.kind !== "stream") return;
-    setIsLoadingMore(true);
-    try {
-      // Use '(' prefix to exclude the last already-loaded entry from XRANGE.
-      const lastId =
-        lastStreamId || (value.value.length > 0 ? value.value[value.value.length - 1].id : "");
-      const startId = lastId ? `(${lastId}` : "-";
-      const result = await api.redis.getStreamRange(
-        connectionId,
-        database,
-        redisKey,
-        startId,
-        200,
-      );
-      const nextEntries = result;
-      const merged = mergeValues(value, {
-        kind: "stream",
-        value: nextEntries,
-      });
-      setValue(merged);
-      const newCount = countRedisValueItems(merged);
-      setLoadedCount(newCount);
-      if (nextEntries.length > 0) {
-        setLastStreamId(nextEntries[nextEntries.length - 1].id);
-      }
-      setValueIsPartial(
-        valueTotalLen !== null && valueTotalLen > newCount,
-      );
-    } catch (e) {
-      toast.error("Failed to load more stream entries", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
   const doSave = async (forceRename?: boolean) => {
     const normalizedKey = keyName.trim();
     if (!normalizedKey) throw new Error("Redis key cannot be empty");
+    if (value.kind === "json") {
+      if (jsonModuleMissing) {
+        throw new Error("RedisJSON module is unavailable for this key. Saving is disabled.");
+      }
+      if (jsonValidationError) {
+        throw new Error(`Invalid JSON: ${jsonValidationError}`);
+      }
+    }
     const parsedTtl = parseRedisTtlSeconds(ttl);
     if (!isCreateMode && normalizedKey !== redisKey) {
       try {
@@ -528,6 +505,18 @@ export function RedisKeyView({
   };
 
   const handleSave = async () => {
+    if (value.kind === "json" && jsonValidationError) {
+      toast.error("Failed to save Redis key", {
+        description: `Invalid JSON: ${jsonValidationError}`,
+      });
+      return;
+    }
+    if (jsonModuleMissing) {
+      toast.error("Failed to save Redis key", {
+        description: "RedisJSON module is unavailable for this key. Saving is disabled.",
+      });
+      return;
+    }
     if (isCreateMode) {
       setIsSaving(true);
       try {
@@ -764,8 +753,14 @@ export function RedisKeyView({
           )}
           {value.kind === "stream" && (
             <RedisStreamViewer
+              connectionId={connectionId}
+              database={database}
+              redisKey={redisKey}
               value={value.value}
               onChange={(v) => setValue({ kind: "stream", value: v })}
+              totalLen={valueTotalLen}
+              extra={record?.extra}
+              isCreateMode={isCreateMode}
             />
           )}
           {value.kind === "json" && (
@@ -773,6 +768,7 @@ export function RedisKeyView({
               value={value.value}
               onChange={(v) => setValue({ kind: "json", value: v })}
               moduleMissing={record?.extra?.subtype === "json-module-missing"}
+              readOnly={record?.extra?.subtype === "json-module-missing"}
             />
           )}
           {value.kind === "none" && (
@@ -800,29 +796,14 @@ export function RedisKeyView({
             </div>
           )}
 
-          {value.kind === "stream" && valueIsPartial && !isCreateMode && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
-              <span>
-                Showing {loadedCount} of {valueTotalLen} entries
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleLoadMoreStream()}
-                disabled={isLoadingMore}
-              >
-                {isLoadingMore ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Load more
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Save */}
         <div className="flex justify-end">
-          <Button onClick={() => void handleSave()} disabled={isSaving}>
+          <Button
+            onClick={() => void handleSave()}
+            disabled={isSaving || Boolean(jsonValidationError) || jsonModuleMissing}
+          >
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

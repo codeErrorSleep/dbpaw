@@ -6,15 +6,22 @@ interface Props {
   value: string;
   onChange: (v: string) => void;
   moduleMissing?: boolean;
+  readOnly?: boolean;
 }
 
-export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
+export function RedisJsonViewer({ value, onChange, moduleMissing, readOnly }: Props) {
   const [text, setText] = useState(value);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setText(value);
-    setError(null);
+    try {
+      const pretty = JSON.stringify(JSON.parse(value), null, 2);
+      setText(pretty);
+      setError(null);
+    } catch (e) {
+      setText(value);
+      setError(e instanceof Error ? e.message : "Invalid JSON");
+    }
   }, [value]);
 
   const validate = (raw: string): boolean => {
@@ -29,6 +36,7 @@ export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
   };
 
   const handleChange = (raw: string) => {
+    if (readOnly) return;
     setText(raw);
     validate(raw);
     onChange(raw);
@@ -64,8 +72,8 @@ export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
         <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>
-            RedisJSON module is not loaded on this server. Displaying raw string value.
-            Editing will overwrite the key as a plain string.
+            RedisJSON module is not loaded on this server. Displaying the stored payload in
+            read-only mode to avoid an unsafe overwrite.
           </span>
         </div>
       )}
@@ -78,6 +86,7 @@ export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
             className="h-7 text-xs"
             onClick={prettify}
             title="Prettify JSON"
+            disabled={readOnly}
           >
             <AlignLeft className="w-3 h-3 mr-1" />
             Prettify
@@ -88,6 +97,7 @@ export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
             className="h-7 text-xs"
             onClick={minify}
             title="Minify JSON"
+            disabled={readOnly}
           >
             <Save className="w-3 h-3 mr-1" />
             Minify
@@ -106,6 +116,7 @@ export function RedisJsonViewer({ value, onChange, moduleMissing }: Props) {
         value={text}
         onChange={(e) => handleChange(e.target.value)}
         spellCheck={false}
+        readOnly={readOnly}
       />
     </div>
   );

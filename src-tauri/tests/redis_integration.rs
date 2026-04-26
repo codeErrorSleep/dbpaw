@@ -626,6 +626,69 @@ async fn crud_stream_range_pagination() {
     cleanup(&form, &key).await;
 }
 
+#[tokio::test]
+async fn stream_view_supports_range_and_groups() {
+    let form = noauth();
+    let key = redis_context::unique_name("stream_view_groups");
+    let mut conn = redis::connect(&form, None).await.unwrap();
+
+    let entries: Vec<RedisStreamEntry> = (0..6)
+        .map(|i| {
+            let mut fields = BTreeMap::new();
+            fields.insert("idx".to_string(), i.to_string());
+            RedisStreamEntry {
+                id: "*".to_string(),
+                fields,
+            }
+        })
+        .collect();
+
+    let payload = RedisSetKeyPayload {
+        key: key.clone(),
+        value: RedisValue::Stream(entries),
+        ttl_seconds: None,
+    };
+    redis::set_key(&mut conn, payload).await.unwrap();
+
+    let initial = redis::get_key(&mut conn, key.clone()).await.unwrap();
+    let initial_entries = match &initial.value {
+        RedisValue::Stream(entries) => entries.clone(),
+        _ => panic!("expected stream"),
+    };
+    assert_eq!(initial_entries.len(), 6);
+
+    let create_group = {
+        let mut cmd = ::redis::cmd("XGROUP");
+        cmd.arg("CREATE").arg(&key).arg("workers").arg("0").arg("MKSTREAM");
+        conn.query::<String>(cmd).await.unwrap()
+    };
+    assert_eq!(create_group, "OK");
+
+    let start_id = format!("({}", initial_entries[1].id);
+    let end_id = initial_entries[4].id.clone();
+    let view = redis::get_stream_view(&mut conn, key.clone(), start_id, end_id, 2)
+        .await
+        .unwrap();
+
+    assert_eq!(view.entries.len(), 2);
+    assert_eq!(
+        view.entries[0].fields.get("idx").map(String::as_str),
+        Some("2")
+    );
+    assert_eq!(
+        view.entries[1].fields.get("idx").map(String::as_str),
+        Some("3")
+    );
+    assert!(view.next_start_id.is_some(), "expected another page within range");
+    assert_eq!(view.groups.len(), 1);
+    assert_eq!(view.groups[0].name, "workers");
+    assert_eq!(view.groups[0].consumers, 0);
+    assert_eq!(view.groups[0].pending, 0);
+    assert_eq!(view.total_len, 6);
+
+    cleanup(&form, &key).await;
+}
+
 // ── CRUD: json ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -655,6 +718,27 @@ async fn crud_json() {
         }
         Err(e) => panic!("unexpected error: {e}"),
     }
+}
+
+#[tokio::test]
+async fn json_write_rejects_invalid_payload() {
+    let form = noauth();
+    let key = redis_context::unique_name("crud_json_invalid");
+    let mut conn = redis::connect(&form, None).await.unwrap();
+
+    let payload = RedisSetKeyPayload {
+        key: key.clone(),
+        value: RedisValue::Json("{bad json}".to_string()),
+        ttl_seconds: None,
+    };
+
+    let err = redis::set_key(&mut conn, payload).await.unwrap_err();
+    assert!(
+        err.contains("[VALIDATION_ERROR] Invalid JSON"),
+        "unexpected error: {err}"
+    );
+
+    cleanup(&form, &key).await;
 }
 
 // ── subtype detection ─────────────────────────────────────────────────────────

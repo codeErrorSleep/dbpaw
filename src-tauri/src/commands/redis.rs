@@ -1,6 +1,6 @@
 use crate::datasources::redis::{
     self, RedisDatabaseInfo, RedisKeyPatchPayload, RedisKeyValue, RedisMutationResult,
-    RedisRawResult, RedisScanResponse, RedisSetKeyPayload, RedisStreamEntry,
+    RedisRawResult, RedisScanResponse, RedisSetKeyPayload, RedisStreamEntry, RedisStreamView,
 };
 use crate::datasources::redis::{connect, RedisConnection};
 use crate::models::ConnectionForm;
@@ -335,6 +335,37 @@ pub async fn redis_get_stream_range(
             evict(&state, id, &form, db).await;
             let mut conn = acquire(&state, id, &form, db).await?;
             redis::get_stream_range(&mut conn, key, start_id, count).await
+        }
+        r => r,
+    }
+}
+
+#[tauri::command]
+pub async fn redis_get_stream_view(
+    state: State<'_, AppState>,
+    id: i64,
+    database: Option<String>,
+    key: String,
+    start_id: String,
+    end_id: String,
+    count: u32,
+) -> Result<RedisStreamView, String> {
+    let form = connection_form(&state, id).await?;
+    let db = database.as_deref();
+    let mut conn = acquire(&state, id, &form, db).await?;
+    match redis::get_stream_view(
+        &mut conn,
+        key.clone(),
+        start_id.clone(),
+        end_id.clone(),
+        count,
+    )
+    .await
+    {
+        Err(ref e) if is_io_error(e) => {
+            evict(&state, id, &form, db).await;
+            let mut conn = acquire(&state, id, &form, db).await?;
+            redis::get_stream_view(&mut conn, key, start_id, end_id, count).await
         }
         r => r,
     }

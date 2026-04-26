@@ -188,11 +188,36 @@ pub struct RedisStreamInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RedisStreamGroupInfo {
+    pub name: String,
+    pub consumers: u64,
+    pub pending: u64,
+    pub last_delivered_id: String,
+    pub entries_read: Option<u64>,
+    pub lag: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RedisKeyExtra {
     pub subtype: Option<String>,
     pub stream_info: Option<RedisStreamInfo>,
+    pub stream_groups: Option<Vec<RedisStreamGroupInfo>>,
     pub hll_count: Option<u64>,
     pub geo_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisStreamView {
+    pub entries: Vec<RedisStreamEntry>,
+    pub total_len: u64,
+    pub start_id: String,
+    pub end_id: String,
+    pub count: u32,
+    pub next_start_id: Option<String>,
+    pub stream_info: Option<RedisStreamInfo>,
+    pub groups: Vec<RedisStreamGroupInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,6 +439,140 @@ fn parse_stream_info(value: Value) -> Option<RedisStreamInfo> {
     })
 }
 
+fn parse_stream_groups(value: Value) -> Vec<RedisStreamGroupInfo> {
+    let rows = match value {
+        Value::Array(a) => a,
+        _ => return Vec::new(),
+    };
+    rows.into_iter()
+        .filter_map(|row| {
+            let cols = match row {
+                Value::Array(a) => a,
+                _ => return None,
+            };
+            let mut map: HashMap<String, Value> = HashMap::new();
+            let mut iter = cols.into_iter();
+            while let (Some(k), Some(v)) = (iter.next(), iter.next()) {
+                if let Ok(key) = from_redis_value::<String>(&k) {
+                    map.insert(key.to_lowercase().replace('-', "_"), v);
+                }
+            }
+            let get_u64 = |k: &str| -> Option<u64> {
+                map.get(k).and_then(|v| from_redis_value::<u64>(v).ok())
+            };
+            let get_string = |k: &str| -> String {
+                map.get(k)
+                    .and_then(|v| from_redis_value::<String>(v).ok())
+                    .unwrap_or_default()
+            };
+            Some(RedisStreamGroupInfo {
+                name: get_string("name"),
+                consumers: get_u64("consumers").unwrap_or(0),
+                pending: get_u64("pending").unwrap_or(0),
+                last_delivered_id: get_string("last_delivered_id"),
+                entries_read: get_u64("entries_read"),
+                lag: get_u64("lag"),
+            })
+        })
+        .collect()
+}
+
+fn build_hll_extra(count: u64) -> RedisKeyExtra {
+    RedisKeyExtra {
+        subtype: Some("hyperloglog".to_string()),
+        stream_info: None,
+        stream_groups: None,
+        hll_count: Some(count),
+        geo_count: None,
+    }
+}
+
+fn build_geo_extra(total: u64) -> RedisKeyExtra {
+    RedisKeyExtra {
+        subtype: Some("geo".to_string()),
+        stream_info: None,
+        stream_groups: None,
+        hll_count: None,
+        geo_count: Some(total),
+    }
+}
+
+fn build_json_module_missing_extra() -> RedisKeyExtra {
+    RedisKeyExtra {
+        subtype: Some("json-module-missing".to_string()),
+        stream_info: None,
+        stream_groups: None,
+        hll_count: None,
+        geo_count: None,
+    }
+}
+
+fn build_stream_extra(
+    stream_info: Option<RedisStreamInfo>,
+    stream_groups: Vec<RedisStreamGroupInfo>,
+) -> RedisKeyExtra {
+    RedisKeyExtra {
+        subtype: None,
+        stream_info,
+        stream_groups: Some(stream_groups),
+        hll_count: None,
+        geo_count: None,
+    }
+}
+
+async fn fetch_stream_view_internal(
+    conn: &mut RedisConnection,
+    key: &str,
+    start_id: &str,
+    end_id: &str,
+    count: u32,
+) -> Result<RedisStreamView, String> {
+    let fetch_count = count.saturating_add(1);
+    let mut pipe = redis::pipe();
+    pipe.cmd("XRANGE")
+        .arg(key)
+        .arg(start_id)
+        .arg(end_id)
+        .arg("COUNT")
+        .arg(fetch_count)
+        .cmd("XINFO")
+        .arg("STREAM")
+        .arg(key)
+        .cmd("XINFO")
+        .arg("GROUPS")
+        .arg(key);
+
+    let (entries_raw, info_raw, groups_raw): (Value, Value, Value) =
+        conn.pipe_query(&mut pipe)
+            .await
+            .map_err(|e| format!("[REDIS_ERROR] {e}"))?;
+
+    let mut entries = parse_xrange_value(entries_raw);
+    let has_more = entries.len() > count as usize;
+    if has_more {
+        entries.truncate(count as usize);
+    }
+    let stream_info = parse_stream_info(info_raw);
+    let groups = parse_stream_groups(groups_raw);
+    let total_len = stream_info.as_ref().map(|info| info.length).unwrap_or(0);
+    let next_start_id = if has_more {
+        entries.last().map(|entry| format!("({}", entry.id))
+    } else {
+        None
+    };
+
+    Ok(RedisStreamView {
+        entries,
+        total_len,
+        start_id: start_id.to_string(),
+        end_id: end_id.to_string(),
+        count,
+        next_start_id,
+        stream_info,
+        groups,
+    })
+}
+
 pub async fn get_stream_range(
     conn: &mut RedisConnection,
     key: String,
@@ -426,6 +585,29 @@ pub async fn get_stream_range(
     cmd.arg(&key).arg(&start_id).arg("+").arg("COUNT").arg(count);
     let value: Value = conn.query(cmd).await.map_err(|e| format!("[REDIS_ERROR] {e}"))?;
     Ok(parse_xrange_value(value))
+}
+
+pub async fn get_stream_view(
+    conn: &mut RedisConnection,
+    key: String,
+    start_id: String,
+    end_id: String,
+    count: u32,
+) -> Result<RedisStreamView, String> {
+    validate_key(&key)?;
+    let count = count.clamp(1, MAX_SCAN_LIMIT);
+    let normalized_start = if start_id.trim().is_empty() {
+        "-".to_string()
+    } else {
+        start_id.trim().to_string()
+    };
+    let normalized_end = if end_id.trim().is_empty() {
+        "+".to_string()
+    } else {
+        end_id.trim().to_string()
+    };
+
+    fetch_stream_view_internal(conn, &key, &normalized_start, &normalized_end, count).await
 }
 
 fn parse_host_port(raw: &str, fallback_port: i64) -> Result<(String, i64), String> {
@@ -881,12 +1063,7 @@ pub async fn get_key(
             hll_cmd.arg(&key);
             match conn.query::<i64>(hll_cmd).await {
                 Ok(count) if count >= 0 => {
-                    extra = Some(RedisKeyExtra {
-                        subtype: Some("hyperloglog".to_string()),
-                        stream_info: None,
-                        hll_count: Some(count as u64),
-                        geo_count: None,
-                    });
+                    extra = Some(build_hll_extra(count as u64));
                 }
                 _ => {}
             }
@@ -960,12 +1137,7 @@ pub async fn get_key(
                 geo_cmd.arg(&key).arg(&first.0);
                 if let Ok(positions) = conn.query::<Vec<Option<(f64, f64)>>>(geo_cmd).await {
                     if positions.iter().any(|p| p.is_some()) {
-                        extra = Some(RedisKeyExtra {
-                            subtype: Some("geo".to_string()),
-                            stream_info: None,
-                            hll_count: None,
-                            geo_count: Some(total),
-                        });
+                        extra = Some(build_geo_extra(total));
                     }
                 }
             }
@@ -983,32 +1155,15 @@ pub async fn get_key(
             )
         }
         "stream" => {
-            let mut pipe = redis::pipe();
-            pipe.cmd("XLEN")
-                .arg(&key)
-                .cmd("XRANGE")
-                .arg(&key)
-                .arg("-")
-                .arg("+")
-                .arg("COUNT")
-                .arg(PAGE_SIZE)
-                .cmd("XINFO")
-                .arg("STREAM")
-                .arg(&key);
-            let (total, entries_raw, info_raw): (u64, Value, Value) =
-                conn.pipe_query(&mut pipe).await.unwrap_or((0, Value::Nil, Value::Nil));
-            let entries = parse_xrange_value(entries_raw);
-            let stream_info = parse_stream_info(info_raw);
-            let extra = Some(RedisKeyExtra {
-                subtype: None,
-                stream_info,
-                hll_count: None,
-                geo_count: None,
-            });
+            let view = fetch_stream_view_internal(conn, &key, "-", "+", PAGE_SIZE as u32).await?;
+            let extra = Some(build_stream_extra(
+                view.stream_info.clone(),
+                view.groups.clone(),
+            ));
             (
-                RedisValue::Stream(entries),
-                Some(total),
-                total.min(PAGE_SIZE as u64),
+                RedisValue::Stream(view.entries),
+                Some(view.total_len),
+                view.total_len.min(PAGE_SIZE as u64),
                 false,
                 extra,
             )
@@ -1036,13 +1191,8 @@ pub async fn get_key(
                             (encoded, true)
                         }
                     };
-                    let extra = Some(RedisKeyExtra {
-                        subtype: Some("json-module-missing".to_string()),
-                        stream_info: None,
-                        hll_count: None,
-                        geo_count: None,
-                    });
-                    (RedisValue::String(text), None, 0, is_binary, extra)
+                    let extra = Some(build_json_module_missing_extra());
+                    (RedisValue::Json(text), None, 0, is_binary, extra)
                 }
                 Err(e) => return Err(format!("[REDIS_ERROR] {e}")),
             }
@@ -1121,12 +1271,7 @@ pub async fn get_key_page(
                 geo_cmd.arg(&key).arg(&first.0);
                 if let Ok(positions) = conn.query::<Vec<Option<(f64, f64)>>>(geo_cmd).await {
                     if positions.iter().any(|p| p.is_some()) {
-                        extra = Some(RedisKeyExtra {
-                            subtype: Some("geo".to_string()),
-                            stream_info: None,
-                            hll_count: None,
-                            geo_count: Some(total),
-                        });
+                        extra = Some(build_geo_extra(total));
                     }
                 }
             }

@@ -83,6 +83,7 @@ export interface RedisKeyExtra {
     firstEntry?: { id: string; fields: Record<string, string> } | null;
     lastEntry?: { id: string; fields: Record<string, string> } | null;
   } | null;
+  streamGroups?: RedisStreamGroup[] | null;
   hllCount?: number | null;
   geoCount?: number | null;
 }
@@ -117,6 +118,26 @@ export interface RedisListSetItem {
 export interface RedisStreamEntry {
   id: string;
   fields: Record<string, string>;
+}
+
+export interface RedisStreamGroup {
+  name: string;
+  consumers: number;
+  pending: number;
+  lastDeliveredId: string;
+  entriesRead?: number | null;
+  lag?: number | null;
+}
+
+export interface RedisStreamView {
+  entries: RedisStreamEntry[];
+  totalLen: number;
+  startId: string;
+  endId: string;
+  count: number;
+  nextStartId?: string | null;
+  streamInfo?: RedisKeyExtra["streamInfo"];
+  groups: RedisStreamGroup[];
 }
 
 export interface RedisKeyPatchPayload {
@@ -669,6 +690,22 @@ export const api = {
         database,
         key,
         startId,
+        count,
+      }),
+    getStreamView: (
+      id: number,
+      database: string | undefined,
+      key: string,
+      startId: string,
+      endId: string,
+      count: number,
+    ) =>
+      invoke<RedisStreamView>("redis_get_stream_view", {
+        id,
+        database,
+        key,
+        startId,
+        endId,
         count,
       }),
     executeRaw: (id: number, database: string | undefined, command: string) =>
