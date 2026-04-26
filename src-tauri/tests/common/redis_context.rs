@@ -109,3 +109,22 @@ pub fn redis_acl_form(host: &str, port: u16) -> ConnectionForm {
         ..Default::default()
     }
 }
+
+/// Return an optional `ConnectionForm` for a Redis Cluster.
+///
+/// When `IT_REUSE_LOCAL_DB=1`, reads `REDIS_CLUSTER_HOSTS` from the environment.
+/// If the variable is not set, returns `None` so callers can skip cluster tests.
+///
+/// This never starts containers via testcontainers — cluster setup is assumed to
+/// be provided externally (e.g. `docker-compose.redis.yml`).
+pub fn shared_redis_cluster_form() -> Option<ConnectionForm> {
+    let hosts = std::env::var("REDIS_CLUSTER_HOSTS").ok()?;
+    if hosts.is_empty() {
+        return None;
+    }
+    Some(ConnectionForm {
+        driver: "redis".to_string(),
+        host: Some(hosts),
+        ..Default::default()
+    })
+}

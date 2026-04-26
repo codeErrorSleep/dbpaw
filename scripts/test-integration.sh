@@ -131,6 +131,11 @@ case "${it_db}" in
     run_integration_test "oracle_command_integration"
     ;;
   redis)
+    if [[ "${it_reuse_local_db}" == "1" && -z "${REDIS_CLUSTER_HOSTS:-}" ]]; then
+      echo "[redis] IT_REUSE_LOCAL_DB=1 detected but REDIS_CLUSTER_HOSTS is not set."
+      echo "[redis] Cluster tests will be skipped. To run them, start the test environment first:"
+      echo "[redis]   docker compose -f docker-compose.redis.yml up -d --wait"
+    fi
     run_integration_test "redis_integration"
     ;;
   all)

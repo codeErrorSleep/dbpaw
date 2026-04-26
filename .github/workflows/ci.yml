@@ -123,8 +123,19 @@ jobs:
           workspaces: src-tauri -> src-tauri/target
           key: ${{ matrix.database }}
 
+      - name: Start Redis test environment
+        if: matrix.database == 'redis'
+        run: docker compose -f docker-compose.redis.yml up -d --wait
+
       - name: Run ${{ matrix.database }} integration tests
         run: IT_DB=${{ matrix.database }} bun run test:integration
+        env:
+          IT_REUSE_LOCAL_DB: "${{ matrix.database == 'redis' && '1' || '0' }}"
+          REDIS_CLUSTER_HOSTS: "${{ matrix.database == 'redis' && '127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002' || '' }}"
+
+      - name: Stop Redis test environment
+        if: matrix.database == 'redis' && always()
+        run: docker compose -f docker-compose.redis.yml down -v
 
       - name: Docker diagnostics on failure
         if: failure()

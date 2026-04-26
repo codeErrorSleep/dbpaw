@@ -400,52 +400,64 @@ async fn set_ttl_and_persist() {
 
 // ── cluster ───────────────────────────────────────────────────────────────────
 
-/// Requires IT_REUSE_LOCAL_DB=1 and REDIS_CLUSTER_HOSTS=<host1>,<host2>,...
+/// Requires REDIS_CLUSTER_HOSTS=<host1>,<host2>,...
 #[tokio::test]
 async fn cluster_scan_is_partial() {
-    let hosts = match std::env::var("REDIS_CLUSTER_HOSTS") {
-        Ok(h) if !h.is_empty() => h,
-        _ => {
+    let form = match redis_context::shared_redis_cluster_form() {
+        Some(f) => f,
+        None => {
             eprintln!("[skip] REDIS_CLUSTER_HOSTS not set; skipping cluster test");
             return;
         }
     };
-    if !redis_context::should_reuse_local_db() {
-        eprintln!("[skip] IT_REUSE_LOCAL_DB=1 required for cluster test");
-        return;
+    let prefix = redis_context::unique_name("cluster_scan");
+    let mut conn = redis::connect(&form, None).await.unwrap();
+
+    // Seed enough keys across the cluster so a single SCAN round cannot finish
+    for i in 0..300u32 {
+        let payload = RedisSetKeyPayload {
+            key: format!("{prefix}:{i}"),
+            value: RedisValue::String(format!("v{i}")),
+            ttl_seconds: Some(60),
+        };
+        redis::set_key(&mut conn, payload).await.unwrap();
     }
 
-    let form = dbpaw_lib::models::ConnectionForm {
-        driver: "redis".to_string(),
-        host: Some(hosts),
-        ..Default::default()
-    };
-    let mut conn = redis::connect(&form, None).await.unwrap();
-    let resp = redis::scan_keys(&mut conn, None, None, Some(10))
+    let resp = redis::scan_keys(&mut conn, None, Some(format!("{prefix}:*")), Some(10))
         .await
         .unwrap();
-    assert!(resp.is_partial, "cluster scan should always set is_partial");
+    assert!(resp.is_partial, "cluster scan with many keys should set is_partial");
     assert!(!resp.cursor.is_empty(), "cluster scan cursor should not be empty");
+
+    // Continue scanning until all nodes are exhausted
+    let mut cursor = resp.cursor;
+    let mut rounds = 0;
+    loop {
+        let r = redis::scan_keys(&mut conn, Some(cursor.clone()), Some(format!("{prefix}:*")), Some(10))
+            .await
+            .unwrap();
+        cursor = r.cursor;
+        rounds += 1;
+        if !r.is_partial {
+            break;
+        }
+        assert!(rounds < 100, "cluster scan did not terminate");
+    }
+
+    // Cleanup
+    for i in 0..300u32 {
+        cleanup(&form, &format!("{prefix}:{i}")).await;
+    }
 }
 
 #[tokio::test]
 async fn cluster_scan_requires_narrow_pattern() {
-    let hosts = match std::env::var("REDIS_CLUSTER_HOSTS") {
-        Ok(h) if !h.is_empty() => h,
-        _ => {
+    let form = match redis_context::shared_redis_cluster_form() {
+        Some(f) => f,
+        None => {
             eprintln!("[skip] REDIS_CLUSTER_HOSTS not set; skipping cluster test");
             return;
         }
-    };
-    if !redis_context::should_reuse_local_db() {
-        eprintln!("[skip] IT_REUSE_LOCAL_DB=1 required for cluster test");
-        return;
-    }
-
-    let form = dbpaw_lib::models::ConnectionForm {
-        driver: "redis".to_string(),
-        host: Some(hosts),
-        ..Default::default()
     };
     let mut conn = redis::connect(&form, None).await.unwrap();
     let err = redis::scan_keys(&mut conn, None, Some("*".to_string()), Some(10))

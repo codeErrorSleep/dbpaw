@@ -1,0 +1,81 @@
+services:
+  redis-noauth:
+    image: redis:7-alpine
+    container_name: dbpaw-redis-noauth
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  redis-auth:
+    image: redis:7-alpine
+    container_name: dbpaw-redis-auth
+    command: redis-server --requirepass testpass123
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "testpass123", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  redis-cluster:
+    image: redis:7-alpine
+    container_name: dbpaw-redis-cluster
+    ports:
+      - "7000-7005:7000-7005"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        # Start 6 Redis nodes in cluster mode
+        for port in 7000 7001 7002 7003 7004 7005; do
+          mkdir -p /data/$$port
+          redis-server \
+            --port $$port \
+            --bind 0.0.0.0 \
+            --cluster-enabled yes \
+            --cluster-config-file /data/$$port/nodes.conf \
+            --cluster-node-timeout 5000 \
+            --cluster-announce-ip 127.0.0.1 \
+            --cluster-announce-port $$port \
+            --cluster-announce-bus-port $$((port + 10000)) \
+            --appendonly yes \
+            --daemonize yes \
+            --dir /data/$$port \
+            --loglevel warning
+        done
+
+        # Wait for all nodes to be ready
+        for port in 7000 7001 7002 7003 7004 7005; do
+          until redis-cli -p $$port ping | grep -q PONG; do
+            sleep 0.1
+          done
+        done
+
+        # Create the cluster (3 masters + 3 replicas)
+        redis-cli --cluster create \
+          127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 \
+          127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 \
+          --cluster-replicas 1 \
+          --cluster-yes
+
+        # Keep container alive
+        tail -f /dev/null
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - |
+          redis-cli -c -p 7000 CLUSTER INFO | grep -q cluster_state:ok
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
