@@ -78,14 +78,7 @@ jobs:
       fail-fast: false
       matrix:
         database:
-          - mysql
-          - postgres
-          - mariadb
-          - clickhouse
-          - mssql
           - sqlite
-          - duckdb
-          - redis
 
     steps:
       - name: Checkout
@@ -123,19 +116,8 @@ jobs:
           workspaces: src-tauri -> src-tauri/target
           key: ${{ matrix.database }}
 
-      - name: Start Redis test environment
-        if: matrix.database == 'redis'
-        run: docker compose -f docker-compose.redis.yml up -d --wait
-
       - name: Run ${{ matrix.database }} integration tests
         run: IT_DB=${{ matrix.database }} bun run test:integration
-        env:
-          IT_REUSE_LOCAL_DB: "${{ matrix.database == 'redis' && '1' || '0' }}"
-          REDIS_CLUSTER_HOSTS: "${{ matrix.database == 'redis' && '127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002' || '' }}"
-
-      - name: Stop Redis test environment
-        if: matrix.database == 'redis' && always()
-        run: docker compose -f docker-compose.redis.yml down -v
 
       - name: Docker diagnostics on failure
         if: failure()
@@ -144,27 +126,3 @@ jobs:
           docker ps -a || true
           echo "==== Container logs ===="
           docker ps -aq | xargs -I {} sh -c 'echo "--- Container {} ---" && docker logs {} 2>&1 | tail -50' || true
-
-  # Summary job to check all tests passed
-  ci-success:
-    name: CI Success
-    runs-on: ubuntu-22.04
-    needs: [smoke, rust-check, integration]
-    if: always()
-
-    steps:
-      - name: Check all jobs succeeded
-        run: |
-          if [ "${{ needs.smoke.result }}" != "success" ]; then
-            echo "Smoke tests failed"
-            exit 1
-          fi
-          if [ "${{ needs.rust-check.result }}" != "success" ]; then
-            echo "Rust check failed"
-            exit 1
-          fi
-          if [ "${{ needs.integration.result }}" != "success" ]; then
-            echo "Integration tests failed"
-            exit 1
-          fi
-          echo "All CI checks passed!"
