@@ -39,6 +39,11 @@ it never happens again.
   variable to run. They also need Docker. Do not remove `#[ignore]` to "make
   tests pass" in CI.
 
+- SQLite 迁移必须基于真实 schema 校验（表/列是否存在），不能只信 `schema_migrations` 记录。
+  2026-08 旧代码把无记录 + 有 connections 表的库一次性标记为"全部已应用"却未执行，
+  导致用户库缺 `auth_source` 列、`redis_command_logs` 表，启动即报 "no such column"。
+  迁移判断逻辑统一放 `src-tauri/src/db/migrations.rs::migration_applied`，新增迁移时同步加检查分支。
+
 ## Frontend / TypeScript
 
 - `src/services/api/core.ts` is the **only** file that calls `invoke()`. Never
