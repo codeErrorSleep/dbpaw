@@ -1,6 +1,6 @@
 [package]
 name = "dbpaw"
-version = "0.5.14"
+version = "0.5.15"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
