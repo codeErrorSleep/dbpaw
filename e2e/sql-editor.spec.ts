@@ -260,12 +260,16 @@ test("SQL editor: context selectors are disabled while running", async ({
 });
 
 test("SQL editor: tab switch restores viewport and focus", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
   await page.goto("/");
   await openNewQueryTab(page);
   const sql = Array.from({ length: 80 }, (_, index) => `SELECT ${index};`).join(
     "\n",
   );
-  await typeInEditor(page, sql);
+  // Seed the scrollable document in one input event. Per-character typing
+  // spends the CI timeout on setup instead of testing tab restoration.
+  await page.locator(".cm-content").first().click();
+  await page.keyboard.insertText(sql);
   const firstScroller = page.locator(".cm-scroller").first();
   await firstScroller.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -292,6 +296,8 @@ test("SQL editor: tab switch restores viewport and focus", async ({ page }) => {
     )
     .toBeGreaterThan(0);
   await expect(page.locator(".cm-content").first()).toBeFocused();
+  await expect(page.locator(".cm-content").first()).toContainText("SELECT 79;");
+  runtimeErrors.assertClean("Restore SQL editor viewport and focus");
 });
 
 test("SQL editor: tab switch restores the editor/result split", async ({

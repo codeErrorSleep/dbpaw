@@ -134,6 +134,10 @@ it never happens again.
   CodeMirror change before execution starts. Do not debounce the parent
   `onChange` update when `documentRevision` is used for execution snapshots;
   otherwise a just-edited query is immediately mislabeled as an older result.
+- For large SQL fixtures in editor E2E tests, use `keyboard.insertText()` after
+  focusing the editor. `keyboard.type(..., { delay: 0 })` still sends events
+  per character and can exhaust the CI timeout before the behavior under test
+  runs. Keep per-key input for tests that actually verify keyboard behavior.
 - Rust integration tests follow three levels:
   - `<db>_integration.rs` — direct driver method testing
   - `<db>_command_integration.rs` — ephemeral connection commands
