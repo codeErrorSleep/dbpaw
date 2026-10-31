@@ -123,19 +123,18 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install create-dmg unixodbc
 
-      - name: Setup Rosetta 2 and x86_64 Homebrew
+      - name: Build x86_64 unixODBC
         if: matrix.target == 'x86_64-apple-darwin'
         shell: bash
+        env:
+          UNIXODBC_PREFIX: ${{ runner.temp }}/unixodbc-x86_64
         run: |
           set -euo pipefail
-
-          softwareupdate --install-rosetta --agree-to-license || true
-
-          if [ ! -x /usr/local/bin/brew ]; then
-            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/null
-          fi
-
-          arch -x86_64 /usr/local/bin/brew install unixodbc
+          bash scripts/build-macos-x86_64-unixodbc.sh "$UNIXODBC_PREFIX"
+          echo "UNIXODBC_PREFIX=$UNIXODBC_PREFIX" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=-L native=$UNIXODBC_PREFIX/lib" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$UNIXODBC_PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -185,9 +184,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_UPGRADE_LINK_ACCESS_KEY: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
-          RUSTFLAGS: ${{ matrix.target == 'x86_64-apple-darwin' && '-L /usr/local/lib' || '' }}
-          PKG_CONFIG_PATH: ${{ matrix.target == 'x86_64-apple-darwin' && '/usr/local/lib/pkgconfig' || '' }}
-          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'x86_64-apple-darwin' && '1' || '' }}
 
       - name: Build app (Windows)
         if: matrix.platform == 'windows-2022'
@@ -327,10 +323,13 @@ jobs:
           echo "Executable after bundling:"
           otool -L "$executable"
 
-          if otool -L "$executable" | grep -q '/usr/local/opt/unixodbc'; then
-            echo "Executable still references /usr/local/opt/unixodbc"
-            exit 1
-          fi
+          for target in "$executable" "$frameworks_dir"/*.dylib; do
+            [ -f "$target" ] || continue
+            if otool -L "$target" | grep -Fq "$UNIXODBC_PREFIX/"; then
+              echo "Bundled binary still references the unixODBC build directory: $target"
+              exit 1
+            fi
+          done
 
           codesign --force --deep --sign - "$app_path"
           codesign --verify --deep --strict "$app_path"

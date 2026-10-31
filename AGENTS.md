@@ -117,6 +117,9 @@ it never happens again.
 
 ## Testing
 
+- Do not edit a shell script while it is still executing: Bash can resume
+  reading at a stale byte offset and run fragments of the modified file.
+  Finish or stop the process before editing, or validate an immutable copy.
 - In React hook tests, do not await a Promise inside the same `act()` when that
   Promise can only resolve after React commits a state update scheduled by that
   `act()`. Commit the state update in one `act()`, then await the dependent
@@ -151,6 +154,13 @@ it never happens again.
 
 ## Release / Packaging
 
+- Intel macOS release dependencies must not bootstrap Homebrew under Rosetta:
+  Homebrew's current installer rejects x86_64. Build unixODBC with Xcode for
+  the target architecture, verify the dylib architecture, and pass its install
+  prefix to the Rust linker and pkg-config. Use `lipo <file> -verify_arch x86_64`:
+  the input must precede `-verify_arch`, which consumes architecture arguments.
+  Keep runtime configuration paths outside the runner's temporary prefix and
+  stage installation with `DESTDIR` to avoid changing the host configuration.
 - The GitHub release workflow's macOS updater path only requires the signed
   `.app.tar.gz` updater bundle. Do not let optional DMG generation block CI
   unless the release intentionally needs a DMG asset; use `tauri build
