@@ -129,6 +129,30 @@ function Harness() {
 }
 
 describe("VirtualTableBody", () => {
+  test("highlights fields even when a table has no data rows", () => {
+    const props = buildVirtualTableBodyProps(() => 0);
+    const { container } = render(
+      React.createElement(VirtualTableBody, {
+        ...props,
+        currentData: [],
+        virtualizer: {
+          getTotalSize: () => 0,
+          getVirtualItems: () => [],
+        },
+        columnSearch: {
+          matchedColumns: new Set(["name"]),
+          activeColumn: "name",
+        },
+      }),
+    );
+    const headers = container.getElementsByTagName("th");
+    expect(headers[1].hasAttribute("data-field-match")).toBe(false);
+    expect(headers[2].getAttribute("data-field-match")).toBe("true");
+    expect(headers[2].getAttribute("data-field-active")).toBe("true");
+    expect(headers[2].className).toContain("ring-amber-500");
+    expect(headers[2].textContent).toContain("name");
+  });
+
   test("updates rendered rows when the virtualizer visible range changes", () => {
     const { container } = render(React.createElement(Harness));
 

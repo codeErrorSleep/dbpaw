@@ -117,6 +117,10 @@ it never happens again.
 
 ## Testing
 
+- In Bun + happy-dom tests, initialize `window.SyntaxError` from the global
+  constructor before using DOM selectors. Happy DOM's selector parser constructs
+  it even for valid selectors; a missing intrinsic otherwise causes a misleading
+  `undefined is not a constructor` failure (see `test-setup.ts`).
 - Do not edit a shell script while it is still executing: Bash can resume
   reading at a stale byte offset and run fragments of the modified file.
   Finish or stop the process before editing, or validate an immutable copy.

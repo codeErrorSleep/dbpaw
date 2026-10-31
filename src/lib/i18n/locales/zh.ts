@@ -629,6 +629,16 @@ export const zh: Translations = {
     sendMessage: "发送消息",
   },
   tableView: {
+    columnSearch: {
+      title: "查找字段",
+      placeholder: "字段名或注释...",
+      hint: "按字段名或注释查找。Enter：下一个；Shift+Enter：上一个。",
+      count: "第 {{current}} / {{total}} 个字段",
+      noMatches: "未找到匹配字段",
+      previous: "上一个匹配字段",
+      next: "下一个匹配字段",
+      clear: "清空字段搜索",
+    },
     toolbar: {
       totalOn: "已开启精确总量",
       totalOff: "已关闭精确总量",

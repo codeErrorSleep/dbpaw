@@ -8,6 +8,16 @@ export const datagrid = {
 } as const;
 
 export const tableView = {
+  columnSearch: {
+    title: "Find field",
+    placeholder: "Field name or comment...",
+    hint: "Find fields by name or comment. Enter: next; Shift+Enter: previous.",
+    count: "Field {{current}} of {{total}}",
+    noMatches: "No matching fields",
+    previous: "Previous matching field",
+    next: "Next matching field",
+    clear: "Clear field search",
+  },
   toolbar: {
     totalOn: "Exact total is on",
     totalOff: "Exact total is off",

@@ -1,6 +1,9 @@
 import { Window } from "happy-dom";
 
 const w = new Window();
+// Happy DOM's selector parser constructs this error even for valid selectors.
+// Bun does not populate the Window intrinsic automatically.
+Object.assign(w, { SyntaxError });
 
 function defineGlobal(name: string, value: unknown) {
   Object.defineProperty(globalThis, name, {

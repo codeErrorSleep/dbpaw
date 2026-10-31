@@ -1,8 +1,11 @@
 import React from "react";
 import { formatCellValue, isComplexValue } from "./utils";
 import type { TableRow } from "./types";
+import type { ColumnSearchHighlight } from "./hooks/useColumnSearch";
+import { columnSearchHighlightClass } from "./columnSearchHighlight";
 
 interface ColumnViewBodyProps {
+  columnSearch?: ColumnSearchHighlight;
   columns: string[];
   currentData: TableRow[];
   startIndex: number;
@@ -69,6 +72,7 @@ function isCellInRange(
 }
 
 export const ColumnViewBody = React.memo(function ColumnViewBody({
+  columnSearch,
   columns,
   currentData,
   startIndex,
@@ -140,7 +144,16 @@ export const ColumnViewBody = React.memo(function ColumnViewBody({
                 {colIndex + 1}
               </td>
             )}
-            <td className="px-4 py-2 text-xs font-semibold text-foreground border-r border-border bg-muted/30">
+            <td
+              data-field-index={colIndex}
+              data-field-match={
+                columnSearch?.matchedColumns.has(column) || undefined
+              }
+              data-field-active={
+                columnSearch?.activeColumn === column || undefined
+              }
+              className={`px-4 py-2 text-xs font-semibold border-r border-border ${columnSearch?.matchedColumns.has(column) ? columnSearchHighlightClass(column, columnSearch) : "text-foreground bg-muted/30"}`}
+            >
               <div>{column}</div>
               {showColumnComments && columnComments[column] && (
                 <span className="block truncate text-[10px] text-muted-foreground/60 leading-tight font-normal">

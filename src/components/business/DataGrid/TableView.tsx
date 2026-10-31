@@ -6,6 +6,8 @@ import { VirtualTableBody } from "./tableView/VirtualTableBody";
 import { ColumnViewBody } from "./tableView/ColumnViewBody";
 import { ComplexValueViewer } from "./ComplexValueViewer";
 import { TableToolbar } from "./tableView/TableToolbar";
+import { ColumnSearchControl } from "./tableView/ColumnSearchControl";
+import { useColumnSearch } from "./tableView/hooks/useColumnSearch";
 import { useTableSort } from "./tableView/hooks/useTableSort";
 import { useTablePagination } from "./tableView/hooks/useTablePagination";
 import { useColumnState } from "./tableView/hooks/useColumnState";
@@ -279,6 +281,14 @@ export function TableView({
     containerRef,
   });
 
+  const columnSearch = useColumnSearch({
+    columns,
+    columnComments,
+    scrollContainerRef,
+    viewMode,
+    isLoading,
+  });
+
   // Virtual scrolling — only render visible rows
   const virtualizer = useVirtualizer({
     count: currentData.length + insertDraftRows.length,
@@ -433,6 +443,7 @@ export function TableView({
     >
       <TableToolbar
         hideHeader={hideHeader}
+        columnSearchControl={<ColumnSearchControl search={columnSearch} />}
         page={page}
         totalPages={totalPages}
         canGoNext={canGoNext}
@@ -492,6 +503,7 @@ export function TableView({
         {viewMode === "column" ? (
           <ColumnViewBody
             columns={columns}
+            columnSearch={columnSearch.highlight}
             currentData={currentData}
             startIndex={startIndex}
             showRowNumbers={showRowNumbers}
@@ -520,6 +532,7 @@ export function TableView({
         ) : (
           <VirtualTableBody
             columns={columns}
+            columnSearch={columnSearch.highlight}
             currentData={currentData}
             virtualizer={virtualizer}
             startIndex={startIndex}

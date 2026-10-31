@@ -161,6 +161,95 @@ test.describe("DataGrid", () => {
   });
 
   test.describe("Search", () => {
+    test("find fields, navigate highlights, and clear without filtering rows", async ({
+      page,
+    }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+      await page.setViewportSize({ width: 800, height: 720 });
+      await page
+        .getByRole("button", { name: "Find field", exact: true })
+        .click();
+      const input = page.getByRole("textbox", {
+        name: "Field name or comment...",
+      });
+      await input.fill("_AT");
+      await expect(page.locator('[data-field-match="true"]')).toHaveCount(2);
+      await expect(page.locator('[data-field-active="true"]')).toHaveText(
+        "created_at",
+      );
+      await expect(
+        page.getByRole("status").filter({ hasText: "Field 1 of 2" }),
+      ).toBeVisible();
+      await input.press("Enter");
+      const activeField = page.locator('[data-field-active="true"]');
+      await expect(activeField).toHaveText("updated_at");
+      const isInScrollViewport = await activeField.evaluate((element) => {
+        const container = element.closest("div.overflow-auto")!;
+        const bounds = container.getBoundingClientRect();
+        const field = element.getBoundingClientRect();
+        return field.left >= bounds.left - 1 && field.right <= bounds.right + 1;
+      });
+      expect(isInScrollViewport).toBe(true);
+      await input.press("Shift+Enter");
+      await expect(activeField).toHaveText("created_at");
+      await page
+        .getByRole("button", { name: "Previous matching field" })
+        .click();
+      await expect(activeField).toHaveText("updated_at");
+      await page.getByRole("button", { name: "Next matching field" }).click();
+      await expect(activeField).toHaveText("created_at");
+      await input.fill("Email address");
+      await expect(activeField).toHaveText("email");
+      await input.fill("no_such_field");
+      await expect(
+        page.getByText("No matching fields", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Next matching field" }),
+      ).toBeDisabled();
+      await page.getByRole("button", { name: "Clear field search" }).click();
+      await expect(page.locator('[data-field-match="true"]')).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("alice", { exact: true })).toBeVisible();
+      runtimeErrors.assertClean("Field search should not emit runtime errors");
+    });
+
+    test("retains field highlighting on refresh and when switching views", async ({
+      page,
+    }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+      await page
+        .getByRole("button", { name: "Find field", exact: true })
+        .click();
+      await page
+        .getByRole("textbox", { name: "Field name or comment..." })
+        .fill("updated_at");
+      await page.keyboard.press("Escape");
+      const activeField = page.locator('[data-field-active="true"]');
+      await expect(activeField).toHaveText("updated_at");
+      const panel = page
+        .getByRole("tabpanel")
+        .filter({ has: page.getByText("alice", { exact: true }) });
+      await panel.getByLabel("Refresh", { exact: true }).click();
+      await expect(activeField).toHaveText("updated_at");
+      await panel.getByLabel("Toggle column view").click();
+      await expect(page.locator('td[data-field-active="true"]')).toHaveText(
+        "updated_at",
+      );
+      await panel.getByLabel("Toggle table view").click();
+      await expect(page.locator('th[data-field-active="true"]')).toHaveText(
+        "updated_at",
+      );
+      // Existing cell-content search continues to work independently.
+      await panel.getByLabel("Search", { exact: true }).click();
+      await page.getByPlaceholder("Search keyword...").fill("alice");
+      await expect(page.getByText(/row\(s\).*match\(es\)/)).toBeVisible();
+      await expect(activeField).toHaveText("updated_at");
+      runtimeErrors.assertClean(
+        "Field search should survive refresh and view changes",
+      );
+    });
+
     test("open search and show match count", async ({ page }) => {
       const runtimeErrors = collectRuntimeErrors(page);
 

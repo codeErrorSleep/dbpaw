@@ -43,7 +43,7 @@ test("SQL editor: toolbar buttons exist", async ({ page }) => {
   runtimeErrors.assertClean("All toolbar buttons visible");
 });
 
-test("SQL editor: execute query shows results", async ({ page }) => {
+test("SQL editor: execute query shows results", async ({ page }, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
 
   await page.goto("/");
@@ -62,6 +62,19 @@ test("SQL editor: execute query shows results", async ({ page }) => {
   await expect(page.getByText(/Returned 10 row/)).toBeVisible({
     timeout: 10_000,
   });
+  await page.getByRole("button", { name: "Find field", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Field name or comment..." })
+    .fill("email");
+  await expect(page.locator('th[data-field-active="true"]')).toHaveText(
+    "email",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("field-search.png"),
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible();
   runtimeErrors.assertClean("Execute query");
 });
 

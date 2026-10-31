@@ -12,6 +12,8 @@ import type { InsertDraftRow } from "./hooks/useCellEditing";
 import type { ColumnInfo } from "@/services/api";
 import type { PendingChange } from "./hooks/useCellEditing";
 import type { TableContext, TableRow } from "./types";
+import type { ColumnSearchHighlight } from "./hooks/useColumnSearch";
+import { columnSearchHighlightClass } from "./columnSearchHighlight";
 
 interface DataRowProps {
   rowIndex: number;
@@ -268,6 +270,7 @@ const DataRow = memo(function DataRow({
 });
 
 interface VirtualTableBodyProps {
+  columnSearch?: ColumnSearchHighlight;
   columns: string[];
   currentData: TableRow[];
   virtualizer: {
@@ -371,6 +374,7 @@ interface VirtualTableBodyProps {
 }
 
 export function VirtualTableBody({
+  columnSearch,
   columns,
   currentData,
   virtualizer,
@@ -478,7 +482,7 @@ export function VirtualTableBody({
                   #
                 </th>
               )}
-              {columns.map((column) => {
+              {columns.map((column, columnIndex) => {
                 const isSorted = activeSortColumn === column;
                 const direction = isSorted ? activeSortDirection : undefined;
                 const comment = columnComments[column]?.trim();
@@ -497,10 +501,17 @@ export function VirtualTableBody({
                 return (
                   <th
                     key={column}
+                    data-field-index={columnIndex}
+                    data-field-match={
+                      columnSearch?.matchedColumns.has(column) || undefined
+                    }
+                    data-field-active={
+                      columnSearch?.activeColumn === column || undefined
+                    }
                     ref={(el) => {
                       thRefs.current[column] = el;
                     }}
-                    className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
+                    className={`px-4 py-2 text-left text-xs font-semibold border-b border-r border-border relative group select-none ${columnSearch?.matchedColumns.has(column) ? columnSearchHighlightClass(column, columnSearch) : "text-muted-foreground"}`}
                     style={{
                       width: getColWidth(column),
                       minWidth: 50,

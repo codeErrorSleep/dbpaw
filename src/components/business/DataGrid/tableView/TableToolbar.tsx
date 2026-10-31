@@ -49,6 +49,7 @@ import type { ColumnAutocompleteOption } from "./columnAutocomplete";
 
 interface TableToolbarProps {
   hideHeader: boolean;
+  columnSearchControl?: React.ReactNode;
   // Pagination
   page: number;
   totalPages: number | null;
@@ -134,6 +135,7 @@ interface TableToolbarProps {
 
 export const TableToolbar = React.memo(function TableToolbar({
   hideHeader,
+  columnSearchControl,
   page,
   totalPages,
   canGoNext,
@@ -190,7 +192,13 @@ export const TableToolbar = React.memo(function TableToolbar({
 }: TableToolbarProps) {
   const { t } = useTranslation();
 
-  if (hideHeader) return null;
+  if (hideHeader) {
+    return (
+      <div className="flex justify-end border-b border-border px-4 py-1">
+        {columnSearchControl}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-1.5 px-4 py-2 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20">
@@ -319,6 +327,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               <Rows className="w-3.5 h-3.5" />
             )}
           </Button>
+          {columnSearchControl}
           <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
             <PopoverTrigger asChild>
               <Button
