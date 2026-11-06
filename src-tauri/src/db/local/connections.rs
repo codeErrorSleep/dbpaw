@@ -27,9 +27,10 @@ impl LocalDb {
             )));
         }
 
+        let proxy = encode_proxy(form.proxy.as_ref())?;
         let id = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO connections (uuid, type, name, host, port, database, username, password, ssl, ssl_mode, ssl_ca_cert, file_path, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path, mode, seed_nodes, sentinels, connect_timeout_ms, service_name, sentinel_password, auth_mode, api_key_id, api_key_secret, api_key_encoded, cloud_id, auth_source)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
+            "INSERT INTO connections (uuid, type, name, host, port, database, username, password, ssl, ssl_mode, ssl_ca_cert, file_path, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path, mode, seed_nodes, sentinels, connect_timeout_ms, service_name, sentinel_password, auth_mode, api_key_id, api_key_secret, api_key_encoded, cloud_id, auth_source, proxy)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
         )
         .bind(&uuid)
         .bind(&form.driver)
@@ -61,6 +62,7 @@ impl LocalDb {
         .bind(form.api_key_encoded)
         .bind(form.cloud_id)
         .bind(form.auth_source)
+        .bind(proxy)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| AppError::internal(format!("[INSERT_ERROR] {e}")))?;
@@ -73,8 +75,12 @@ impl LocalDb {
         id: i64,
         form: ConnectionForm,
     ) -> Result<Connection, AppError> {
+        let mut form = form;
+        let saved = self.get_connection_form_by_id(id).await?;
+        crate::network::merge_proxy_password(&mut form, &saved);
+        let proxy = encode_proxy(form.proxy.as_ref())?;
         sqlx::query(
-            "UPDATE connections SET name = COALESCE(NULLIF(?, ''), name), type = ?, host = ?, port = ?, database = ?, username = ?, password = COALESCE(NULLIF(?, ''), password), ssl = ?, ssl_mode = ?, ssl_ca_cert = ?, file_path = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, mode = ?, seed_nodes = ?, sentinels = ?, connect_timeout_ms = ?, service_name = ?, sentinel_password = COALESCE(NULLIF(?, ''), sentinel_password), auth_mode = ?, api_key_id = ?, api_key_secret = COALESCE(NULLIF(?, ''), api_key_secret), api_key_encoded = COALESCE(NULLIF(?, ''), api_key_encoded), cloud_id = ?, auth_source = ?, updated_at = datetime('now') WHERE id = ?"
+            "UPDATE connections SET name = COALESCE(NULLIF(?, ''), name), type = ?, host = ?, port = ?, database = ?, username = ?, password = COALESCE(NULLIF(?, ''), password), ssl = ?, ssl_mode = ?, ssl_ca_cert = ?, file_path = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, mode = ?, seed_nodes = ?, sentinels = ?, connect_timeout_ms = ?, service_name = ?, sentinel_password = COALESCE(NULLIF(?, ''), sentinel_password), auth_mode = ?, api_key_id = ?, api_key_secret = COALESCE(NULLIF(?, ''), api_key_secret), api_key_encoded = COALESCE(NULLIF(?, ''), api_key_encoded), cloud_id = ?, auth_source = ?, proxy = ?, updated_at = datetime('now') WHERE id = ?"
         )
         .bind(form.name)
         .bind(&form.driver)
@@ -105,6 +111,7 @@ impl LocalDb {
         .bind(form.api_key_encoded)
         .bind(form.cloud_id)
         .bind(form.auth_source)
+        .bind(proxy)
         .bind(id)
         .execute(&self.pool)
         .await
@@ -128,7 +135,7 @@ impl LocalDb {
                 id, uuid, name, type as db_type, host, port, database, username, ssl, ssl_mode, ssl_ca_cert, file_path,
                 ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path,
                 mode, seed_nodes, sentinels, connect_timeout_ms, service_name, NULL as sentinel_password,
-                auth_mode, api_key_id, NULL as api_key_secret, NULL as api_key_encoded, cloud_id, auth_source,
+                auth_mode, api_key_id, NULL as api_key_secret, NULL as api_key_encoded, cloud_id, auth_source, proxy,
                 created_at, updated_at
                FROM connections
                ORDER BY created_at ASC, id ASC"#,
@@ -153,7 +160,7 @@ impl LocalDb {
                 file_path: row.try_get("file_path").ok(),
                 ssh_enabled: row.try_get("ssh_enabled").unwrap_or(false),
                 ssh_host: row.try_get("ssh_host").ok(),
-                ssh_port: row.try_get("ssh_port").ok(),
+                ssh_port: row.try_get::<Option<i64>, _>("ssh_port").ok().flatten(),
                 ssh_username: row.try_get("ssh_username").ok(),
                 ssh_password: row.try_get("ssh_password").ok(),
                 ssh_key_path: row.try_get("ssh_key_path").ok(),
@@ -169,6 +176,7 @@ impl LocalDb {
                 api_key_encoded: row.try_get("api_key_encoded").ok(),
                 cloud_id: row.try_get("cloud_id").ok(),
                 auth_source: row.try_get("auth_source").ok(),
+                proxy: public_proxy(row.try_get::<Option<String>, _>("proxy").ok().flatten()),
                 created_at: row.try_get("created_at").unwrap_or_default(),
                 updated_at: row.try_get("updated_at").unwrap_or_default(),
             })
@@ -181,7 +189,7 @@ impl LocalDb {
                 id, uuid, name, type as db_type, host, port, database, username, ssl, ssl_mode, ssl_ca_cert, file_path,
                 ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path,
                 mode, seed_nodes, sentinels, connect_timeout_ms, service_name, NULL as sentinel_password,
-                auth_mode, api_key_id, NULL as api_key_secret, NULL as api_key_encoded, cloud_id, auth_source,
+                auth_mode, api_key_id, NULL as api_key_secret, NULL as api_key_encoded, cloud_id, auth_source, proxy,
                 created_at, updated_at
                FROM connections
                WHERE id = ?"#,
@@ -206,7 +214,7 @@ impl LocalDb {
             file_path: row.try_get("file_path").ok(),
             ssh_enabled: row.try_get("ssh_enabled").unwrap_or(false),
             ssh_host: row.try_get("ssh_host").ok(),
-            ssh_port: row.try_get("ssh_port").ok(),
+            ssh_port: row.try_get::<Option<i64>, _>("ssh_port").ok().flatten(),
             ssh_username: row.try_get("ssh_username").ok(),
             ssh_password: row.try_get("ssh_password").ok(),
             ssh_key_path: row.try_get("ssh_key_path").ok(),
@@ -222,19 +230,20 @@ impl LocalDb {
             api_key_encoded: row.try_get("api_key_encoded").ok(),
             cloud_id: row.try_get("cloud_id").ok(),
             auth_source: row.try_get("auth_source").ok(),
+            proxy: public_proxy(row.try_get::<Option<String>, _>("proxy").ok().flatten()),
             created_at: row.try_get("created_at").unwrap_or_default(),
             updated_at: row.try_get("updated_at").unwrap_or_default(),
         })
     }
 
-    pub async fn get_connection_form_by_id(&self, id: i64) -> Result<ConnectionForm, String> {
+    pub async fn get_connection_form_by_id(&self, id: i64) -> Result<ConnectionForm, AppError> {
         let row = sqlx::query(
-            "SELECT type as db_type, name, host, port, database, username, password, ssl, ssl_mode, ssl_ca_cert, file_path, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path, mode, seed_nodes, sentinels, connect_timeout_ms, service_name, sentinel_password, auth_mode, api_key_id, api_key_secret, api_key_encoded, cloud_id, auth_source FROM connections WHERE id = ?"
+            "SELECT type as db_type, name, host, port, database, username, password, ssl, ssl_mode, ssl_ca_cert, file_path, ssh_enabled, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key_path, mode, seed_nodes, sentinels, connect_timeout_ms, service_name, sentinel_password, auth_mode, api_key_id, api_key_secret, api_key_encoded, cloud_id, auth_source, proxy FROM connections WHERE id = ?"
         )
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::query_failed(format!("{e}")).to_string())?;
+        .map_err(|e| AppError::query_failed(format!("{e}")))?;
 
         Ok(ConnectionForm {
             driver: row.try_get("db_type").unwrap_or_default(),
@@ -251,7 +260,7 @@ impl LocalDb {
             file_path: row.try_get("file_path").ok(),
             ssh_enabled: row.try_get::<bool, _>("ssh_enabled").ok().map(|v| v),
             ssh_host: row.try_get("ssh_host").ok(),
-            ssh_port: row.try_get("ssh_port").ok(),
+            ssh_port: row.try_get::<Option<i64>, _>("ssh_port").ok().flatten(),
             ssh_username: row.try_get("ssh_username").ok(),
             ssh_password: row.try_get("ssh_password").ok(),
             ssh_key_path: row.try_get("ssh_key_path").ok(),
@@ -267,6 +276,31 @@ impl LocalDb {
             api_key_encoded: row.try_get("api_key_encoded").ok(),
             cloud_id: row.try_get("cloud_id").ok(),
             auth_source: row.try_get("auth_source").ok(),
+            proxy: decode_proxy(row.try_get::<Option<String>, _>("proxy").ok().flatten())?,
         })
     }
 }
+
+fn encode_proxy(proxy: Option<&crate::models::NetworkProxy>) -> Result<Option<String>, AppError> {
+    proxy
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| AppError::internal_with("Invalid proxy configuration", e))
+}
+
+fn decode_proxy(value: Option<String>) -> Result<Option<crate::models::NetworkProxy>, AppError> {
+    value
+        .map(|value| serde_json::from_str(&value))
+        .transpose()
+        .map_err(|e| AppError::internal_with("Invalid proxy configuration", e))
+}
+
+fn public_proxy(value: Option<String>) -> Option<crate::models::NetworkProxy> {
+    decode_proxy(value).ok().flatten().map(|mut proxy| {
+        proxy.password.clear();
+        proxy
+    })
+}
+
+#[cfg(test)]
+mod tests;

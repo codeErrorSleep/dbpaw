@@ -264,6 +264,11 @@ pub async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), AppError> {
             include_str!("../../migrations/015_add_mongodb_auth_source.sql"),
             "015",
         ),
+        (
+            "proxy",
+            "ALTER TABLE connections ADD COLUMN proxy TEXT",
+            "017",
+        ),
     ] {
         ensure_column(&mut tx, "connections", column, sql, version).await?;
     }
@@ -348,6 +353,7 @@ mod tests {
             "service_name",
             "sentinel_password",
             "auth_source",
+            "proxy",
         ] {
             assert!(
                 column_exists(&mut tx, "connections", column).await.unwrap(),

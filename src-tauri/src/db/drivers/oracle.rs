@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 pub struct OracleDriver {
     config: OracleConfig,
-    _ssh_tunnel: Option<crate::ssh::SshTunnel>,
+    _network_tunnel: Option<crate::network::NetworkTunnel>,
 }
 
 #[derive(Clone)]
@@ -84,13 +84,13 @@ fn oracle_value_to_json(row: &oracle::Row, idx: usize) -> serde_json::Value {
 impl OracleDriver {
     pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
         let mut effective_form = form.clone();
-        let mut ssh_tunnel = None;
+        let mut network_tunnel = None;
 
-        if let Some(true) = form.ssh_enabled {
-            let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+        if crate::network::tunnel_enabled(form) {
+            let tunnel = crate::network::start_network_tunnel(form).await?;
             effective_form.host = Some("127.0.0.1".to_string());
             effective_form.port = Some(tunnel.local_port as i64);
-            ssh_tunnel = Some(tunnel);
+            network_tunnel = Some(tunnel);
         }
 
         let host = effective_form
@@ -126,7 +126,7 @@ impl OracleDriver {
         };
         let driver = Self {
             config,
-            _ssh_tunnel: ssh_tunnel,
+            _network_tunnel: network_tunnel,
         };
         driver.test_connection().await?;
         Ok(driver)

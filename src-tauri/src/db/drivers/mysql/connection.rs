@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::models::ConnectionForm;
-use crate::ssh::SshTunnel;
+use crate::network::NetworkTunnel;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ fn conn_error(message: impl Into<String>) -> AppError {
 
 pub struct MysqlConnection {
     pub pool: sqlx::MySqlPool,
-    pub ssh_tunnel: Option<SshTunnel>,
+    pub network_tunnel: Option<NetworkTunnel>,
     pub ca_cert_path: Option<PathBuf>,
     pub driver_name: String,
     pub compatibility_mode: bool,
@@ -210,13 +210,13 @@ impl MysqlConnection {
 
     pub async fn connect(form: &ConnectionForm) -> Result<Self, AppError> {
         let mut dsn_form = form.clone();
-        let mut ssh_tunnel = None;
+        let mut network_tunnel = None;
 
-        if let Some(true) = form.ssh_enabled {
-            let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+        if crate::network::tunnel_enabled(form) {
+            let tunnel = crate::network::start_network_tunnel(form).await?;
             dsn_form.host = Some("127.0.0.1".to_string());
             dsn_form.port = Some(tunnel.local_port as i64);
-            ssh_tunnel = Some(tunnel);
+            network_tunnel = Some(tunnel);
         }
 
         let (dsn, ca_cert_path) = build_dsn_with_ca_path(&dsn_form)?;
@@ -237,7 +237,7 @@ impl MysqlConnection {
 
         Ok(Self {
             pool,
-            ssh_tunnel,
+            network_tunnel,
             ca_cert_path,
             driver_name: dsn_form.driver.to_ascii_lowercase(),
             compatibility_mode: Self::uses_mysql_compatibility_mode(&dsn_form.driver),

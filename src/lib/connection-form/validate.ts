@@ -7,6 +7,8 @@ import {
   requiresUsername,
 } from "./rules";
 
+import { validateNetworkProxy } from "./proxy";
+
 type Mode = "create" | "edit";
 
 export interface ConnectionValidationIssue {
@@ -28,7 +30,7 @@ export const validateConnectionFormInput = (
   form: ConnectionForm,
   mode: Mode,
 ): ConnectionValidationIssue[] => {
-  const issues: ConnectionValidationIssue[] = [];
+  const issues: ConnectionValidationIssue[] = validateNetworkProxy(form);
 
   if (isFileBasedDriver(form.driver)) {
     if (!form.filePath) {

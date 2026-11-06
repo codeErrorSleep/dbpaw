@@ -72,6 +72,15 @@ export interface SqlExecutionLog {
   executedAt: string;
 }
 
+export interface NetworkProxy {
+  enabled: boolean;
+  kind: "socks5" | "http";
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+}
+
 export interface ConnectionForm {
   driver: Driver;
   name?: string;
@@ -91,6 +100,7 @@ export interface ConnectionForm {
   sshUsername?: string;
   sshPassword?: string;
   sshKeyPath?: string;
+  proxy?: NetworkProxy;
   mode?: RedisConnectionMode;
   seedNodes?: string[];
   sentinels?: string[];
@@ -124,6 +134,7 @@ export interface SavedConnection {
   sshUsername?: string | null;
   sshPassword?: string | null;
   sshKeyPath?: string | null;
+  proxy?: NetworkProxy | null;
   mode?: RedisConnectionMode | null;
   seedNodes?: string[] | null;
   sentinels?: string[] | null;

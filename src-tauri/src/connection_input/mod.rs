@@ -171,6 +171,10 @@ pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionF
     form.sentinel_password = trim_preserve_empty(form.sentinel_password);
     form.auth_source = trim_to_option(form.auth_source);
 
+    if let Some(proxy) = form.proxy.as_mut() {
+        proxy.host = proxy.host.trim().to_string();
+        proxy.username = proxy.username.trim().to_string();
+    }
     validate_port_range("port", form.port)?;
     validate_port_range("ssh port", form.ssh_port)?;
 
@@ -199,6 +203,8 @@ pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionF
         }
         normalize_redis_options(&mut form)?;
     }
+
+    crate::network::validate_proxy(&form)?;
 
     if matches!(driver.as_str(), "sqlite" | "duckdb") {
         if form.file_path.is_none() {

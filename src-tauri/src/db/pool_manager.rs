@@ -748,6 +748,7 @@ mod tests {
             api_key_encoded: None,
             cloud_id: None,
             auth_source: None,
+            proxy: None,
         };
 
         let result = manager.connect("conn3", &form).await;

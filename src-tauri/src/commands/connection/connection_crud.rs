@@ -81,6 +81,7 @@ fn merge_saved_secrets_for_edit_test(
     mut form: ConnectionForm,
     saved: &ConnectionForm,
 ) -> ConnectionForm {
+    crate::network::merge_proxy_password(&mut form, saved);
     fill_empty_secret(&mut form.password, &saved.password);
     fill_empty_secret(&mut form.ssh_password, &saved.ssh_password);
     fill_empty_secret(&mut form.sentinel_password, &saved.sentinel_password);

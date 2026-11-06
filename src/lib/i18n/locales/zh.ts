@@ -1,3 +1,5 @@
+import { proxy } from "./zh/proxy";
+
 import type { Translations } from "./en";
 
 export const zh: Translations = {
@@ -322,6 +324,7 @@ export const zh: Translations = {
       noIndices: "暂无索引",
     },
     dialog: {
+      proxy,
       editTitle: "编辑数据库连接",
       newTitle: "新建数据库连接",
       fields: {

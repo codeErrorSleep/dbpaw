@@ -305,6 +305,11 @@ export const normalizeConnectionFormInput = (
     sshUsername: normalizeTextValue(raw.sshUsername),
     sshPassword: normalizeTextValue(raw.sshPassword, false),
     sshKeyPath: normalizeTextValue(raw.sshKeyPath),
+    proxy: raw.proxy ? {
+      ...raw.proxy,
+      host: raw.proxy.host.trim(),
+      username: raw.proxy.username.trim(),
+    } : undefined,
     mode: driver === "redis" ? redisMode : undefined,
     seedNodes:
       driver === "redis"

@@ -290,9 +290,7 @@ pub async fn create_database_by_id(
                     lock.clone()
                 };
                 let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
-                db.get_connection_form_by_id(id)
-                    .await
-                    .map_err(AppError::internal)?
+                db.get_connection_form_by_id(id).await?
             };
 
             let sql = match form.driver.as_str() {

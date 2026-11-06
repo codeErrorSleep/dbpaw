@@ -14,7 +14,7 @@ pub struct Db2Config {
 
 pub struct Db2Connection {
     pub config: Db2Config,
-    pub ssh_tunnel: Option<crate::ssh::SshTunnel>,
+    pub network_tunnel: Option<crate::network::NetworkTunnel>,
 }
 
 fn odbc_escape_value(v: &str) -> String {
@@ -35,13 +35,13 @@ pub fn build_connection_string(cfg: &Db2Config) -> String {
 impl Db2Connection {
     pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
         let mut effective_form = form.clone();
-        let mut ssh_tunnel = None;
+        let mut network_tunnel = None;
 
-        if let Some(true) = form.ssh_enabled {
-            let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+        if crate::network::tunnel_enabled(form) {
+            let tunnel = crate::network::start_network_tunnel(form).await?;
             effective_form.host = Some("127.0.0.1".to_string());
             effective_form.port = Some(tunnel.local_port as i64);
-            ssh_tunnel = Some(tunnel);
+            network_tunnel = Some(tunnel);
         }
 
         let host = effective_form
@@ -77,7 +77,7 @@ impl Db2Connection {
         };
         let conn = Self {
             config,
-            ssh_tunnel,
+            network_tunnel,
         };
         conn.test_connection().await?;
         Ok(conn)

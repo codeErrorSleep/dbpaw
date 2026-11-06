@@ -84,6 +84,7 @@ pub fn parse_summary_header(headers: &reqwest::header::HeaderMap) -> Option<Clic
 
 impl ClickHouseDriver {
     pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
+        crate::network::validate_proxy(form)?;
         let mut dsn_form = form.clone();
         let mut ssh_tunnel = None;
 
@@ -95,8 +96,11 @@ impl ClickHouseDriver {
         }
 
         let config = build_config(&dsn_form)?;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
+        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
+        if let Some(proxy) = form.proxy.as_ref().filter(|proxy| proxy.enabled) {
+            builder = builder.proxy(crate::network::reqwest_proxy(proxy)?);
+        }
+        let client = builder
             .build()
             .map_err(|e| conn_failed_error(&format!("Failed to create HTTP client: {e}")))?;
 

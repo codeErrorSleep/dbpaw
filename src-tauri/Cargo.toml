@@ -54,7 +54,7 @@ async-trait = "0.1"
 bitflags = "2"
 ssh2 = "0.9"
 rand = "0.9"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "socks"] }
 futures-util = "0.3"
 aes-gcm = "0.10"
 base64 = "0.22"

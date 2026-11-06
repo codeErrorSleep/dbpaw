@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   Driver,
+  NetworkProxy,
   RedisConnectionMode,
   RoutineType,
 } from "@/services/api";
@@ -67,6 +68,7 @@ export interface Connection {
   sshUsername?: string;
   sshPassword?: string;
   sshKeyPath?: string;
+  proxy?: NetworkProxy;
   mode?: RedisConnectionMode;
   seedNodes?: string[];
   sentinels?: string[];

@@ -350,6 +350,7 @@ pub mod import;
 pub mod log;
 pub mod mcp;
 pub mod models;
+pub mod network;
 pub mod services;
 pub mod sql;
 pub mod ssh;

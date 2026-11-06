@@ -137,6 +137,7 @@ export const buildFormFromConnection = (
     | "sshPort"
     | "sshUsername"
     | "sshKeyPath"
+    | "proxy"
     | "mode"
     | "seedNodes"
     | "sentinels"
@@ -170,6 +171,7 @@ export const buildFormFromConnection = (
     sshUsername: connection.sshUsername || "",
     sshPassword: "",
     sshKeyPath: connection.sshKeyPath || "",
+    proxy: connection.proxy ? { ...connection.proxy, password: "" } : undefined,
     mode: connection.mode,
     seedNodes: connection.seedNodes || [],
     sentinels: connection.sentinels || [],

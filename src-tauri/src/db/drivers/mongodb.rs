@@ -173,7 +173,7 @@ pub struct MongoDBDriver {
     client: Client,
     default_database: String,
     #[allow(dead_code)]
-    ssh_tunnel: Option<crate::ssh::SshTunnel>,
+    network_tunnel: Option<crate::network::NetworkTunnel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,8 +208,8 @@ impl MongoDBDriver {
             .unwrap_or(DEFAULT_CONNECT_TIMEOUT_MS);
 
         let mut effective_form = form.clone();
-        let ssh_tunnel = if let Some(true) = form.ssh_enabled {
-            let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+        let network_tunnel = if crate::network::tunnel_enabled(form) {
+            let tunnel = crate::network::start_network_tunnel(form).await?;
             effective_form.host = Some("127.0.0.1".to_string());
             effective_form.port = Some(tunnel.local_port as i64);
             Some(tunnel)
@@ -221,6 +221,10 @@ impl MongoDBDriver {
         let mut options = ClientOptions::parse(&uri)
             .await
             .map_err(normalize_mongo_error)?;
+        if crate::network::proxy_enabled(form) {
+            // Keep topology discovery from bypassing the configured single-host tunnel.
+            options.direct_connection = Some(true);
+        }
         options.connect_timeout = Some(Duration::from_millis(timeout_ms as u64));
 
         if effective_form.ssl.unwrap_or(false) {
@@ -246,7 +250,7 @@ impl MongoDBDriver {
         Ok(Self {
             client,
             default_database,
-            ssh_tunnel,
+            network_tunnel,
         })
     }
 

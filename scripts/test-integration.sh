@@ -112,6 +112,9 @@ run_db2() {
 }
 
 case "${it_db}" in
+  proxy)
+    run_integration_test "network_proxy_integration"
+    ;;
   mysql)
     run_integration_test "mysql_integration"
     run_integration_test "mysql_command_integration"
@@ -179,6 +182,7 @@ case "${it_db}" in
     run_db2
     ;;
   all)
+    IT_DB=proxy run_integration_test "network_proxy_integration"
     run_integration_test "mysql_integration"
     run_integration_test "mysql_command_integration"
     run_integration_test "mysql_stateful_command_integration"
@@ -212,7 +216,7 @@ case "${it_db}" in
     run_db2
     ;;
   *)
-    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|starrocks|doris|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|oracle|redis|elasticsearch|mongodb|cassandra|db2|all"
+    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: proxy|mysql|starrocks|doris|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|oracle|redis|elasticsearch|mongodb|cassandra|db2|all"
     exit 1
     ;;
 esac

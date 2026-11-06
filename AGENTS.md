@@ -74,6 +74,7 @@ it never happens again.
   `SHORTCUT_DEFAULTS`, a label under `settings.shortcuts.label.*` in
   every locale, and wire the matcher call in the appropriate handler
   site — do not hard-code the key.
+- Render each connection settings section once and keep form control IDs unique. Duplicate IDs can make labels and Playwright locators resolve only the first control, hiding a duplicated section.
 - Icon-only buttons that trigger user actions must have an accessible name
   (`aria-label`, and usually matching `title`) from i18n text. Without this,
   Playwright flow tests have to click by position and can miss the exact
@@ -89,6 +90,7 @@ it never happens again.
 
 ## Database Drivers
 
+- Decode nullable SQLite JSON columns with `try_get::<Option<String>, _>()` before parsing. Reading SQL NULL as `String` can yield an empty string and break existing connections with JSON EOF errors. Nullable ports also need `Option<i64>` decoding: SQL NULL read as an integer can become `Some(0)` and fail validation even when SSH is disabled.
 - Local SQLite migrations must verify the actual table, column, index, and
   trigger they require. Never infer that every migration ran from the presence
   of `connections` or from version records alone. Check multi-column migrations
@@ -100,6 +102,7 @@ it never happens again.
   `get_table_data`, `get_table_data_chunk`, `execute_query`,
   `get_schema_overview`, `close`) and optional ones (`list_routines`,
   `get_routine_ddl`, `execute_query_with_id`).
+- When forwarding a connection through a proxy or tunnel, rewrite every endpoint source used by the driver, including cached Redis seed nodes. Reject unsupported topology discovery modes so discovered nodes cannot silently bypass the proxy.
 - Do not add driver-specific connection logic outside the driver module.
   SSH tunneling is handled transparently in the connection layer, not in
   individual drivers.
@@ -116,6 +119,8 @@ it never happens again.
   expose engine details through table metadata instead.
 
 ## Testing
+
+- Cross-driver connectivity probes should select a text constant. Integer query results may intentionally be returned as strings to preserve precision; do not mistake that representation for a proxy or connectivity failure.
 
 - In Bun + happy-dom tests, initialize `window.SyntaxError` from the global
   constructor before using DOM selectors. Happy DOM's selector parser constructs

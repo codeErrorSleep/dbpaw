@@ -22,6 +22,7 @@ pub fn is_mysql_family_driver(driver: &str) -> bool {
 }
 
 pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, AppError> {
+    crate::network::validate_proxy(form)?;
     match form.driver.as_str() {
         "postgres" => {
             let driver = PostgresDriver::connect(form).await?;

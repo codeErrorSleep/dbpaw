@@ -22,6 +22,7 @@ import { useFormField } from "@/lib/connection-form/use-form-field";
 import type { ConnectionForm, Driver } from "@/services/api";
 import { ConnectionBasicFields } from "./ConnectionBasicFields";
 import { ConnectionDialogFooter, type ConnectionDialogTestMessage } from "./ConnectionDialogFooter";
+import { ConnectionProxyFields } from "./ConnectionProxyFields";
 import { ConnectionNetworkFields } from "./ConnectionNetworkFields";
 import { ConnectionSecurityFields } from "./ConnectionSecurityFields";
 import { ConnectionSummaryHeader } from "./ConnectionSummaryHeader";
@@ -207,6 +208,8 @@ export function ConnectionDialog({
                     />
                   </>
                 )}
+
+                <ConnectionProxyFields form={form} setForm={setForm} />
 
                 <ConnectionNetworkFields
                   driver={form.driver}

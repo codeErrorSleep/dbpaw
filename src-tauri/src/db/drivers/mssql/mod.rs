@@ -11,14 +11,14 @@ use crate::models::{
     ConnectionForm, QueryResult, RoutineInfo, SchemaForeignKey, SchemaOverview, SynonymInfo,
     TableDataResponse, TableInfo, TableMetadata, TableStructure,
 };
-use crate::ssh::SshTunnel;
+use crate::network::NetworkTunnel;
 use async_trait::async_trait;
 use bb8::Pool;
 use connection::MssqlConnectionManager;
 
 pub struct MssqlDriver {
     pub pool: Pool<MssqlConnectionManager>,
-    pub ssh_tunnel: Option<SshTunnel>,
+    pub network_tunnel: Option<NetworkTunnel>,
     pub supports_for_json: bool,
 }
 

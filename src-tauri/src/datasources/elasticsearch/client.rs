@@ -145,7 +145,11 @@ pub(crate) fn build_reqwest_client(
     form: &ConnectionForm,
     timeout_ms: i64,
 ) -> Result<reqwest::Client, AppError> {
+    crate::network::validate_proxy(form)?;
     let mut builder = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms as u64));
+    if let Some(proxy) = form.proxy.as_ref().filter(|proxy| proxy.enabled) {
+        builder = builder.proxy(crate::network::reqwest_proxy(proxy)?);
+    }
     if form.ssl.unwrap_or(false) {
         let ssl_mode =
             trim_to_option(form.ssl_mode.as_ref()).unwrap_or_else(|| "require".to_string());

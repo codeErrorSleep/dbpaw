@@ -1,3 +1,5 @@
+import { proxy } from "./proxy";
+
 export const connection = {
   title: "连接",
   searchTables: "搜索数据表...",
@@ -35,6 +37,7 @@ export const connection = {
     noMaterializedViews: "没有物化视图",
   },
   dialog: {
+    proxy,
     editTitle: "编辑数据库连接",
     newTitle: "新建数据库连接",
     fields: {

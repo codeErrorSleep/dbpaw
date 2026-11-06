@@ -1,3 +1,6 @@
+mod network_proxy;
+pub use network_proxy::{NetworkProxy, ProxyKind};
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -22,6 +25,9 @@ pub struct Connection {
     pub ssh_username: Option<String>,
     pub ssh_password: Option<String>,
     pub ssh_key_path: Option<String>,
+    #[serde(default)]
+    #[sqlx(json(nullable))]
+    pub proxy: Option<NetworkProxy>,
     pub mode: Option<String>,
     pub seed_nodes: Option<Vec<String>>,
     pub sentinels: Option<Vec<String>>,
@@ -385,6 +391,7 @@ pub struct ConnectionForm {
     pub ssh_username: Option<String>,
     pub ssh_password: Option<String>,
     pub ssh_key_path: Option<String>,
+    pub proxy: Option<NetworkProxy>,
     pub mode: Option<String>,
     pub seed_nodes: Option<Vec<String>>,
     pub sentinels: Option<Vec<String>>,
@@ -429,6 +436,7 @@ impl fmt::Debug for ConnectionForm {
             .field("ssh_username", &ssh_username)
             .field("ssh_password", &ssh_password)
             .field("ssh_key_path", &self.ssh_key_path)
+            .field("proxy", &self.proxy)
             .field("mode", &self.mode)
             .field("seed_nodes", &self.seed_nodes)
             .field("sentinels", &self.sentinels)

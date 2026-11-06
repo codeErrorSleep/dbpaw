@@ -32,6 +32,7 @@ export const mapSavedConnection = (
   sshUsername: c.sshUsername || "root",
   sshPassword: c.sshPassword || "",
   sshKeyPath: c.sshKeyPath || "",
+  proxy: c.proxy ?? undefined,
   mode: c.mode || undefined,
   seedNodes: c.seedNodes || [],
   sentinels: c.sentinels || [],

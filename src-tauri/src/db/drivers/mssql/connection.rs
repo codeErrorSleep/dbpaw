@@ -42,6 +42,7 @@ pub(crate) struct MssqlConfig {
 
 pub struct MssqlConnectionManager {
     config: MssqlConfig,
+    proxy_port: Option<u16>,
 }
 
 pub(crate) fn build_config(form: &ConnectionForm) -> DriverResult<MssqlConfig> {
@@ -124,7 +125,10 @@ async fn detect_for_json_support(client: &mut Client<Compat<TcpStream>>) -> bool
 
 impl MssqlConnectionManager {
     fn new(config: MssqlConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            proxy_port: None,
+        }
     }
 
     fn build_tiberius_config(&self, encryption: EncryptionLevel, trust_cert: bool) -> Config {
@@ -201,7 +205,7 @@ impl MssqlConnectionManager {
         let mut errors = Vec::new();
         for (encryption, trust_cert, label) in attempts {
             let config = self.build_tiberius_config(encryption, trust_cert);
-            match Self::connect_with_config(config).await {
+            match self.connect_with_config(config).await {
                 Ok(client) => return Ok(client),
                 Err(err) => errors.push(format!("{label}: {err}")),
             }
@@ -213,11 +217,17 @@ impl MssqlConnectionManager {
         )))
     }
 
-    async fn connect_with_config(config: Config) -> DriverResult<Client<Compat<TcpStream>>> {
+    async fn connect_with_config(&self, config: Config) -> DriverResult<Client<Compat<TcpStream>>> {
         let connect_future = async {
-            let tcp = TcpStream::connect_named(&config)
-                .await
-                .map_err(|e| conn_error(e.to_string()))?;
+            let tcp = if let Some(port) = self.proxy_port {
+                TcpStream::connect(("127.0.0.1", port))
+                    .await
+                    .map_err(|e| conn_error(e.to_string()))?
+            } else {
+                TcpStream::connect_named(&config)
+                    .await
+                    .map_err(|e| conn_error(e.to_string()))?
+            };
             tcp.set_nodelay(true)
                 .map_err(|e| conn_error(e.to_string()))?;
             Ok::<TcpStream, AppError>(tcp)
@@ -256,17 +266,21 @@ impl bb8::ManageConnection for MssqlConnectionManager {
 
 pub(crate) async fn connect(form: &ConnectionForm) -> DriverResult<MssqlDriver> {
     let mut cfg_form = form.clone();
-    let mut ssh_tunnel = None;
+    let mut network_tunnel = None;
 
-    if let Some(true) = form.ssh_enabled {
-        let tunnel = crate::ssh::start_ssh_tunnel(form)?;
+    if crate::network::tunnel_enabled(form) {
+        let tunnel = crate::network::start_network_tunnel(form).await?;
         cfg_form.host = Some("127.0.0.1".to_string());
         cfg_form.port = Some(tunnel.local_port as i64);
-        ssh_tunnel = Some(tunnel);
+        network_tunnel = Some(tunnel);
     }
 
     let config = build_config(&cfg_form)?;
-    let manager = MssqlConnectionManager::new(config);
+    let mut manager = MssqlConnectionManager::new(config);
+    if crate::network::proxy_enabled(form) {
+        manager.proxy_port = network_tunnel.as_ref().map(|tunnel| tunnel.local_port);
+        manager.config.host = form.host.clone().unwrap_or_default();
+    }
     let pool = Pool::builder()
         .max_size(10)
         .build(manager)
@@ -279,7 +293,7 @@ pub(crate) async fn connect(form: &ConnectionForm) -> DriverResult<MssqlDriver> 
     };
     let driver = MssqlDriver {
         pool,
-        ssh_tunnel,
+        network_tunnel,
         supports_for_json,
     };
     driver.test_connection().await?;

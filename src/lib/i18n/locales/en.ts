@@ -1,3 +1,5 @@
+import { proxy } from "./en/proxy";
+
 export const en = {
   common: {
     cancel: "Cancel",
@@ -328,6 +330,7 @@ export const en = {
       noIndices: "No indices",
     },
     dialog: {
+      proxy,
       editTitle: "Edit Database Connection",
       newTitle: "New Database Connection",
       fields: {

@@ -23,7 +23,7 @@ const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
 /// Cluster wraps ClusterConnection in Arc<Mutex> so it can be shared across commands.
 #[derive(Clone)]
 pub enum RedisConnection {
-    Standalone(MultiplexedConnection),
+    Standalone(MultiplexedConnection, Option<crate::network::NetworkTunnel>),
     Cluster(Arc<TokioMutex<ClusterConnection>>),
 }
 
@@ -65,7 +65,7 @@ impl RedisConnection {
 
     pub async fn query<T: FromRedisValue>(&mut self, cmd: Cmd) -> error::RedisResult<T> {
         match self {
-            RedisConnection::Standalone(inner) => query_on(inner, cmd).await,
+            RedisConnection::Standalone(inner, _) => query_on(inner, cmd).await,
             RedisConnection::Cluster(arc) => {
                 let mut conn = arc.lock().await;
                 query_on(&mut *conn, cmd).await
@@ -99,7 +99,7 @@ impl RedisConnection {
         pipe: &mut redis::Pipeline,
     ) -> error::RedisResult<T> {
         match self {
-            RedisConnection::Standalone(inner) => pipe
+            RedisConnection::Standalone(inner, _) => pipe
                 .query_async(inner)
                 .await
                 .map_err(|e| error::to_command_error(e)),
@@ -335,6 +335,12 @@ pub async fn connect(
     form: &ConnectionForm,
     database: Option<&str>,
 ) -> error::RedisResult<RedisConnection> {
+    crate::network::validate_proxy(form)?;
+    if crate::network::proxy_enabled(form) && (is_sentinel_form(form) || is_cluster_form(form)) {
+        return Err(error::unsupported(
+            "Network proxy currently supports standalone Redis only",
+        ));
+    }
     if is_sentinel_form(form) {
         let sentinel_nodes = form
             .sentinels
@@ -372,7 +378,7 @@ pub async fn connect(
             .get_multiplexed_async_connection_with_config(&config)
             .await
             .map_err(|e| conn_failed_error(&e))?;
-        return Ok(RedisConnection::Standalone(conn));
+        return Ok(RedisConnection::Standalone(conn, None));
     }
 
     if is_cluster_form(form) {
@@ -393,15 +399,25 @@ pub async fn connect(
         return Ok(RedisConnection::Cluster(Arc::new(TokioMutex::new(conn))));
     }
 
+    let mut effective_form = form.clone();
+    let tunnel = if crate::network::proxy_enabled(form) {
+        let tunnel = crate::network::start_network_tunnel(form).await?;
+        effective_form.seed_nodes = None;
+        effective_form.host = Some("127.0.0.1".to_string());
+        effective_form.port = Some(tunnel.local_port as i64);
+        Some(tunnel)
+    } else {
+        None
+    };
     let db = selected_database(form, database)?;
-    let info = build_connection_info(form, db)?;
+    let info = build_connection_info(&effective_form, db)?;
     let client = redis::Client::open(info).map_err(|e| conn_failed_error(&e))?;
     let config = AsyncConnectionConfig::new().set_connection_timeout(connect_timeout(form));
     let conn = client
         .get_multiplexed_async_connection_with_config(&config)
         .await
         .map_err(|e| conn_failed_error(&e))?;
-    Ok(RedisConnection::Standalone(conn))
+    Ok(RedisConnection::Standalone(conn, tunnel))
 }
 
 async fn query_on<T: FromRedisValue, C: ConnectionLike + Send + Sync>(

@@ -1,3 +1,5 @@
+import { proxy } from "./proxy";
+
 export const connection = {
   title: "Connections",
   searchTables: "Find tables...",
@@ -35,6 +37,7 @@ export const connection = {
     noMaterializedViews: "No materialized views",
   },
   dialog: {
+    proxy,
     editTitle: "Edit Database Connection",
     newTitle: "New Database Connection",
     fields: {
