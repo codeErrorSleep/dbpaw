@@ -163,6 +163,7 @@ it never happens again.
 
 ## Release / Packaging
 
+- Track GitHub release publication and third-party update-service synchronization separately. Verify the public `latest.json` and the updater endpoint in `src-tauri/tauri.conf.json`; an external service DNS failure must not be reported as a failed GitHub release or a successful service sync.
 - Intel macOS release dependencies must not bootstrap Homebrew under Rosetta:
   Homebrew's current installer rejects x86_64. Build unixODBC with Xcode for
   the target architecture, verify the dylib architecture, and pass its install
