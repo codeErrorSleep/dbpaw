@@ -5,7 +5,7 @@
     "url": "git+https://github.com/codeErrorSleep/dbpaw.git"
   },
   "private": true,
-  "version": "0.5.15",
+  "version": "0.5.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
